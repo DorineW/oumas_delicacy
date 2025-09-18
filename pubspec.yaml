@@ -64,7 +64,14 @@ flutter:
     - assets/animations/welcome.json
     - assets/animations/bike.json
 
-flutter_icons:
+flutter_launcher_icons:
   android: true
   ios: true
   image_path: "assets/images/app_icon.png"
+  # Optional extras (recommended):
+  remove_alpha_ios: true
+  remove_alpha_android: true
+
+  # For adaptive icons (Android 8+):
+  adaptive_icon_background: "#FFF3E0" 
+  adaptive_icon_foreground: "assets/images/app_icon.png"

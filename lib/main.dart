@@ -44,7 +44,7 @@ class MyApp extends StatelessWidget {
             iconTheme: IconThemeData(color: AppColors.darkText),
           ),
         ),
-        home: const LoginWrapper(),
+        home: const LoginWrapper(), // <-- Use LoginWrapper here
       ),
     );
   }
