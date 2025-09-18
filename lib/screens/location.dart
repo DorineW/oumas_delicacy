@@ -4,6 +4,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:geocoding/geocoding.dart';
 import '../constants/colors.dart';
 
 class LocationScreen extends StatefulWidget {
@@ -18,6 +19,7 @@ class LocationScreen extends StatefulWidget {
 class _LocationScreenState extends State<LocationScreen> {
   final Completer<GoogleMapController> _controller = Completer();
   LatLng? _selectedLocation;
+  String? _selectedAddress;
   bool _isLoading = true;
   bool _permissionGranted = false;
   CameraPosition? _initialCameraPosition;
@@ -35,6 +37,7 @@ class _LocationScreenState extends State<LocationScreen> {
       _selectedLocation = LatLng(pos.latitude, pos.longitude);
       _permissionGranted = true;
       _isLoading = false;
+      _getAddressFromLatLng(_selectedLocation!); // pre-fill address
     } else {
       // default: Nairobi
       _initialCameraPosition = const CameraPosition(
@@ -82,7 +85,6 @@ class _LocationScreenState extends State<LocationScreen> {
         return;
       }
 
-      // permission granted
       final Position position = await Geolocator.getCurrentPosition();
       if (!mounted) return;
 
@@ -98,13 +100,15 @@ class _LocationScreenState extends State<LocationScreen> {
         _isLoading = false;
       });
 
+      // fetch human-readable address
+      await _getAddressFromLatLng(_selectedLocation!);
+
       // animate if controller already available
       if (_controller.isCompleted) {
         final c = await _controller.future;
         c.animateCamera(CameraUpdate.newCameraPosition(camera));
       }
     } catch (e, st) {
-      // Surface a friendly error and allow retry
       debugPrint('Location error: $e\n$st');
       setState(() {
         _isLoading = false;
@@ -113,17 +117,44 @@ class _LocationScreenState extends State<LocationScreen> {
     }
   }
 
+  Future<void> _getAddressFromLatLng(LatLng pos) async {
+    setState(() {
+      _selectedAddress = null;
+    });
+    try {
+      final placemarks = await placemarkFromCoordinates(pos.latitude, pos.longitude);
+      if (placemarks.isNotEmpty) {
+        final p = placemarks.first;
+        // build a concise address; tune to your needs
+        final street = p.street ?? '';
+        final locality = p.locality ?? p.subAdministrativeArea ?? '';
+        final country = p.country ?? '';
+        final composed = [street, locality, country].where((s) => s.isNotEmpty).join(', ');
+        setState(() {
+          _selectedAddress = composed.isNotEmpty ? composed : 'Unknown address';
+        });
+      } else {
+        setState(() {
+          _selectedAddress = 'No address found';
+        });
+      }
+    } catch (e) {
+      debugPrint('Reverse geocoding failed: $e');
+      setState(() {
+        _selectedAddress = 'Failed to get address';
+      });
+    }
+  }
+
   void _onMapCreated(GoogleMapController controller) async {
     if (!_controller.isCompleted) _controller.complete(controller);
 
-    // If we already have a location, move the camera to it
     if (_selectedLocation != null) {
       try {
         await controller.animateCamera(
           CameraUpdate.newLatLngZoom(_selectedLocation!, 14.0),
         );
       } catch (e) {
-        // ignore animation errors (controller may be disposed soon)
         debugPrint('animateCamera failed: $e');
       }
     } else if (_initialCameraPosition != null) {
@@ -137,16 +168,21 @@ class _LocationScreenState extends State<LocationScreen> {
     }
   }
 
-  void _onMapTapped(LatLng location) {
+  void _onMapTapped(LatLng location) async {
     setState(() {
       _selectedLocation = location;
+      _selectedAddress = null; // will be filled shortly
     });
+    await _getAddressFromLatLng(location);
   }
 
   void _confirmLocation() {
     if (_selectedLocation != null) {
-      // Return LatLng to the caller (CheckoutScreen handles LatLng)
-      Navigator.pop(context, _selectedLocation);
+      // return both LatLng + address
+      Navigator.pop(context, {
+        'latLng': _selectedLocation!,
+        'address': _selectedAddress ?? '',
+      });
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please select a location on the map.')),
@@ -163,9 +199,7 @@ class _LocationScreenState extends State<LocationScreen> {
   }
 
   Widget _buildBody() {
-    if (_isLoading) {
-      return const Center(child: CircularProgressIndicator());
-    }
+    if (_isLoading) return const Center(child: CircularProgressIndicator());
 
     if (_error != null) {
       return Center(
@@ -216,6 +250,8 @@ class _LocationScreenState extends State<LocationScreen> {
                 }
               : {},
         ),
+
+        // Floating action to re-center on current location
         Positioned(
           top: 16,
           right: 16,
@@ -225,6 +261,30 @@ class _LocationScreenState extends State<LocationScreen> {
             child: const Icon(Icons.my_location, color: Colors.white),
           ),
         ),
+
+        // address overlay
+        if (_selectedAddress != null)
+          Positioned(
+            top: 16,
+            left: 16,
+            right: 96, // leave room for FAB on right
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.95),
+                borderRadius: BorderRadius.circular(8),
+                boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 6)],
+              ),
+              child: Text(
+                _selectedAddress!,
+                style: const TextStyle(fontSize: 14),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ),
+
+        // confirm button
         Positioned(
           bottom: 16,
           left: 16,

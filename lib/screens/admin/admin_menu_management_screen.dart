@@ -330,8 +330,8 @@ class _AdminMenuManagementScreenState extends State<AdminMenuManagementScreen> {
           _clearForm();
           showDialog(context: context, builder: (_) => _buildAddItemDialog());
         },
-        child: const Icon(Icons.add),
         tooltip: 'Add menu item',
+        child: const Icon(Icons.add),
       ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -421,7 +421,7 @@ class _AdminMenuManagementScreenState extends State<AdminMenuManagementScreen> {
 
   Widget _buildAddItemDialog({bool isEditing = false}) {
     // For preview inside dialog prefer selected bytes first, then editing string, then default.
-    Widget _dialogImagePreview() {
+    Widget dialogImagePreview() {
       if (_selectedImageBytes != null) {
         return Image.memory(_selectedImageBytes!, fit: BoxFit.cover);
       }
@@ -469,7 +469,7 @@ class _AdminMenuManagementScreenState extends State<AdminMenuManagementScreen> {
                   ),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(8),
-                    child: _dialogImagePreview(),
+                    child: dialogImagePreview(),
                   ),
                 ),
               ),

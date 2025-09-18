@@ -7,7 +7,7 @@ import '../../providers/order_provider.dart';
 
 class ManageOrdersScreen extends StatefulWidget {
   final String? highlightOrderId;
-  const ManageOrdersScreen({Key? key, this.highlightOrderId}) : super(key: key);
+  const ManageOrdersScreen({super.key, this.highlightOrderId});
 
   @override
   State<ManageOrdersScreen> createState() => _ManageOrdersScreenState();
@@ -68,8 +68,7 @@ class _ManageOrdersScreenState extends State<ManageOrdersScreen> {
 class AdminOrderCard extends StatefulWidget {
   final Order order;
   final bool highlighted;
-  const AdminOrderCard({Key? key, required this.order, this.highlighted = false})
-      : super(key: key);
+  const AdminOrderCard({super.key, required this.order, this.highlighted = false});
 
   @override
   State<AdminOrderCard> createState() => _AdminOrderCardState();

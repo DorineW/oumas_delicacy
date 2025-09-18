@@ -1,3 +1,4 @@
+// lib/services/location_service.dart
 import 'package:geolocator/geolocator.dart';
 
 class LocationService {
@@ -34,7 +35,7 @@ class LocationService {
     double endLatitude,
     double endLongitude,
   ) async {
-    return await Geolocator.distanceBetween(
+    return Geolocator.distanceBetween(
       startLatitude,
       startLongitude,
       endLatitude,

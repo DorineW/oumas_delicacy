@@ -13,13 +13,13 @@ class OrderConfirmationScreen extends StatefulWidget {
   final String customerName;
 
   const OrderConfirmationScreen({
-    Key? key,
+    super.key,
     required this.orderItems,
     required this.deliveryType,
     required this.totalAmount,
     required this.customerId,
     required this.customerName,
-  }) : super(key: key);
+  });
 
   @override
   State<OrderConfirmationScreen> createState() => _OrderConfirmationScreenState();

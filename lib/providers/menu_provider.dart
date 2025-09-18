@@ -1,7 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 class MenuProvider with ChangeNotifier {
-  List<Map<String, dynamic>> _menuItems = [];
+  final List<Map<String, dynamic>> _menuItems = [];
 
   List<Map<String, dynamic>> get menuItems => _menuItems;
 

@@ -5,11 +5,26 @@ import '../constants/colors.dart';
 import '../models/order.dart';
 import '../providers/order_provider.dart';
 
-class OrderHistoryScreen extends StatelessWidget {
+class OrderHistoryScreen extends StatefulWidget {
   // optional: pass the current customerId to show only their orders
   final String? customerId;
 
-  const OrderHistoryScreen({Key? key, this.customerId}) : super(key: key);
+  const OrderHistoryScreen({super.key, this.customerId});
+
+  @override
+  State<OrderHistoryScreen> createState() => _OrderHistoryScreenState();
+}
+
+class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
+  @override
+  void initState() {
+    super.initState();
+    // Seed demo data after the first frame so we don't mutate provider during build
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final provider = Provider.of<OrderProvider>(context, listen: false);
+      provider.seedDemo(customerId: widget.customerId);
+    });
+  }
 
   String _formatDate(DateTime date) {
     return "${date.day}/${date.month}/${date.year} ${date.hour.toString().padLeft(2,'0')}:${date.minute.toString().padLeft(2,'0')}";
@@ -32,10 +47,10 @@ class OrderHistoryScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final provider = Provider.of<OrderProvider>(context);
-    // seed demo if empty (optional)
-    provider.seedDemo(customerId: customerId);
 
-    final orders = customerId == null ? provider.orders : provider.ordersForCustomer(customerId!);
+    final orders = widget.customerId == null
+        ? provider.orders
+        : provider.ordersForCustomer(widget.customerId!);
 
     final confirmed = orders.where((o) => o.status == OrderStatus.confirmed).toList();
     final inProcess = orders.where((o) => o.status == OrderStatus.inProcess).toList();
@@ -61,15 +76,22 @@ class OrderHistoryScreen extends StatelessWidget {
       body: Padding(
         padding: const EdgeInsets.all(12),
         child: orders.isEmpty
-            ? const Center(child: Text("No orders found.", style: TextStyle(fontSize: 18, color: Colors.grey)))
+            ? const Center(
+                child: Text("No orders found.",
+                    style: TextStyle(fontSize: 18, color: Colors.grey)),
+              )
             : ListView(
                 children: sections.expand((section) {
                   final title = section.keys.first;
                   final list = section.values.first;
                   return [
-                    Text(title, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppColors.primary)),
+                    Text(title,
+                        style: const TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.primary)),
                     const SizedBox(height: 8),
-                    ...list.map((order) => _orderCard(context, order)).toList(),
+                    ...list.map((order) => _orderCard(context, order)),
                     const SizedBox(height: 18),
                   ];
                 }).toList(),
@@ -93,15 +115,19 @@ class OrderHistoryScreen extends StatelessWidget {
             const SizedBox(width: 12),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text("Order #${order.id}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                Text("Order #${order.id}",
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
                 const SizedBox(height: 4),
-                Text("Date: ${_formatDate(order.date)}\nTotal: Ksh ${order.totalAmount}", style: const TextStyle(fontSize: 14)),
+                Text("Date: ${_formatDate(order.date)}\nTotal: Ksh ${order.totalAmount}",
+                    style: const TextStyle(fontSize: 14)),
               ]),
             ),
             _statusIcon(order.status),
           ]),
           const SizedBox(height: 10),
-          if (order.status == OrderStatus.pending || order.status == OrderStatus.confirmed || order.status == OrderStatus.inProcess)
+          if (order.status == OrderStatus.pending ||
+              order.status == OrderStatus.confirmed ||
+              order.status == OrderStatus.inProcess)
             Align(
               alignment: Alignment.centerRight,
               child: ElevatedButton.icon(

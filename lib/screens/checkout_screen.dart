@@ -286,7 +286,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               ],
             ),
           );
-        }).toList(),
+        }),
         const Divider(height: 20, thickness: 1.5),
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,

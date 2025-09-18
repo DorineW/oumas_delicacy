@@ -71,6 +71,7 @@ class _HomeScreenState extends State<HomeScreen> {
 }
 
 // Extract the home content to a separate widget
+// ignore: use_key_in_widget_constructors
 class HomeContentScreen extends StatefulWidget {
   @override
   State<HomeContentScreen> createState() => _HomeContentScreenState();
@@ -244,7 +245,7 @@ class _HomeContentScreenState extends State<HomeContentScreen> {
     }
     final List<String> categories = categorySet.toList();
 
-    final filteredItems = filteredMeals(meals);
+    // final filteredItems = filteredMeals(meals);
 
     final width = MediaQuery.of(context).size.width;
     final int crossAxisCount = width > 1000 ? 4 : (width > 700 ? 3 : 2);
@@ -266,6 +267,31 @@ class _HomeContentScreenState extends State<HomeContentScreen> {
             },
           ),
         ],
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(56),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: TextField(
+              controller: _searchController,
+              decoration: InputDecoration(
+                hintText: 'Search meals...',
+                prefixIcon: const Icon(Icons.search),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+                filled: true,
+                fillColor: AppColors.cardBackground,
+                contentPadding: const EdgeInsets.symmetric(vertical: 0),
+              ),
+              onChanged: (value) {
+                setState(() {
+                  _searchQuery = value;
+                });
+              },
+            ),
+          ),
+        ),
       ),
       drawer: Drawer(
         child: SafeArea(
@@ -347,108 +373,50 @@ class _HomeContentScreenState extends State<HomeContentScreen> {
           ),
         ),
       ),
-      body: CustomScrollView(
-        controller: _scrollController,
-        slivers: [
-          SliverToBoxAdapter(
-            child: Column(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  child: TextField(
-                    controller: _searchController,
-                    decoration: InputDecoration(
-                      hintText: 'Search meals...',
-                      prefixIcon: const Icon(Icons.search),
-                      filled: true,
-                      fillColor: AppColors.white,
-                      contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 16),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(16),
-                        borderSide: BorderSide(color: AppColors.lightGray),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(16),
-                        borderSide: BorderSide(color: AppColors.lightGray),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(16),
-                        borderSide: BorderSide(color: AppColors.primary),
-                      ),
-                    ),
-                    onChanged: (value) {
-                      setState(() {
-                        _searchQuery = value;
-                      });
-                    },
-                  ),
-                ),
-                Container(
-                  color: AppColors.white,
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: SizedBox(
-                    height: 50,
-                    child: ListView.separated(
-                      scrollDirection: Axis.horizontal,
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      itemBuilder: (context, index) {
-                        final category = categories[index];
-                        final selected = _selectedCategory == category;
-                        return FilterChip(
-                          label: Text(category),
-                          selected: selected,
-                          onSelected: (value) {
-                            setState(() {
-                              _selectedCategory = value ? category : 'All';
-                            });
-                          },
-                          selectedColor: AppColors.primary.withOpacity(0.2),
-                          backgroundColor: AppColors.white,
-                          labelStyle: TextStyle(
-                            color: selected ? AppColors.primary : AppColors.darkText,
-                            fontWeight: FontWeight.w600,
-                          ),
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                            side: BorderSide(
-                              color: selected ? AppColors.primary : AppColors.lightGray,
-                              width: 1,
-                            ),
-                          ),
-                        );
-                      },
-                      separatorBuilder: (_, __) => const SizedBox(width: 8),
-                      itemCount: categories.length,
-                    ),
-                  ),
-                ),
-              ],
+      body: DefaultTabController(
+        length: categories.length,
+        child: Column(
+          children: [
+            TabBar(
+              isScrollable: true,
+              indicatorColor: AppColors.primary,
+              labelColor: AppColors.primary,
+              unselectedLabelColor: AppColors.darkText,
+              tabs: categories.map((cat) => Tab(text: cat)).toList(),
+              onTap: (index) {
+                setState(() {
+                  _selectedCategory = categories[index];
+                });
+              },
             ),
-          ),
-          filteredItems.isEmpty
-              ? const SliverFillRemaining(
-                  child: Center(child: Text("No meals found")),
-                )
-              : SliverPadding(
-                  padding: const EdgeInsets.all(16),
-                  sliver: SliverGrid(
-                    delegate: SliverChildBuilderDelegate(
-                      (context, index) {
-                        final meal = filteredItems[index];
-                        return MealCard(meal: meal);
-                      },
-                      childCount: filteredItems.length,
-                    ),
+            Expanded(
+              child: TabBarView(
+                children: categories.map((cat) {
+                  final mealsByCategory = cat == 'All'
+                      ? filteredMeals(meals)
+                      : filteredMeals(meals)
+                          .where((m) => m['category'] == cat)
+                          .toList();
+                  if (mealsByCategory.isEmpty) {
+                    return const Center(child: Text("No meals found"));
+                  }
+                  return GridView.builder(
+                    padding: const EdgeInsets.all(16),
                     gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                       crossAxisCount: crossAxisCount,
                       childAspectRatio: 0.72,
                       crossAxisSpacing: 16,
                       mainAxisSpacing: 16,
                     ),
-                  ),
-                ),
-        ],
+                    itemCount: mealsByCategory.length,
+                    itemBuilder: (context, index) =>
+                        MealCard(meal: mealsByCategory[index]),
+                  );
+                }).toList(),
+              ),
+            ),
+          ],
+        ),
       ),
       floatingActionButton: FloatingActionButton(
         backgroundColor: AppColors.primary,
@@ -487,7 +455,10 @@ class MealCard extends StatelessWidget {
             Expanded(
               child: ClipRRect(
                 borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-                child: Image.network(meal['image'], fit: BoxFit.cover),
+                child: Image.asset(
+                  meal['image'],
+                  fit: BoxFit.cover,
+                ),
               ),
             ),
             Padding(

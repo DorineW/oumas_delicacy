@@ -12,7 +12,7 @@ class ManageProductsScreen extends StatefulWidget {
 
 class _ManageProductsScreenState extends State<ManageProductsScreen> {
   final TextEditingController _searchController = TextEditingController();
-  List<Product> _products = [];
+  final List<Product> _products = [];
   String _filter = '';
 
   @override
@@ -424,7 +424,7 @@ class _ProductCard extends StatelessWidget {
             ),
             Switch(
               value: product.available,
-              activeColor: AppColors.primary,
+              activeThumbColor: AppColors.primary,
               onChanged: onToggle,
             ),
           ],

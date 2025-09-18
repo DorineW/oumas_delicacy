@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import './constants/colors.dart';
 import './providers/cart_provider.dart';
 import './providers/menu_provider.dart';
+import './providers/order_provider.dart';
 import './services/auth_service.dart';
 import './screens/login_screen.dart';
 
@@ -23,6 +24,7 @@ class MyApp extends StatelessWidget {
       providers: [
         ChangeNotifierProvider(create: (_) => CartProvider()),
         ChangeNotifierProvider(create: (_) => MenuProvider()),
+        ChangeNotifierProvider(create: (_) => OrderProvider()),
         ChangeNotifierProvider(create: (_) => AuthService()),
       ],
       child: MaterialApp(
