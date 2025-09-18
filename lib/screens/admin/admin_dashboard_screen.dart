@@ -27,7 +27,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   final ScrollController _scrollController = ScrollController();
   bool _showScrollToTop = false;
 
-  // Simulated incoming orders
+  // Fake incoming orders
   final List<Order> _incomingOrders = [];
   Timer? _fakeOrderTimer;
   int _fakeOrderCounter = 1;
@@ -37,7 +37,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   void initState() {
     super.initState();
 
-    // Add a fake incoming order every 15 seconds to simulate live orders.
+    // Add a fake order every 15 seconds
     _fakeOrderTimer = Timer.periodic(const Duration(seconds: 15), (_) {
       _addFakeOrder();
     });
@@ -59,12 +59,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   }
 
   void _addFakeOrder() {
-    // Pick 1-3 random menu items for the order
     final count = 1 + _random.nextInt(3);
-    final chosen = <MenuItem>[];
-    for (var i = 0; i < count; i++) {
-      chosen.add(menuItems[_random.nextInt(menuItems.length)]);
-    }
+    final chosen = List.generate(count, (_) => menuItems[_random.nextInt(menuItems.length)]);
 
     final amount = chosen.fold<double>(0, (s, it) => s + it.price);
     final now = DateTime.now();
@@ -90,7 +86,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     });
   }
 
-  // Example day chart data (hours). Replace with your real per-hour sales.
+  // Example sales data
   final List<ChartPoint> _dayChartData = const [
     ChartPoint('6 AM', 4500),
     ChartPoint('9 AM', 8200),
@@ -107,18 +103,64 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       height: 220,
       child: BarChart(
         BarChartData(
+          alignment: BarChartAlignment.spaceAround,
+          maxY: maxY <= 0 ? 10 : maxY,
+          titlesData: FlTitlesData(
+            leftTitles: AxisTitles(
+              sideTitles: SideTitles(
+                showTitles: true,
+                reservedSize: 52,
+                interval: maxY / 4,
+                getTitlesWidget: (value, _) {
+                  final txt = value >= 1000
+                      ? 'K ${(value / 1000).toStringAsFixed(0)}'
+                      : value.toStringAsFixed(0);
+                  return Text(
+                    txt,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: AppColors.darkText.withOpacity(0.8),
+                    ),
+                  );
+                },
+              ),
+            ),
+            bottomTitles: AxisTitles(
+              sideTitles: SideTitles(
+                showTitles: true,
+                reservedSize: 44,
+                getTitlesWidget: (value, meta) {
+                  final idx = value.toInt();
+                  if (idx < 0 || idx >= _dayChartData.length) return const SizedBox();
+                  return SideTitleWidget(
+                    meta: meta,
+                    child: Text(
+                      _dayChartData[idx].label,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: AppColors.darkText.withOpacity(0.85),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+            rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          ),
           barTouchData: BarTouchData(
             touchTooltipData: BarTouchTooltipData(
-              getTooltipItem: (group, groupIndex, rod, rodIndex) {
+              getTooltipItem: (group, groupIndex, rod, _) {
                 final label = _dayChartData[group.x.toInt()].label;
                 final value = rod.toY;
                 return BarTooltipItem(
                   '$label\n',
                   TextStyle(
-                      color: AppColors.darkText,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 12),
-                  children: <TextSpan>[
+                    color: AppColors.darkText,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                  ),
+                  children: [
                     TextSpan(
                       text: 'Ksh ${value.toStringAsFixed(0)}',
                       style: TextStyle(
@@ -131,62 +173,14 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               },
             ),
           ),
-          alignment: BarChartAlignment.spaceAround,
-          maxY: maxY <= 0 ? 10 : maxY,
-          titlesData: FlTitlesData(
-            leftTitles: AxisTitles(
-              sideTitles: SideTitles(
-                showTitles: true,
-                reservedSize: 52,
-                interval: maxY / 4,
-                getTitlesWidget: (value, meta) {
-                  String txt;
-                  if (value >= 1000) {
-                    txt = 'K ${(value / 1000).toStringAsFixed(0)}';
-                  } else {
-                    txt = value.toStringAsFixed(0);
-                  }
-                  return Text(txt,
-                      style: TextStyle(
-                          fontSize: 11,
-                          color: AppColors.darkText.withOpacity(0.8)));
-                },
-              ),
-            ),
-            bottomTitles: AxisTitles(
-              sideTitles: SideTitles(
-                showTitles: true,
-                reservedSize: 44,
-                getTitlesWidget: (value, meta) {
-                  final idx = value.toInt();
-                  if (idx < 0 || idx >= _dayChartData.length) {
-                    return const SizedBox();
-                  }
-                  return SideTitleWidget(
-                    axisSide: meta.axisSide,
-                    child: Text(
-                      _dayChartData[idx].label,
-                      style: TextStyle(
-                          fontSize: 11,
-                          color: AppColors.darkText.withOpacity(0.85)),
-                    ),
-                  );
-                },
-              ),
-            ),
-            rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-            topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          ),
           gridData: FlGridData(show: true),
           borderData: FlBorderData(show: false),
           barGroups: _dayChartData.asMap().entries.map((entry) {
-            final i = entry.key;
-            final pt = entry.value;
             return BarChartGroupData(
-              x: i,
+              x: entry.key,
               barRods: [
                 BarChartRodData(
-                  toY: pt.value,
+                  toY: entry.value.value,
                   width: 18,
                   borderRadius: BorderRadius.circular(8),
                   color: AppColors.primary,
@@ -203,19 +197,18 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      builder: (context) {
+      builder: (_) {
         return DraggableScrollableSheet(
           expand: false,
           minChildSize: 0.25,
           initialChildSize: 0.6,
           maxChildSize: 0.95,
-          builder: (context, scrollController) {
+          builder: (_, scrollController) {
             return Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 color: AppColors.cardBackground,
-                borderRadius:
-                    const BorderRadius.vertical(top: Radius.circular(12)),
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
               ),
               child: Column(
                 children: [
@@ -228,87 +221,79 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                       borderRadius: BorderRadius.circular(3),
                     ),
                   ),
-                  Text('Incoming Orders (${_incomingOrders.length})',
-                      style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.darkText)),
+                  Text(
+                    'Incoming Orders (${_incomingOrders.length})',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.darkText,
+                    ),
+                  ),
                   const SizedBox(height: 8),
                   Expanded(
                     child: _incomingOrders.isEmpty
                         ? Center(
-                            child: Text('No incoming orders',
-                                style:
-                                    TextStyle(color: AppColors.darkText)))
+                            child: Text(
+                              'No incoming orders',
+                              style: TextStyle(color: AppColors.darkText),
+                            ),
+                          )
                         : ListView.builder(
                             controller: scrollController,
                             itemCount: _incomingOrders.length,
-                            itemBuilder: (context, index) {
+                            itemBuilder: (_, index) {
                               final order = _incomingOrders[index];
                               return Card(
                                 color: AppColors.background,
                                 child: ListTile(
                                   leading: CircleAvatar(
                                     backgroundColor: AppColors.primary,
-                                    child: Text(order.customer[0],
-                                        style: const TextStyle(
-                                            color: Colors.white)),
+                                    child: Text(
+                                      order.customer[0],
+                                      style: const TextStyle(color: Colors.white),
+                                    ),
                                   ),
-                                  title: Text(order.id,
-                                      style: TextStyle(
-                                          color: AppColors.darkText,
-                                          fontWeight: FontWeight.bold)),
+                                  title: Text(
+                                    order.id,
+                                    style: TextStyle(
+                                      color: AppColors.darkText,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
                                   subtitle: Text(
-                                      '${order.items.join(', ')}\n${order.time.hour.toString().padLeft(2, '0')}:${order.time.minute.toString().padLeft(2, '0')}',
-                                      style: TextStyle(
-                                          color: AppColors.darkText
-                                              .withOpacity(0.8))),
+                                    '${order.items.join(', ')}\n${order.time.hour.toString().padLeft(2, '0')}:${order.time.minute.toString().padLeft(2, '0')}',
+                                    style: TextStyle(
+                                      color: AppColors.darkText.withOpacity(0.8),
+                                    ),
+                                  ),
                                   isThreeLine: true,
-                                  trailing: Column(
-                                    mainAxisAlignment:
-                                        MainAxisAlignment.center,
+                                  trailing: Row(
+                                    mainAxisSize: MainAxisSize.min,
                                     children: [
-                                      Text(
-                                          'Ksh ${order.amount.toStringAsFixed(2)}',
-                                          style: TextStyle(
-                                              fontWeight: FontWeight.bold,
-                                              color: AppColors.darkText)),
-                                      const SizedBox(height: 6),
-                                      Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          IconButton(
-                                            icon: const Icon(Icons.check_circle,
-                                                size: 20),
-                                            color: AppColors.success,
-                                            tooltip: 'Mark handled',
-                                            onPressed: () {
-                                              _markOrderHandled(index);
-                                              Navigator.of(context).pop();
-                                            },
-                                          ),
-
-                                          // TODO: In the future, pass the selected order
-                                          // into ManageOrdersScreen (e.g., highlight it).
-                                          // For now, just open the screen.
-                                          IconButton(
-                                            icon: const Icon(Icons.visibility,
-                                                size: 20),
-                                            tooltip: 'View',
-                                            color: AppColors.darkText,
-                                            onPressed: () {
-                                              final selectedOrder = _incomingOrders[index];
-                                              Navigator.of(context).push(
-                                                MaterialPageRoute(
-                                                  builder: (_) => ManageOrdersScreen(
-                                                    highlightOrderId: selectedOrder.id, // ✅ pass it here
-                                                  ),
-                                                ),
-                                              );
-                                            },
-                                          ),
-                                        ],
-                                      )
+                                      IconButton(
+                                        icon: const Icon(Icons.check_circle, size: 20),
+                                        color: AppColors.success,
+                                        tooltip: 'Mark handled',
+                                        onPressed: () {
+                                          _markOrderHandled(index);
+                                          Navigator.of(context).pop();
+                                        },
+                                      ),
+                                      IconButton(
+                                        icon: const Icon(Icons.visibility, size: 20),
+                                        tooltip: 'View',
+                                        color: AppColors.darkText,
+                                        onPressed: () {
+                                          final selectedOrder = _incomingOrders[index];
+                                          Navigator.of(context).push(
+                                            MaterialPageRoute(
+                                              builder: (_) => ManageOrdersScreen(
+                                                highlightOrderId: selectedOrder.id,
+                                              ),
+                                            ),
+                                          );
+                                        },
+                                      ),
                                     ],
                                   ),
                                 ),
@@ -342,7 +327,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   }
 
   void _openDrawerTo(BuildContext context, Widget destination) {
-    Navigator.of(context).pop(); // close drawer
+    Navigator.of(context).pop();
     Navigator.of(context).push(MaterialPageRoute(builder: (_) => destination));
   }
 
@@ -354,10 +339,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         title: const Text("Ouma's Delicacy - Admin Panel"),
         backgroundColor: AppColors.primary,
         elevation: 4,
-        // Make all appbar icons white to avoid clashing
         iconTheme: const IconThemeData(color: AppColors.white),
         actionsIconTheme: const IconThemeData(color: AppColors.white),
         actions: [
+          // Notifications
           Padding(
             padding: const EdgeInsets.only(right: 8.0),
             child: Stack(
@@ -376,14 +361,14 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                     child: Container(
                       padding: const EdgeInsets.all(4),
                       decoration: const BoxDecoration(
-                          color: Colors.red, shape: BoxShape.circle),
-                      constraints:
-                          const BoxConstraints(minWidth: 20, minHeight: 20),
+                        color: Colors.red,
+                        shape: BoxShape.circle,
+                      ),
+                      constraints: const BoxConstraints(minWidth: 20, minHeight: 20),
                       child: Center(
                         child: Text(
                           '${_incomingOrders.length}',
-                          style: const TextStyle(
-                              color: Colors.white, fontSize: 12),
+                          style: const TextStyle(color: Colors.white, fontSize: 12),
                         ),
                       ),
                     ),
@@ -391,6 +376,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               ],
             ),
           ),
+          // Logout
           IconButton(
             icon: const Icon(Icons.logout),
             tooltip: 'Logout',
@@ -401,270 +387,261 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           ),
         ],
       ),
-      drawer: Drawer(
-        child: SafeArea(
-          child: Container(
-            color: AppColors.cardBackground,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                DrawerHeader(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      CircleAvatar(
-                        radius: 28,
-                        backgroundColor: AppColors.primary,
-                        child: Text('AD',
-                            style: TextStyle(
-                                color: AppColors.white,
-                                fontWeight: FontWeight.bold)),
+      drawer: _buildDrawer(context),
+      body: _buildBody(),
+      floatingActionButton: FloatingActionButton(
+        backgroundColor: AppColors.primary,
+        onPressed: _showScrollToTop ? _scrollToTop : _scrollToBottom,
+        child: Icon(
+          _showScrollToTop ? Icons.arrow_upward : Icons.arrow_downward,
+          color: AppColors.white,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDrawer(BuildContext context) {
+    return Drawer(
+      child: SafeArea(
+        child: Container(
+          color: AppColors.cardBackground,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              DrawerHeader(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    CircleAvatar(
+                      radius: 28,
+                      backgroundColor: AppColors.primary,
+                      child: Text(
+                        'AD',
+                        style: TextStyle(
+                          color: AppColors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
-                      const SizedBox(height: 12),
-                      Text('Admin',
-                          style: TextStyle(
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      'Admin',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.darkText,
+                      ),
+                    ),
+                    Text(
+                      'Ouma\'s Delicacy',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppColors.darkText.withOpacity(0.7),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: ListView(
+                  children: [
+                    _drawerItem(Icons.shopping_cart, 'Manage Orders',
+                        () => _openDrawerTo(context, const ManageOrdersScreen())),
+                    _drawerItem(Icons.menu_book, 'Menu Management',
+                        () => _openDrawerTo(context, const AdminMenuManagementScreen())),
+                    _drawerItem(Icons.people, 'Manage Users',
+                        () => _openDrawerTo(context, const ManageUsersScreen())),
+                    _drawerItem(Icons.bar_chart, 'Reports',
+                        () => _openDrawerTo(context, const ReportsScreen())),
+                    _drawerItem(Icons.inventory, 'Inventory',
+                        () => _openDrawerTo(context, const InventoryScreen())),
+                    _drawerItem(Icons.settings, 'Settings',
+                        () => _openDrawerTo(context, const AdminSettingsScreen())),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _drawerItem(IconData icon, String title, VoidCallback onTap) {
+    return ListTile(
+      leading: Icon(icon),
+      title: Text(title),
+      onTap: onTap,
+    );
+  }
+
+  Widget _buildBody() {
+    return SingleChildScrollView(
+      controller: _scrollController,
+      child: Column(
+        children: [
+          // Header + Chart
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: AppColors.primary.withOpacity(0.08),
+              border: Border(
+                bottom: BorderSide(color: AppColors.primary.withOpacity(0.2)),
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            "Welcome, Admin",
+                            style: TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.bold,
-                              color: AppColors.darkText)),
-                      Text('Ouma\'s Delicacy',
-                          style: TextStyle(
-                              fontSize: 12,
-                              color: AppColors.darkText.withOpacity(0.7))),
-                    ],
+                              color: AppColors.darkText,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            "Manage your restaurant efficiently",
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: AppColors.darkText.withOpacity(0.7),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      icon: Icon(
+                        _showChart ? Icons.expand_less : Icons.expand_more,
+                        color: AppColors.darkText,
+                      ),
+                      tooltip:
+                          _showChart ? 'Collapse daily chart' : 'Show daily chart',
+                      onPressed: () => setState(() => _showChart = !_showChart),
+                    ),
+                  ],
+                ),
+                AnimatedCrossFade(
+                  firstChild: Padding(
+                    padding: const EdgeInsets.only(top: 12.0),
+                    child: GestureDetector(
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const ReportsScreen()),
+                        );
+                      },
+                      child: Card(
+                        color: AppColors.cardBackground,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.all(12.0),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                "Today's Sales (Hourly) (Tap for details)",
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.bold,
+                                  color: AppColors.darkText,
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              _buildDayChart(),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  secondChild: const SizedBox.shrink(),
+                  crossFadeState: _showChart
+                      ? CrossFadeState.showFirst
+                      : CrossFadeState.showSecond,
+                  duration: const Duration(milliseconds: 300),
+                ),
+              ],
+            ),
+          ),
+
+          // Dashboard cards
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: GridView(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2,
+                crossAxisSpacing: 16,
+                mainAxisSpacing: 16,
+                childAspectRatio: 1.2,
+              ),
+              children: [
+                _AdminCard(
+                  title: "Manage Orders",
+                  icon: Icons.shopping_cart,
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const ManageOrdersScreen()),
                   ),
                 ),
-                Expanded(
-                  child: ListView(
-                    children: [
-                      ListTile(
-                        leading: const Icon(Icons.shopping_cart),
-                        title: const Text('Manage Orders'),
-                        onTap: () => _openDrawerTo(
-                            context, const ManageOrdersScreen()),
-                      ),
-                      ListTile(
-                        leading: const Icon(Icons.menu_book),
-                        title: const Text('Menu Management'),
-                        onTap: () => _openDrawerTo(
-                            context, const AdminMenuManagementScreen()),
-                      ),
-                      ListTile(
-                        leading: const Icon(Icons.people),
-                        title: const Text('Manage Users'),
-                        onTap: () => _openDrawerTo(
-                            context, const ManageUsersScreen()),
-                      ),
-                      ListTile(
-                        leading: const Icon(Icons.bar_chart),
-                        title: const Text('Reports'),
-                        onTap: () =>
-                            _openDrawerTo(context, const ReportsScreen()),
-                      ),
-                      ListTile(
-                        leading: const Icon(Icons.inventory),
-                        title: const Text('Inventory'),
-                        onTap: () =>
-                            _openDrawerTo(context, const InventoryScreen()),
-                      ),
-                      ListTile(
-                        leading: const Icon(Icons.settings),
-                        title: const Text('Settings'),
-                        onTap: () => _openDrawerTo(
-                            context, const AdminSettingsScreen()),
-                      ),
-                    ],
+                _AdminCard(
+                  title: "Menu Management",
+                  icon: Icons.menu_book,
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => const AdminMenuManagementScreen()),
+                  ),
+                ),
+                _AdminCard(
+                  title: "Manage Users",
+                  icon: Icons.people,
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const ManageUsersScreen()),
+                  ),
+                ),
+                _AdminCard(
+                  title: "Sales Reports",
+                  icon: Icons.bar_chart,
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const ReportsScreen()),
+                  ),
+                ),
+                _AdminCard(
+                  title: "Inventory",
+                  icon: Icons.inventory,
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const InventoryScreen()),
+                  ),
+                ),
+                _AdminCard(
+                  title: "Settings",
+                  icon: Icons.settings,
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const AdminSettingsScreen()),
                   ),
                 ),
               ],
             ),
           ),
-        ),
-      ),
-      body: SingleChildScrollView(
-        controller: _scrollController,
-        child: Column(
-          children: [
-            // Header with welcome message and chart toggle
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: AppColors.primary.withOpacity(0.08),
-                border: Border(
-                    bottom:
-                        BorderSide(color: AppColors.primary.withOpacity(0.2))),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              "Welcome, Admin",
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                                color: AppColors.darkText,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              "Manage your restaurant efficiently",
-                              style: TextStyle(
-                                fontSize: 14,
-                                color: AppColors.darkText.withOpacity(0.7),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      IconButton(
-                        icon: Icon(
-                            _showChart ? Icons.expand_less : Icons.expand_more,
-                            color: AppColors.darkText),
-                        tooltip:
-                            _showChart ? 'Collapse daily chart' : 'Show daily chart',
-                        onPressed: () => setState(() => _showChart = !_showChart),
-                      ),
-                    ],
-                  ),
-                  AnimatedCrossFade(
-                    firstChild: Padding(
-                      padding: const EdgeInsets.only(top: 12.0),
-                      child: GestureDetector(
-                        onTap: () {
-                          Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                  builder: (_) => const ReportsScreen()));
-                        },
-                        child: Card(
-                          color: AppColors.cardBackground,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Padding(
-                            padding: const EdgeInsets.all(12.0),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text("Today's Sales (Hourly) (Tap for details)",
-                                    style: TextStyle(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.bold,
-                                        color: AppColors.darkText)),
-                                const SizedBox(height: 12),
-                                _buildDayChart(),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                    secondChild: const SizedBox.shrink(),
-                    crossFadeState:
-                        _showChart ? CrossFadeState.showFirst : CrossFadeState.showSecond,
-                    duration: const Duration(milliseconds: 300),
-                  ),
-                ],
-              ),
-            ),
-
-            // Dashboard cards grid
-            Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: GridView(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                gridDelegate:
-                    const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2,
-                  crossAxisSpacing: 16,
-                  mainAxisSpacing: 16,
-                  childAspectRatio: 1.2,
-                ),
-                children: [
-                  _AdminCard(
-                    title: "Manage Orders",
-                    icon: Icons.shopping_cart,
-                    onTap: () {
-                      Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                              builder: (context) =>
-                                  const ManageOrdersScreen()));
-                    },
-                  ),
-                  _AdminCard(
-                    title: "Menu Management",
-                    icon: Icons.menu_book,
-                    onTap: () {
-                      Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                              builder: (context) =>
-                                  const AdminMenuManagementScreen()));
-                    },
-                  ),
-                  _AdminCard(
-                    title: "Manage Users",
-                    icon: Icons.people,
-                    onTap: () {
-                      Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                              builder: (context) =>
-                                  const ManageUsersScreen()));
-                    },
-                  ),
-                  _AdminCard(
-                    title: "Sales Reports",
-                    icon: Icons.bar_chart,
-                    onTap: () {
-                      Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                              builder: (context) => const ReportsScreen()));
-                    },
-                  ),
-                  _AdminCard(
-                    title: "Inventory",
-                    icon: Icons.inventory,
-                    onTap: () {
-                      Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                              builder: (context) => const InventoryScreen()));
-                    },
-                  ),
-                  _AdminCard(
-                    title: "Settings",
-                    icon: Icons.settings,
-                    onTap: () {
-                      Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                              builder: (context) =>
-                                  const AdminSettingsScreen()));
-                    },
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 24),
-          ],
-        ),
-      ),
-      floatingActionButton: FloatingActionButton(
-        backgroundColor: AppColors.primary,
-        onPressed: _showScrollToTop ? _scrollToTop : _scrollToBottom,
-        child: Icon(_showScrollToTop ? Icons.arrow_upward : Icons.arrow_downward,
-            color: AppColors.white),
+          const SizedBox(height: 24),
+        ],
       ),
     );
   }
@@ -685,9 +662,7 @@ class _AdminCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Card(
       elevation: 4,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       color: AppColors.cardBackground,
       child: InkWell(
         onTap: onTap,
@@ -723,7 +698,7 @@ class _AdminCard extends StatelessWidget {
   }
 }
 
-/// Small models used in this screen
+/// Models
 class Order {
   final String id;
   final String customer;
@@ -731,12 +706,13 @@ class Order {
   final DateTime time;
   final List<String> items;
 
-  Order(
-      {required this.id,
-      required this.customer,
-      required this.amount,
-      required this.time,
-      required this.items});
+  Order({
+    required this.id,
+    required this.customer,
+    required this.amount,
+    required this.time,
+    required this.items,
+  });
 }
 
 class ChartPoint {
@@ -745,7 +721,6 @@ class ChartPoint {
   const ChartPoint(this.label, this.value);
 }
 
-/// Menu item model and sample menu used for generating simulated orders.
 class MenuItem {
   final String name;
   final double price;
@@ -762,4 +737,9 @@ final List<MenuItem> menuItems = [
   MenuItem('MATOKE BEEF', 230),
   MenuItem('SAMOSA', 20),
   MenuItem('SODA 500ml', 70),
+];
+final List<MenuItem> drinkItems = [
+  MenuItem('SODA 500ml', 70),
+  MenuItem('WATER 500ml', 50),
+  MenuItem('JUICE 300ml', 100),
 ];

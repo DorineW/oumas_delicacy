@@ -12,7 +12,7 @@ dependencies:
     sdk: flutter
 
   cupertino_icons: ^1.0.8
-  flutter_stripe: ^11.5.0
+  flutter_stripe: ^12.0.2
   intl: ^0.20.2
   lottie: ^3.0.0
   geolocator: ^14.0.2
@@ -21,22 +21,22 @@ dependencies:
   google_maps_flutter: ^2.2.3
   flutter_polyline_points: ^3.0.1
   image_picker: ^1.0.4
-  file_picker: ^8.1.2   # ✅ upgraded to latest stable version
+  file_picker: ^10.3.3   # ✅ upgraded to latest stable version
   path_provider: ^2.1.1
   provider: ^6.0.5
   path: ^1.8.3
   shared_preferences: ^2.1.1
-  fl_chart: ^0.69.0
-  firebase_core: ^2.0.0
-  cloud_firestore: ^4.0.0
-  firebase_auth: ^4.0.0
-  sign_in_button: ^3.2.0
+  fl_chart: ^1.1.1
+  firebase_core: ^4.1.0
+  cloud_firestore: ^6.0.1
+  firebase_auth: ^6.0.2
+  sign_in_button: ^4.0.1
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
-  flutter_launcher_icons: ^0.13.1
+  flutter_launcher_icons: ^0.14.4
 
 flutter:
   uses-material-design: true

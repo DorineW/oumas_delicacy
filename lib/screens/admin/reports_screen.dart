@@ -1,158 +1,11 @@
 // lib/screens/admin/reports_screen.dart
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
+
 import '../../constants/colors.dart';
 
-class ReportsScreen extends StatefulWidget {
+class ReportsScreen extends StatelessWidget {
   const ReportsScreen({super.key});
-
-  @override
-  State<ReportsScreen> createState() => _ReportsScreenState();
-}
-
-class _ReportsScreenState extends State<ReportsScreen> {
-  String _selectedPeriod = 'Last 7 days';
-  bool _showBarChart = true; // Toggle between bar chart and line chart
-  late List<SalesData> _chartData;
-  double _todayRevenue = 0.0;
-  int _todayOrders = 0;
-  String _mostSoldItem = '';
-
-  @override
-  void initState() {
-    super.initState();
-    _updateData();
-  }
-
-  void _updateData() {
-    setState(() {
-      switch (_selectedPeriod) {
-        case 'Today':
-          _chartData = [
-            SalesData('6 AM', 450),
-            SalesData('9 AM', 820),
-            SalesData('12 PM', 1560),
-            SalesData('3 PM', 980),
-            SalesData('6 PM', 1230),
-            SalesData('9 PM', 750),
-          ];
-          _todayRevenue = 5790;
-          _todayOrders = 23;
-          _mostSoldItem = 'UGALI NYAMA CHOMA';
-          break;
-        case 'Last 7 days':
-          _chartData = [
-            SalesData('Mon', 2450),
-            SalesData('Tue', 3120),
-            SalesData('Wed', 2780),
-            SalesData('Thu', 3560),
-            SalesData('Fri', 4230),
-            SalesData('Sat', 5120),
-            SalesData('Sun', 3870),
-          ];
-          _todayRevenue = 25130;
-          _todayOrders = 112;
-          _mostSoldItem = 'PILAU FISH';
-          break;
-        case 'Last 30 days':
-          _chartData = [
-            SalesData('Week 1', 15680),
-            SalesData('Week 2', 17820),
-            SalesData('Week 3', 19250),
-            SalesData('Week 4', 21530),
-          ];
-          _todayRevenue = 74280;
-          _todayOrders = 485;
-          _mostSoldItem = 'CHIPS BEEF';
-          break;
-        case 'This year':
-          _chartData = [
-            SalesData('Jan', 42560),
-            SalesData('Feb', 47820),
-            SalesData('Mar', 51230),
-            SalesData('Apr', 48970),
-            SalesData('May', 53210),
-            SalesData('Jun', 59840),
-            SalesData('Jul', 61250),
-            SalesData('Aug', 58730),
-            SalesData('Sep', 54320),
-            SalesData('Oct', 59870),
-            SalesData('Nov', 62450),
-            SalesData('Dec', 67830),
-          ];
-          _todayRevenue = 668080;
-          _todayOrders = 542;
-          _mostSoldItem = 'SOUTHERN CHICKEN LARGE';
-          break;
-        default:
-          _chartData = [];
-      }
-    });
-  }
-
-  List<BarChartGroupData> _generateBarGroups() {
-    return List.generate(_chartData.length, (index) {
-      final data = _chartData[index];
-      return BarChartGroupData(
-        x: index,
-        barRods: [
-          BarChartRodData(
-            toY: data.amount,
-            color: AppColors.primary,
-            width: 16,
-            borderRadius: BorderRadius.circular(4),
-            backDrawRodData: BackgroundBarChartRodData(
-              show: true,
-              toY: _getMaxValue() * 1.1, // Slightly above max value for background
-              color: AppColors.cardBackground,
-            ),
-          ),
-        ],
-      );
-    });
-  }
-
-  List<FlSpot> _generateLineSpots() {
-    return List.generate(_chartData.length, (index) {
-      return FlSpot(index.toDouble(), _chartData[index].amount);
-    });
-  }
-
-  double _getMaxValue() {
-    return _chartData.map((e) => e.amount).reduce((a, b) => a > b ? a : b);
-  }
-
-  Widget _bottomTitleWidgets(double value, TitleMeta meta) {
-    final index = value.toInt();
-    if (index >= 0 && index < _chartData.length) {
-      return SideTitleWidget(
-        axisSide: meta.axisSide,
-        space: 4,
-        child: Text(
-          _chartData[index].period,
-          style: TextStyle(
-            fontSize: 10,
-            color: AppColors.darkText,
-          ),
-        ),
-      );
-    }
-    return const SizedBox();
-  }
-
-  Widget _leftTitleWidgets(double value, TitleMeta meta) {
-    return SideTitleWidget(
-      axisSide: meta.axisSide,
-      space: 4,
-      child: Text(
-        'Ksh ${value.toInt()}',
-        style: TextStyle(
-          fontSize: 10,
-          color: AppColors.darkText,
-        ),
-      ),
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -161,377 +14,196 @@ class _ReportsScreenState extends State<ReportsScreen> {
       appBar: AppBar(
         title: const Text("Sales Reports"),
         backgroundColor: AppColors.primary,
-        foregroundColor: AppColors.white,
+        elevation: 4,
+        iconTheme: const IconThemeData(color: AppColors.white),
+        titleTextStyle: const TextStyle(
+          color: AppColors.white,
+          fontSize: 18,
+          fontWeight: FontWeight.bold,
+        ),
       ),
       body: SingleChildScrollView(
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Text(
-                    "Sales Overview",
-                    style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.darkText),
-                  ),
-                  const Spacer(),
-                  DropdownButton<String>(
-                    value: _selectedPeriod,
-                    items: ['Today', 'Last 7 days', 'Last 30 days', 'This year']
-                        .map((period) => DropdownMenuItem(
-                              value: period,
-                              child: Text(period),
-                            ))
-                        .toList(),
-                    onChanged: (value) {
-                      setState(() {
-                        _selectedPeriod = value!;
-                        _updateData();
-                      });
-                    },
-                  ),
-                ],
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildSectionTitle("Weekly Sales"),
+            const SizedBox(height: 12),
+            _buildWeeklyChart(),
+            const SizedBox(height: 24),
+            _buildSectionTitle("Monthly Sales"),
+            const SizedBox(height: 12),
+            _buildMonthlyChart(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSectionTitle(String text) {
+    return Text(
+      text,
+      style: TextStyle(
+        fontSize: 16,
+        fontWeight: FontWeight.bold,
+        color: AppColors.darkText,
+      ),
+    );
+  }
+
+  /// Weekly Bar Chart
+  Widget _buildWeeklyChart() {
+    final weeklyData = [
+      _ChartPoint('Mon', 12000),
+      _ChartPoint('Tue', 15000),
+      _ChartPoint('Wed', 10000),
+      _ChartPoint('Thu', 17000),
+      _ChartPoint('Fri', 22000),
+      _ChartPoint('Sat', 25000),
+      _ChartPoint('Sun', 18000),
+    ];
+
+    final maxY = (weeklyData.map((e) => e.value).reduce((a, b) => a > b ? a : b)) * 1.2;
+
+    return SizedBox(
+      height: 240,
+      child: BarChart(
+        BarChartData(
+          alignment: BarChartAlignment.spaceAround,
+          maxY: maxY,
+          titlesData: FlTitlesData(
+            leftTitles: AxisTitles(
+              sideTitles: SideTitles(
+                showTitles: true,
+                reservedSize: 48,
+                interval: maxY / 4,
+                getTitlesWidget: (value, meta) {
+                  if (value == 0) return const SizedBox();
+                  String txt = value >= 1000 ? 'K ${(value / 1000).toStringAsFixed(0)}' : value.toStringAsFixed(0);
+                  return Text(
+                    txt,
+                    style: TextStyle(fontSize: 11, color: AppColors.darkText.withOpacity(0.8)),
+                  );
+                },
               ),
-              const SizedBox(height: 16),
-              
-              // Today's Highlights
-              Card(
-                color: AppColors.cardBackground,
-                elevation: 2,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        "Today's Summary",
-                        style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
-                            color: AppColors.darkText),
-                      ),
-                      const SizedBox(height: 12),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text("Revenue", style: TextStyle(color: AppColors.darkText)),
-                          Text("Ksh ${_todayRevenue.toStringAsFixed(2)}",
-                              style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  color: AppColors.darkText)),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text("Orders", style: TextStyle(color: AppColors.darkText)),
-                          Text("$_todayOrders",
-                              style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  color: AppColors.darkText)),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text("Most Sold", style: TextStyle(color: AppColors.darkText)),
-                          Text(_mostSoldItem,
-                              style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  color: AppColors.darkText)),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
+            ),
+            bottomTitles: AxisTitles(
+              sideTitles: SideTitles(
+                showTitles: true,
+                reservedSize: 32,
+                getTitlesWidget: (value, meta) {
+                  final idx = value.toInt();
+                  if (idx < 0 || idx >= weeklyData.length) return const SizedBox();
+                  return Text(
+                    weeklyData[idx].label,
+                    style: TextStyle(fontSize: 11, color: AppColors.darkText.withOpacity(0.85)),
+                  );
+                },
               ),
-              const SizedBox(height: 16),
-              
-              // Sales Chart
-              Card(
-                color: AppColors.white,
-                elevation: 2,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Text(
-                            "Sales Chart",
-                            style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 16,
-                                color: AppColors.darkText),
-                          ),
-                          const Spacer(),
-                          IconButton(
-                            icon: Icon(
-                              _showBarChart ? Icons.show_chart : Icons.bar_chart,
-                              color: AppColors.primary,
-                            ),
-                            onPressed: () {
-                              setState(() {
-                                _showBarChart = !_showBarChart;
-                              });
-                            },
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      SizedBox(
-                        height: 200,
-                        child: _showBarChart
-                            ? BarChart(
-                                BarChartData(
-                                  alignment: BarChartAlignment.spaceAround,
-                                  barGroups: _generateBarGroups(),
-                                  borderData: FlBorderData(
-                                    show: true,
-                                    border: Border.all(
-                                      color: AppColors.lightGray,
-                                      width: 1,
-                                    ),
-                                  ),
-                                  gridData: FlGridData(
-                                    show: true,
-                                    drawVerticalLine: false,
-                                    getDrawingHorizontalLine: (value) {
-                                      return FlLine(
-                                        color: AppColors.lightGray.withOpacity(0.3),
-                                        strokeWidth: 1,
-                                      );
-                                    },
-                                  ),
-                                  titlesData: FlTitlesData(
-                                    show: true,
-                                    bottomTitles: AxisTitles(
-                                      sideTitles: SideTitles(
-                                        showTitles: true,
-                                        getTitlesWidget: _bottomTitleWidgets,
-                                        reservedSize: 30,
-                                      ),
-                                    ),
-                                    leftTitles: AxisTitles(
-                                      sideTitles: SideTitles(
-                                        showTitles: true,
-                                        getTitlesWidget: _leftTitleWidgets,
-                                        reservedSize: 40,
-                                      ),
-                                    ),
-                                    topTitles: AxisTitles(
-                                      sideTitles: SideTitles(showTitles: false),
-                                    ),
-                                    rightTitles: AxisTitles(
-                                      sideTitles: SideTitles(showTitles: false),
-                                    ),
-                                  ),
-                                ),
-                              )
-                            : LineChart(
-                                LineChartData(
-                                  gridData: FlGridData(
-                                    show: true,
-                                    drawVerticalLine: false,
-                                    getDrawingHorizontalLine: (value) {
-                                      return FlLine(
-                                        color: AppColors.lightGray.withOpacity(0.3),
-                                        strokeWidth: 1,
-                                      );
-                                    },
-                                  ),
-                                  borderData: FlBorderData(
-                                    show: true,
-                                    border: Border.all(
-                                      color: AppColors.lightGray,
-                                      width: 1,
-                                    ),
-                                  ),
-                                  lineBarsData: [
-                                    LineChartBarData(
-                                      spots: _generateLineSpots(),
-                                      isCurved: true,
-                                      color: AppColors.primary,
-                                      barWidth: 4,
-                                      isStrokeCapRound: true,
-                                      dotData: FlDotData(show: true),
-                                      belowBarData: BarAreaData(
-                                        show: true,
-                                        color: AppColors.primary.withOpacity(0.2),
-                                      ),
-                                    ),
-                                  ],
-                                  titlesData: FlTitlesData(
-                                    show: true,
-                                    bottomTitles: AxisTitles(
-                                      sideTitles: SideTitles(
-                                        showTitles: true,
-                                        getTitlesWidget: _bottomTitleWidgets,
-                                        reservedSize: 30,
-                                      ),
-                                    ),
-                                    leftTitles: AxisTitles(
-                                      sideTitles: SideTitles(
-                                        showTitles: true,
-                                        getTitlesWidget: _leftTitleWidgets,
-                                        reservedSize: 40,
-                                      ),
-                                    ),
-                                    topTitles: AxisTitles(
-                                      sideTitles: SideTitles(showTitles: false),
-                                    ),
-                                    rightTitles: AxisTitles(
-                                      sideTitles: SideTitles(showTitles: false),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-              
-              // Summary Card
-              Card(
-                color: AppColors.cardBackground,
-                elevation: 2,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Column(
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text("Total Revenue",
-                              style: TextStyle(color: AppColors.darkText)),
-                          Text(
-                              "Ksh ${_chartData.fold<double>(0, (sum, item) => sum + item.amount).toStringAsFixed(2)}",
-                              style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  color: AppColors.darkText)),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text("Total Orders",
-                              style: TextStyle(color: AppColors.darkText)),
-                          Text("${_todayOrders * (_selectedPeriod == 'Last 7 days' ? 16 : _selectedPeriod == 'Last 30 days' ? 70 : _selectedPeriod == 'This year' ? 365 : 1)}",
-                              style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  color: AppColors.darkText)),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text("Average Order Value",
-                              style: TextStyle(color: AppColors.darkText)),
-                          Text(
-                              "Ksh ${(_chartData.fold<double>(0, (sum, item) => sum + item.amount) / (_todayOrders * (_selectedPeriod == 'Last 7 days' ? 16 : _selectedPeriod == 'Last 30 days' ? 70 : _selectedPeriod == 'This year' ? 365 : 1))).toStringAsFixed(2)}",
-                              style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  color: AppColors.darkText)),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-              Text(
-                "Top Selling Items",
-                style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.darkText),
-              ),
-              const SizedBox(height: 16),
-              Column(
-                children: [
-                  _TopItemTile(name: "UGALI NYAMA CHOMA", sales: 24, revenue: 210*24),
-                  _TopItemTile(name: "PILAU FISH", sales: 18, revenue: 310*18),
-                  _TopItemTile(name: "CHIPS BEEF", sales: 32, revenue: 210*32),
-                  _TopItemTile(name: "SOUTHERN CHICKEN LARGE", sales: 28, revenue: 250*28),
-                  _TopItemTile(name: "MEAT PIE", sales: 15, revenue: 150*15),
-                ],
-              ),
-            ],
+            ),
+            topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
           ),
+          gridData: FlGridData(show: true),
+          borderData: FlBorderData(show: false),
+          barGroups: weeklyData.asMap().entries.map((entry) {
+            final i = entry.key;
+            final pt = entry.value;
+            return BarChartGroupData(
+              x: i,
+              barRods: [
+                BarChartRodData(
+                  toY: pt.value,
+                  width: 18,
+                  borderRadius: BorderRadius.circular(8),
+                  color: AppColors.primary,
+                ),
+              ],
+            );
+          }).toList(),
+        ),
+      ),
+    );
+  }
+
+  /// Monthly Line Chart
+  Widget _buildMonthlyChart() {
+    final monthlyData = [
+      _ChartPoint('Jan', 120000),
+      _ChartPoint('Feb', 135000),
+      _ChartPoint('Mar', 110000),
+      _ChartPoint('Apr', 150000),
+      _ChartPoint('May', 170000),
+      _ChartPoint('Jun', 190000),
+    ];
+
+    final maxY = (monthlyData.map((e) => e.value).reduce((a, b) => a > b ? a : b)) * 1.2;
+
+    return SizedBox(
+      height: 240,
+      child: LineChart(
+        LineChartData(
+          maxY: maxY,
+          titlesData: FlTitlesData(
+            leftTitles: AxisTitles(
+              sideTitles: SideTitles(
+                showTitles: true,
+                reservedSize: 56,
+                interval: maxY / 4,
+                getTitlesWidget: (value, meta) {
+                  if (value == 0) return const SizedBox();
+                  String txt = value >= 1000 ? 'K ${(value / 1000).toStringAsFixed(0)}' : value.toStringAsFixed(0);
+                  return Text(
+                    txt,
+                    style: TextStyle(fontSize: 11, color: AppColors.darkText.withOpacity(0.8)),
+                  );
+                },
+              ),
+            ),
+            bottomTitles: AxisTitles(
+              sideTitles: SideTitles(
+                showTitles: true,
+                reservedSize: 32,
+                getTitlesWidget: (value, meta) {
+                  final idx = value.toInt();
+                  if (idx < 0 || idx >= monthlyData.length) return const SizedBox();
+                  return Text(
+                    monthlyData[idx].label,
+                    style: TextStyle(fontSize: 11, color: AppColors.darkText.withOpacity(0.85)),
+                  );
+                },
+              ),
+            ),
+            topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          ),
+          gridData: FlGridData(show: true),
+          borderData: FlBorderData(show: false),
+          lineBarsData: [
+            LineChartBarData(
+              spots: monthlyData.asMap().entries
+                  .map((entry) => FlSpot(entry.key.toDouble(), entry.value.value))
+                  .toList(),
+              isCurved: true,
+              color: AppColors.primary,
+              barWidth: 3,
+              isStrokeCapRound: true,
+              belowBarData: BarAreaData(
+                show: true,
+                color: AppColors.primary.withOpacity(0.15),
+              ),
+              dotData: FlDotData(show: true),
+            ),
+          ],
         ),
       ),
     );
   }
 }
 
-class SalesData {
-  final String period;
-  final double amount;
-
-  SalesData(this.period, this.amount);
-}
-
-class _TopItemTile extends StatelessWidget {
-  final String name;
-  final int sales;
-  final double revenue;
-
-  const _TopItemTile({
-    required this.name,
-    required this.sales,
-    required this.revenue,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      color: AppColors.cardBackground,
-      margin: const EdgeInsets.only(bottom: 8),
-      elevation: 1,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: ListTile(
-        leading: CircleAvatar(
-          backgroundColor: AppColors.primary,
-          child: Text(
-            name[0],
-            style: const TextStyle(color: Colors.white),
-          ),
-        ),
-        title: Text(
-          name,
-          style: TextStyle(
-              fontWeight: FontWeight.bold, color: AppColors.darkText),
-        ),
-        subtitle: Text("$sales sold",
-            style: TextStyle(color: AppColors.darkText)),
-        trailing: Text(
-          "Ksh ${revenue.toStringAsFixed(2)}",
-          style: TextStyle(
-              fontWeight: FontWeight.bold, color: AppColors.darkText),
-        ),
-      ),
-    );
-  }
+/// Simple chart point model
+class _ChartPoint {
+  final String label;
+  final double value;
+  _ChartPoint(this.label, this.value);
 }
