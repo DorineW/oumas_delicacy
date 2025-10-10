@@ -1,3 +1,4 @@
+// lib/providers/menu_provider.dart
 import 'package:flutter/foundation.dart';
 
 class MenuProvider with ChangeNotifier {

@@ -1,4 +1,6 @@
 // lib/screens/admin/admin_dashboard_screen.dart
+// ignore_for_file: deprecated_member_use
+
 import 'dart:async';
 import 'dart:math';
 
@@ -681,13 +683,19 @@ class _AdminCard extends StatelessWidget {
                 child: Icon(icon, size: 30, color: AppColors.primary),
               ),
               const SizedBox(height: 12),
-              Text(
-                title,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.darkText,
+              // prevent overflow by allowing the title to wrap and ellipsize
+              Flexible(
+                child: Text(
+                  title,
+                  textAlign: TextAlign.center,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  softWrap: true,
+                  style: TextStyle(
+                    fontSize: 14, // slightly smaller to fit better
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.darkText,
+                  ),
                 ),
               ),
             ],

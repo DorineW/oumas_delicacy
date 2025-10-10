@@ -1,4 +1,4 @@
-// auth_service.dart
+// lib/services/auth_service.dart
 import 'package:flutter/foundation.dart';
 
 enum UserRole { customer, admin }

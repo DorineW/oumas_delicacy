@@ -1,16 +1,16 @@
 class CartItem {
   final String id;
   final String mealTitle;
+  final int price; // price per unit in Ksh (integer)
+  int quantity;
   final String mealImage;
-  final int price;
-  int quantity; // Changed from final to mutable
 
   CartItem({
     required this.id,
     required this.mealTitle,
-    required this.mealImage,
     required this.price,
     required this.quantity,
+    required this.mealImage,
   });
 
   int get totalPrice => price * quantity;

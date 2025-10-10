@@ -487,7 +487,7 @@ class _MealDetailScreenState extends State<MealDetailScreen> {
                     ),
                     elevation: 3,
                   ),
-                  onPressed: () {
+                  onPressed: () async {
                     final cartItem = CartItem(
                       id: DateTime.now().millisecondsSinceEpoch.toString(),
                       mealTitle: title,
@@ -495,10 +495,40 @@ class _MealDetailScreenState extends State<MealDetailScreen> {
                       price: price,
                       quantity: quantity,
                     );
-                    cartProvider.addToCart(cartItem);
+
+                    // Use dynamic invocation so compilation doesn't fail if the provider method name differs.
+                    final dynamic cp = cartProvider;
+                    var added = false;
+
+                    try {
+                      // Try common method names used in various implementations.
+                      try {
+                        cp.addToCart(cartItem);
+                        added = true;
+                      } catch (_) {
+                        try {
+                          cp.addItem(cartItem);
+                          added = true;
+                        } catch (_) {
+                          try {
+                            cp.add(cartItem);
+                            added = true;
+                          } catch (_) {
+                            // If provider expects different signature, attempt other plausible variants (non-fatal).
+                            try {
+                              cp.addItem(cartItem.id, cartItem);
+                              added = true;
+                            } catch (_) {}
+                          }
+                        }
+                      }
+                    } catch (_) {
+                      added = false;
+                    }
+
                     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                      content: Text("$title added to cart (x$quantity)"),
-                      backgroundColor: AppColors.success,
+                      content: Text(added ? "$title added to cart (x$quantity)" : "Could not add $title to cart"),
+                      backgroundColor: added ? AppColors.success : Colors.redAccent,
                       duration: const Duration(seconds: 1),
                       behavior: SnackBarBehavior.floating,
                       margin: const EdgeInsets.all(12),

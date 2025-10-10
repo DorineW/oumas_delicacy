@@ -1,6 +1,7 @@
 // lib/screens/home_screen.dart
-// ignore_for_file: unused_import
+// ignore_for_file: unused_import, deprecated_member_use
 
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -26,7 +27,7 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMixin {
   int _currentIndex = 0;
 
   final List<Widget> _screens = [
@@ -38,33 +39,82 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final cartCount = Provider.of<CartProvider>(context).items
+        .fold<int>(0, (sum, it) => sum + it.quantity);
+
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: _screens[_currentIndex],
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _currentIndex,
-        onTap: (index) => setState(() => _currentIndex = index),
-        type: BottomNavigationBarType.fixed,
-        selectedItemColor: AppColors.primary,
-        unselectedItemColor: AppColors.lightGray,
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.home),
-            label: 'Home',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.dashboard),
-            label: 'Dashboard',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.shopping_cart),
-            label: 'Cart',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.person),
-            label: 'Profile',
-          ),
-        ],
+      body: IndexedStack(
+        index: _currentIndex,
+        children: _screens,
+      ),
+      bottomNavigationBar: Container(
+        decoration: BoxDecoration(
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.1),
+              blurRadius: 10,
+              offset: const Offset(0, -2),
+            ),
+          ],
+        ),
+        child: BottomNavigationBar(
+          currentIndex: _currentIndex,
+          onTap: (index) => setState(() => _currentIndex = index),
+          type: BottomNavigationBarType.fixed,
+          selectedItemColor: AppColors.primary,
+          unselectedItemColor: AppColors.lightGray,
+          backgroundColor: AppColors.white,
+          elevation: 0,
+          items: [
+            const BottomNavigationBarItem(
+              icon: Icon(Icons.home),
+              label: 'Home',
+            ),
+            const BottomNavigationBarItem(
+              icon: Icon(Icons.dashboard),
+              label: 'Dashboard',
+            ),
+            BottomNavigationBarItem(
+              icon: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  const Icon(Icons.shopping_cart),
+                  // badge
+                  if (cartCount > 0)
+                    Positioned(
+                      right: -6,
+                      top: -6,
+                      child: Container(
+                        padding: const EdgeInsets.all(2),
+                        decoration: BoxDecoration(
+                          color: AppColors.accent,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: AppColors.white, width: 1.5),
+                        ),
+                        constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
+                        child: Center(
+                          child: Text(
+                            '$cartCount',
+                            style: const TextStyle(
+                              color: AppColors.white,
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              label: 'Cart',
+            ),
+            const BottomNavigationBarItem(
+              icon: Icon(Icons.person),
+              label: 'Profile',
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -77,33 +127,61 @@ class HomeContentScreen extends StatefulWidget {
   State<HomeContentScreen> createState() => _HomeContentScreenState();
 }
 
-class _HomeContentScreenState extends State<HomeContentScreen> {
+class _HomeContentScreenState extends State<HomeContentScreen> with SingleTickerProviderStateMixin {
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
   String _selectedCategory = 'All';
-  final ScrollController _scrollController = ScrollController();
+  final Map<int, ScrollController> _scrollControllers = {};
   bool _showScrollToTop = false;
+  TabController? _tabController;
 
-  @override
-  void initState() {
-    super.initState();
-    _scrollController.addListener(() {
-      final atBottom = _scrollController.offset >=
-          _scrollController.position.maxScrollExtent - 50;
+  // ensure we dispose/create the tab controller when categories change
+  void _ensureTabController(List<String> categories) {
+    // if controller already matches required length, keep it
+    if (_tabController != null && _tabController!.length == categories.length) return;
+
+    // dispose previous controller if any
+    _tabController?.removeListener(_handleTabChange);
+    _tabController?.dispose();
+
+    // create new controller and attach a single listener
+    _tabController = TabController(length: categories.length, vsync: this);
+    _tabController!.addListener(_handleTabChange);
+
+    // sync selected category index with controller
+    final idx = categories.indexOf(_selectedCategory);
+    if (idx >= 0 && idx < _tabController!.length) {
+      _tabController!.index = idx;
+    } else {
+      _selectedCategory = categories.isNotEmpty ? categories[0] : 'All';
+    }
+  }
+
+  void _handleTabChange() {
+    if (!mounted || _tabController == null) return;
+    if (_tabController!.indexIsChanging) {
       setState(() {
-        _showScrollToTop = atBottom;
+        // categories must be read from build scope; we update selectedCategory by index
+        // we'll clamp index defensively in build after categories are computed
+        _selectedCategory = _tabController!.index.toString(); // placeholder, replaced in build below
       });
-    });
+    }
   }
 
   @override
   void dispose() {
-    _scrollController.dispose();
+    for (final sc in _scrollControllers.values) sc.dispose();
+    _tabController?.removeListener(_handleTabChange);
+    _tabController?.dispose();
+    _searchController.dispose();
     super.dispose();
   }
 
   void _scrollToTop() {
-    _scrollController.animateTo(
+    final currentIndex = _tabController?.index ?? 0;
+    final sc = _ensureControllerForIndex(currentIndex);
+    if (!sc.hasClients) return;
+    sc.animateTo(
       0,
       duration: const Duration(milliseconds: 500),
       curve: Curves.easeInOut,
@@ -111,11 +189,34 @@ class _HomeContentScreenState extends State<HomeContentScreen> {
   }
 
   void _scrollToBottom() {
-    _scrollController.animateTo(
-      _scrollController.position.maxScrollExtent,
+    final currentIndex = _tabController?.index ?? 0;
+    final sc = _ensureControllerForIndex(currentIndex);
+    if (!sc.hasClients) return;
+    sc.animateTo(
+      sc.position.maxScrollExtent,
       duration: const Duration(milliseconds: 500),
       curve: Curves.easeInOut,
     );
+  }
+
+  // ensure a ScrollController exists for the given tab index and attach a listener
+  // that updates the floating action button state (_showScrollToTop)
+  ScrollController _ensureControllerForIndex(int index) {
+    // return existing controller if present
+    if (_scrollControllers.containsKey(index)) return _scrollControllers[index]!;
+
+    // create, register and attach listener
+    final sc = ScrollController();
+    sc.addListener(() {
+      if (!mounted) return;
+      final shouldShow = sc.hasClients && sc.offset > 200;
+      if (shouldShow != _showScrollToTop) {
+        setState(() => _showScrollToTop = shouldShow);
+      }
+    });
+
+    _scrollControllers[index] = sc;
+    return sc;
   }
 
   // Dummy menu items based on the provided menu
@@ -232,20 +333,28 @@ class _HomeContentScreenState extends State<HomeContentScreen> {
   @override
   Widget build(BuildContext context) {
     final menuProvider = Provider.of<MenuProvider>(context);
-
     final List<Map<String, dynamic>> meals =
         menuProvider.menuItems.isNotEmpty
             ? List<Map<String, dynamic>>.from(menuProvider.menuItems)
             : dummyMenuItems;
 
-    final Set<String> categorySet = {'All'};
+    final Set<String> cats = {};
     for (var meal in meals) {
       final cat = meal['category']?.toString();
-      if (cat != null && cat.isNotEmpty) categorySet.add(cat);
+      if (cat != null && cat.isNotEmpty) cats.add(cat);
     }
-    final List<String> categories = categorySet.toList();
+    final List<String> categories = ['All'] + cats.toList()..sort();
 
-    // final filteredItems = filteredMeals(meals);
+    // create/update controller safely and provide a proper listener closure that captures categories
+    _ensureTabController(categories);
+    // replace the placeholder listener behavior: update selected category by index
+    _tabController?.removeListener(_handleTabChange);
+    _tabController?.addListener(() {
+      if (_tabController!.indexIsChanging) {
+        final idx = _tabController!.index.clamp(0, categories.length - 1);
+        setState(() => _selectedCategory = categories[idx]);
+      }
+    });
 
     final width = MediaQuery.of(context).size.width;
     final int crossAxisCount = width > 1000 ? 4 : (width > 700 ? 3 : 2);
@@ -253,11 +362,44 @@ class _HomeContentScreenState extends State<HomeContentScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text("Ouma's Delicacy"),
-        backgroundColor: AppColors.primary,
-        elevation: 4,
-        iconTheme: const IconThemeData(color: AppColors.white),
-        actionsIconTheme: const IconThemeData(color: AppColors.white),
+        title: Row(
+          children: [
+            // small logo image; falls back to an Icon if asset missing
+            Container(
+              width: 34,
+              height: 34,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(8),
+                color: AppColors.primary.withOpacity(0.1),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Image.asset(
+                  'assets/images/app_icon.png',
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => const Icon(
+                    Icons.restaurant,
+                    color: AppColors.primary,
+                    size: 20,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            const Text(
+              "Ouma's Delicacy",
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: AppColors.darkText,
+              ),
+            ),
+          ],
+        ),
+        backgroundColor: AppColors.white,
+        elevation: 2,
+        iconTheme: IconThemeData(color: AppColors.darkText),
+        actionsIconTheme: IconThemeData(color: AppColors.darkText),
         actions: [
           IconButton(
             icon: const Icon(Icons.logout),
@@ -267,31 +409,6 @@ class _HomeContentScreenState extends State<HomeContentScreen> {
             },
           ),
         ],
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(56),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: TextField(
-              controller: _searchController,
-              decoration: InputDecoration(
-                hintText: 'Search meals...',
-                prefixIcon: const Icon(Icons.search),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide.none,
-                ),
-                filled: true,
-                fillColor: AppColors.cardBackground,
-                contentPadding: const EdgeInsets.symmetric(vertical: 0),
-              ),
-              onChanged: (value) {
-                setState(() {
-                  _searchQuery = value;
-                });
-              },
-            ),
-          ),
-        ),
       ),
       drawer: Drawer(
         child: SafeArea(
@@ -373,46 +490,151 @@ class _HomeContentScreenState extends State<HomeContentScreen> {
           ),
         ),
       ),
-      body: DefaultTabController(
-        length: categories.length,
+      body: SafeArea(
         child: Column(
           children: [
-            TabBar(
-              isScrollable: true,
-              indicatorColor: AppColors.primary,
-              labelColor: AppColors.primary,
-              unselectedLabelColor: AppColors.darkText,
-              tabs: categories.map((cat) => Tab(text: cat)).toList(),
-              onTap: (index) {
-                setState(() {
-                  _selectedCategory = categories[index];
-                });
-              },
+            // Search Bar - now separate from app bar
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: AppColors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.05),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: TextField(
+                  controller: _searchController,
+                  decoration: InputDecoration(
+                    hintText: 'Search meals...',
+                    prefixIcon: const Icon(Icons.search, color: AppColors.lightGray),
+                    border: InputBorder.none,
+                    contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
+                    hintStyle: TextStyle(color: AppColors.lightGray),
+                  ),
+                  onChanged: (value) {
+                    setState(() {
+                      _searchQuery = value;
+                    });
+                  },
+                ),
+              ),
             ),
             Expanded(
-              child: TabBarView(
-                children: categories.map((cat) {
-                  final mealsByCategory = cat == 'All'
-                      ? filteredMeals(meals)
-                      : filteredMeals(meals)
-                          .where((m) => m['category'] == cat)
-                          .toList();
-                  if (mealsByCategory.isEmpty) {
-                    return const Center(child: Text("No meals found"));
-                  }
-                  return GridView.builder(
-                    padding: const EdgeInsets.all(16),
-                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: crossAxisCount,
-                      childAspectRatio: 0.72,
-                      crossAxisSpacing: 16,
-                      mainAxisSpacing: 16,
+              child: Column(
+                children: [
+                  // promo carousel - now larger
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    child: PromoCarousel(
+                      promoItems: [
+                        {
+                          'image': 'assets/images/promo1.jpg',
+                          'title': 'Ramadan Offers',
+                          'subtitle': 'Get 25% off',
+                          'cta': 'Grab Offer'
+                        },
+                        {
+                          'image': 'assets/images/promo2.jpg',
+                          'title': 'Free Delivery',
+                          'subtitle': 'On orders over Ksh 500',
+                          'cta': 'Order Now'
+                        },
+                        {
+                          'image': 'assets/images/promo3.jpg',
+                          'title': 'New: Ugali Specials',
+                          'subtitle': 'From Ksh 150',
+                          'cta': 'See Menu'
+                        },
+                      ],
                     ),
-                    itemCount: mealsByCategory.length,
-                    itemBuilder: (context, index) =>
-                        MealCard(meal: mealsByCategory[index]),
-                  );
-                }).toList(),
+                  ),
+                  Container(
+                    decoration: BoxDecoration(
+                      color: AppColors.white,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.05),
+                          blurRadius: 2,
+                          offset: const Offset(0, 1),
+                        ),
+                      ],
+                    ),
+                    child: TabBar(
+                      controller: _tabController,
+                      isScrollable: true,
+                      indicatorColor: AppColors.primary,
+                      labelColor: AppColors.primary,
+                      unselectedLabelColor: AppColors.darkText,
+                      indicatorSize: TabBarIndicatorSize.tab,
+                      indicatorWeight: 3,
+                      labelStyle: const TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14,
+                      ),
+                      unselectedLabelStyle: const TextStyle(
+                        fontWeight: FontWeight.normal,
+                        fontSize: 14,
+                      ),
+                      tabs: categories.map((cat) => Tab(text: cat)).toList(),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Expanded(
+                    child: TabBarView(
+                      controller: _tabController,
+                      children: categories.asMap().entries.map((entry) {
+                        final tabIndex = entry.key;
+                        final cat = entry.value;
+                        final mealsByCategory = cat == 'All'
+                            ? filteredMeals(meals)
+                            : filteredMeals(meals)
+                                .where((m) => m['category'] == cat)
+                                .toList();
+                        if (mealsByCategory.isEmpty) {
+                          return Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.search_off,
+                                  size: 64,
+                                  color: AppColors.lightGray,
+                                ),
+                                const SizedBox(height: 16),
+                                Text(
+                                  "No meals found",
+                                  style: TextStyle(
+                                    color: AppColors.lightGray,
+                                    fontSize: 16,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        }
+                        return GridView.builder(
+                          controller: _ensureControllerForIndex(tabIndex),
+                          padding: const EdgeInsets.all(16),
+                          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: crossAxisCount,
+                            childAspectRatio: 0.75,
+                            crossAxisSpacing: 12,
+                            mainAxisSpacing: 12,
+                          ),
+                          itemCount: mealsByCategory.length,
+                          itemBuilder: (context, index) =>
+                              MealCard(meal: mealsByCategory[index]),
+                        );
+                      }).toList(),
+                    ),
+                  ),
+                ],
               ),
             ),
           ],
@@ -430,53 +652,302 @@ class _HomeContentScreenState extends State<HomeContentScreen> {
   }
 }
 
-class MealCard extends StatelessWidget {
+class MealCard extends StatefulWidget {
   final Map<String, dynamic> meal;
 
   const MealCard({super.key, required this.meal});
 
   @override
+  State<MealCard> createState() => _MealCardState();
+}
+
+class _MealCardState extends State<MealCard> {
+  int _quantity = 0;
+
+  void _increment() => setState(() => _quantity++);
+  void _decrement() {
+    if (_quantity > 0) setState(() => _quantity--);
+  }
+
+  void _addToCart() {
+    if (_quantity <= 0) return;
+    final dynamic cartProvider = Provider.of<CartProvider>(context, listen: false);
+    final price = (widget.meal['price'] is num) ? (widget.meal['price'] as num).toDouble() : 0.0;
+    cartProvider.addItem(CartItem(
+      id: '${widget.meal['title']}_${DateTime.now().millisecondsSinceEpoch}',
+      mealTitle: widget.meal['title']?.toString() ?? 'Item',
+      price: price.toInt(),
+      quantity: _quantity,
+      mealImage: widget.meal['image']?.toString() ?? '',
+    ));
+
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text('$_quantity ${widget.meal['title']} added to cart'),
+      duration: const Duration(seconds: 2),
+    ));
+    setState(() => _quantity = 0);
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => MealDetailScreen(meal: meal),
+    final meal = widget.meal;
+
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: InkWell(
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => MealDetailScreen(meal: meal)),
+          );
+        },
+        borderRadius: BorderRadius.circular(12),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            // compute a responsive image height based on available card height
+            final double cardMaxH = constraints.maxHeight.isFinite ? constraints.maxHeight : 220.0;
+            final double imageHeight = (cardMaxH * 0.45).clamp(80.0, 140.0);
+
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // Image section (height constrained)
+                SizedBox(
+                  height: imageHeight,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+                      color: AppColors.cardBackground,
+                    ),
+                    child: ClipRRect(
+                      borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+                      child: Image.asset(
+                        meal['image'] ?? '',
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) {
+                          return Container(
+                            color: AppColors.lightGray.withOpacity(0.3),
+                            alignment: Alignment.center,
+                            child: const Icon(
+                              Icons.fastfood,
+                              color: AppColors.lightGray,
+                              size: 40,
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                ),
+
+                // Remaining content uses the leftover space
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          meal['title']?.toString() ?? '',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 14,
+                            height: 1.2,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          "Ksh ${meal['price']?.toString() ?? '0'}",
+                          style: TextStyle(
+                            color: AppColors.primary,
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const Spacer(),
+                        // Compact quantity controls + cart button
+                        Row(
+                          children: [
+                            SizedBox(
+                              width: 28,
+                              height: 28,
+                              child: ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                  padding: EdgeInsets.zero,
+                                  backgroundColor: _quantity > 0 ? AppColors.primary : AppColors.lightGray,
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                                ),
+                                onPressed: _decrement,
+                                child: const Icon(Icons.remove, size: 16, color: Colors.white),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Text('$_quantity', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.darkText)),
+                            const SizedBox(width: 8),
+                            SizedBox(
+                              width: 28,
+                              height: 28,
+                              child: ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                  padding: EdgeInsets.zero,
+                                  backgroundColor: AppColors.primary,
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                                ),
+                                onPressed: _increment,
+                                child: const Icon(Icons.add, size: 16, color: Colors.white),
+                              ),
+                            ),
+                            const Spacer(),
+                            SizedBox(
+                              width: 44,
+                              height: 36,
+                              child: ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: _quantity > 0 ? AppColors.accent : AppColors.lightGray,
+                                  padding: EdgeInsets.zero,
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                ),
+                                onPressed: _quantity > 0 ? _addToCart : null,
+                                child: const Icon(Icons.shopping_cart, size: 18, color: Colors.white),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class PromoCarousel extends StatelessWidget {
+  final List<Map<String, dynamic>> promoItems;
+
+  const PromoCarousel({super.key, required this.promoItems});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 140, // slightly reduced to give more room to tabs on small screens
+      margin: const EdgeInsets.symmetric(horizontal: 0),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.08),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
           ),
-        );
-      },
-      borderRadius: BorderRadius.circular(16),
-      child: Card(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Expanded(
-              child: ClipRRect(
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-                child: Image.asset(
-                  meal['image'],
-                  fit: BoxFit.cover,
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: PageView.builder(
+          itemCount: promoItems.length,
+          itemBuilder: (context, index) {
+            final item = promoItems[index];
+            return Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    AppColors.primary.withOpacity(0.95),
+                    AppColors.accent.withOpacity(0.85),
+                  ],
                 ),
               ),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(8.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              child: Stack(
                 children: [
-                  Text(meal['title'],
-                      style: const TextStyle(
-                          fontWeight: FontWeight.bold, fontSize: 14)),
-                  const SizedBox(height: 4),
-                  Text("Ksh ${meal['price'].toString()}",
-                      style: const TextStyle(
-                          color: Colors.grey, fontSize: 12)),
+                  // Background pattern (safe: won't throw if asset missing)
+                  Positioned.fill(
+                    child: Opacity(
+                      opacity: 0.06,
+                      child: Image.asset(
+                        'assets/images/pattern.png',
+                        repeat: ImageRepeat.repeat,
+                        fit: BoxFit.none,
+                        errorBuilder: (ctx, err, st) => const SizedBox.shrink(),
+                      ),
+                    ),
+                  ),
+                  // Content — compact column with tuned spacing
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 14),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            item['title'] ?? '',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            item['subtitle'] ?? '',
+                            style: const TextStyle(
+                              color: Colors.white70,
+                              fontSize: 13,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 10),
+                          Material(
+                            color: Colors.transparent,
+                            child: ElevatedButton(
+                              onPressed: () {
+                                // Handle CTA button press
+                              },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.white,
+                                foregroundColor: AppColors.primary,
+                                elevation: 0,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(18),
+                                ),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 6,
+                                ),
+                                minimumSize: const Size(0, 34),
+                              ),
+                              child: Text(
+                                (item['cta'] ?? '').toString(),
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                 ],
               ),
-            ),
-          ],
+            );
+          },
         ),
       ),
     );

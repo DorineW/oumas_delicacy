@@ -1,4 +1,5 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.oumasdelicacy.app">
 
     <!-- Permissions must be children of <manifest> (not inside <application>) -->
     <uses-permission android:name="android.permission.INTERNET" />
@@ -6,15 +7,14 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
     <application
-        android:label="oumas_delicacy"
-        android:name="${applicationName}"
+        android:label="Ouma's Delicacy"
         android:icon="@mipmap/ic_launcher">
 
         <!-- Add your Google Maps API key here (replace the value below) -->
         <!-- Required if you use google_maps_flutter -->
         <meta-data
             android:name="com.google.android.geo.API_KEY"
-            android:value="YOUR_REAL_KEY" />
+            android:value="REPLACE_WITH_YOUR_REAL_API_KEY"/>
 
         <activity
             android:name=".MainActivity"
