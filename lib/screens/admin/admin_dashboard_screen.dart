@@ -10,6 +10,8 @@ import 'package:fl_chart/fl_chart.dart';
 
 import '../../constants/colors.dart';
 import '../../services/auth_service.dart';
+import '../../models/order.dart';
+import '../../providers/order_provider.dart';
 import 'manage_orders_screen.dart';
 import 'manage_users_screen.dart';
 import 'reports_screen.dart';
@@ -29,7 +31,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   final ScrollController _scrollController = ScrollController();
   bool _showScrollToTop = false;
 
-  // Fake incoming orders
   final List<Order> _incomingOrders = [];
   Timer? _fakeOrderTimer;
   int _fakeOrderCounter = 1;
@@ -39,7 +40,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   void initState() {
     super.initState();
 
-    // Add a fake order every 15 seconds
     _fakeOrderTimer = Timer.periodic(const Duration(seconds: 15), (_) {
       _addFakeOrder();
     });
@@ -72,17 +72,27 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         0,
         Order(
           id: 'ORD-${1000 + _fakeOrderCounter}',
-          customer: 'Customer $_fakeOrderCounter',
-          amount: amount,
-          time: now,
-          items: chosen.map((e) => e.name).toList(),
+          customerId: 'cust_$_fakeOrderCounter',
+          customerName: 'Customer $_fakeOrderCounter',
+          date: now,
+          items: chosen.map((e) => OrderItem(
+            id: 'item_${_random.nextInt(100)}',
+            title: e.name,
+            quantity: 1 + _random.nextInt(3),
+            price: e.price.toInt(),
+          )).toList(),
+          totalAmount: amount.toInt(),
+          status: OrderStatus.pending,
+          deliveryType: _random.nextBool() ? DeliveryType.delivery : DeliveryType.pickup,
         ),
       );
       _fakeOrderCounter++;
     });
   }
 
-  void _markOrderHandled(int index) {
+  void _markOrderHandled(int index, OrderProvider provider) {
+    final order = _incomingOrders[index];
+    provider.updateStatus(order.id, OrderStatus.confirmed);
     setState(() {
       _incomingOrders.removeAt(index);
     });
@@ -195,118 +205,105 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     );
   }
 
-  void _openOrdersModal() {
+  void _openOrdersModal(BuildContext context, OrderProvider provider) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      backgroundColor: Colors.transparent,
       builder: (_) {
-        return DraggableScrollableSheet(
-          expand: false,
-          minChildSize: 0.25,
-          initialChildSize: 0.6,
-          maxChildSize: 0.95,
-          builder: (_, scrollController) {
-            return Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: AppColors.cardBackground,
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+        return Container(
+          margin: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.grey[300],
+                  borderRadius: BorderRadius.circular(2),
+                ),
               ),
-              child: Column(
-                children: [
-                  Container(
-                    width: 48,
-                    height: 6,
-                    margin: const EdgeInsets.only(bottom: 8),
-                    decoration: BoxDecoration(
-                      color: Colors.grey[300],
-                      borderRadius: BorderRadius.circular(3),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Incoming Orders (${_incomingOrders.length})',
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
-                  ),
-                  Text(
-                    'Incoming Orders (${_incomingOrders.length})',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.darkText,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Expanded(
-                    child: _incomingOrders.isEmpty
-                        ? Center(
-                            child: Text(
-                              'No incoming orders',
-                              style: TextStyle(color: AppColors.darkText),
+                    if (_incomingOrders.isNotEmpty)
+                      TextButton(
+                        onPressed: () {
+                          Navigator.of(context).pop();
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (_) => const ManageOrdersScreen()),
+                          );
+                        },
+                        child: const Text('View All'),
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              Expanded(
+                child: _incomingOrders.isEmpty
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.notifications_off,
+                              size: 60,
+                              color: AppColors.darkText.withOpacity(0.3),
                             ),
-                          )
-                        : ListView.builder(
-                            controller: scrollController,
-                            itemCount: _incomingOrders.length,
-                            itemBuilder: (_, index) {
-                              final order = _incomingOrders[index];
-                              return Card(
-                                color: AppColors.background,
-                                child: ListTile(
-                                  leading: CircleAvatar(
-                                    backgroundColor: AppColors.primary,
-                                    child: Text(
-                                      order.customer[0],
-                                      style: const TextStyle(color: Colors.white),
-                                    ),
-                                  ),
-                                  title: Text(
-                                    order.id,
-                                    style: TextStyle(
-                                      color: AppColors.darkText,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                  subtitle: Text(
-                                    '${order.items.join(', ')}\n${order.time.hour.toString().padLeft(2, '0')}:${order.time.minute.toString().padLeft(2, '0')}',
-                                    style: TextStyle(
-                                      color: AppColors.darkText.withOpacity(0.8),
-                                    ),
-                                  ),
-                                  isThreeLine: true,
-                                  trailing: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      IconButton(
-                                        icon: const Icon(Icons.check_circle, size: 20),
-                                        color: AppColors.success,
-                                        tooltip: 'Mark handled',
-                                        onPressed: () {
-                                          _markOrderHandled(index);
-                                          Navigator.of(context).pop();
-                                        },
-                                      ),
-                                      IconButton(
-                                        icon: const Icon(Icons.visibility, size: 20),
-                                        tooltip: 'View',
-                                        color: AppColors.darkText,
-                                        onPressed: () {
-                                          final selectedOrder = _incomingOrders[index];
-                                          Navigator.of(context).push(
-                                            MaterialPageRoute(
-                                              builder: (_) => ManageOrdersScreen(
-                                                highlightOrderId: selectedOrder.id,
-                                              ),
-                                            ),
-                                          );
-                                        },
-                                      ),
-                                    ],
+                            const SizedBox(height: 16),
+                            Text(
+                              'No New Orders',
+                              style: TextStyle(
+                                fontSize: 16,
+                                color: AppColors.darkText.withOpacity(0.5),
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    : ListView.builder(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        itemCount: _incomingOrders.length,
+                        itemBuilder: (_, index) {
+                          final order = _incomingOrders[index];
+                          return _NotificationOrderCard(
+                            order: order,
+                            onMarkHandled: () => _markOrderHandled(index, provider),
+                            onViewOrder: () {
+                              Navigator.of(context).pop();
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => ManageOrdersScreen(
+                                    highlightOrderId: order.id,
                                   ),
                                 ),
                               );
                             },
-                          ),
-                  ),
-                ],
+                          );
+                        },
+                      ),
               ),
-            );
-          },
+              const SizedBox(height: 16),
+            ],
+          ),
         );
       },
     );
@@ -335,6 +332,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final orderProvider = Provider.of<OrderProvider>(context);
+
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
@@ -344,7 +343,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         iconTheme: const IconThemeData(color: AppColors.white),
         actionsIconTheme: const IconThemeData(color: AppColors.white),
         actions: [
-          // Notifications
           Padding(
             padding: const EdgeInsets.only(right: 8.0),
             child: Stack(
@@ -354,7 +352,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                   icon: const Icon(Icons.notifications),
                   tooltip: 'Incoming Orders',
                   color: AppColors.white,
-                  onPressed: _openOrdersModal,
+                  onPressed: () => _openOrdersModal(context, orderProvider),
                 ),
                 if (_incomingOrders.isNotEmpty)
                   Positioned(
@@ -378,7 +376,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               ],
             ),
           ),
-          // Logout
           IconButton(
             icon: const Icon(Icons.logout),
             tooltip: 'Logout',
@@ -712,23 +709,157 @@ class _AdminCard extends StatelessWidget {
   }
 }
 
-/// Models
-class Order {
-  final String id;
-  final String customer;
-  final double amount;
-  final DateTime time;
-  final List<String> items;
+class _NotificationOrderCard extends StatelessWidget {
+  final Order order;
+  final VoidCallback onMarkHandled;
+  final VoidCallback onViewOrder;
 
-  Order({
-    required this.id,
-    required this.customer,
-    required this.amount,
-    required this.time,
-    required this.items,
+  const _NotificationOrderCard({
+    required this.order,
+    required this.onMarkHandled,
+    required this.onViewOrder,
   });
+
+  Color _getStatusColor(OrderStatus status) {
+    switch (status) {
+      case OrderStatus.pending:
+        return Colors.orange;
+      case OrderStatus.confirmed:
+        return Colors.blue;
+      case OrderStatus.inProcess:
+        return Colors.purple;
+      case OrderStatus.delivered:
+        return AppColors.success;
+      case OrderStatus.cancelled:
+        return Colors.red;
+    }
+  }
+
+  String _getStatusText(OrderStatus status) {
+    return status.toString().split('.').last;
+  }
+
+  String _formatTime(DateTime date) {
+    return '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      elevation: 2,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Order #${order.id}',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: _getStatusColor(order.status).withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: _getStatusColor(order.status)),
+                  ),
+                  child: Text(
+                    _getStatusText(order.status),
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: _getStatusColor(order.status),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Customer: ${order.customerName}',
+              style: TextStyle(
+                color: AppColors.darkText.withOpacity(0.8),
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '${order.deliveryType.toString().split('.').last} • ${_formatTime(order.date)}',
+              style: TextStyle(
+                color: AppColors.darkText.withOpacity(0.6),
+                fontSize: 12,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              order.items.map((item) => '${item.title} x${item.quantity}').join(', '),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: AppColors.darkText.withOpacity(0.8),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'KES ${order.totalAmount}',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                    color: AppColors.primary,
+                  ),
+                ),
+                Text(
+                  '${order.items.length} ${order.items.length == 1 ? 'item' : 'items'}',
+                  style: TextStyle(
+                    color: AppColors.darkText.withOpacity(0.6),
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: onMarkHandled,
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppColors.success,
+                      side: BorderSide(color: AppColors.success),
+                    ),
+                    child: const Text('Confirm Order'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: onViewOrder,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      foregroundColor: Colors.white,
+                    ),
+                    child: const Text('View Details'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
+/// Models
 class ChartPoint {
   final String label;
   final double value;
