@@ -1,37 +1,38 @@
-// lib/screens/home_screen.dart
+// ------------------------------------------------------------
+//  lib/screens/home_screen.dart  (replace entire file)
+// ------------------------------------------------------------
 // ignore_for_file: unused_import, deprecated_member_use
 
-import 'dart:async';
-import 'dart:io';
-import 'dart:typed_data';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'dart:ui';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../widgets/carousel.dart';
 
 import '../constants/colors.dart';
 import '../models/cart_item.dart';
 import '../providers/cart_provider.dart';
 import '../providers/menu_provider.dart';
-
-// Add your navigation screens imports
 import 'dashboard_screen.dart';
 import 'cart_screen.dart';
 import 'meal_detail_screen.dart';
 import 'profile_screen.dart';
 import '../services/auth_service.dart';
+import '../screens/login_screen.dart'; // Add this import
 
+/* ----------------------------------------------------------
+   1.  ENTRY POINT (no changes – keeps bottom nav logic)
+----------------------------------------------------------- */
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
-
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
 class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMixin {
   int _currentIndex = 0;
-
   final List<Widget> _screens = [
-    HomeContentScreen(),
+    const _HomeTab(),
     const DashboardScreen(),
     const CartScreen(),
     const ProfileScreen(),
@@ -39,375 +40,167 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
   @override
   Widget build(BuildContext context) {
-    final cartCount = Provider.of<CartProvider>(context).items
-        .fold<int>(0, (sum, it) => sum + it.quantity);
-
+    final cartQty = context.watch<CartProvider>().totalQuantity;
     return Scaffold(
-      backgroundColor: AppColors.background,
-      body: IndexedStack(
-        index: _currentIndex,
-        children: _screens,
-      ),
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.1),
-              blurRadius: 10,
-              offset: const Offset(0, -2),
-            ),
-          ],
-        ),
-        child: BottomNavigationBar(
-          currentIndex: _currentIndex,
-          onTap: (index) => setState(() => _currentIndex = index),
-          type: BottomNavigationBarType.fixed,
-          selectedItemColor: AppColors.primary,
-          unselectedItemColor: AppColors.lightGray,
-          backgroundColor: AppColors.white,
-          elevation: 0,
-          items: [
-            const BottomNavigationBarItem(
-              icon: Icon(Icons.home),
-              label: 'Home',
-            ),
-            const BottomNavigationBarItem(
-              icon: Icon(Icons.dashboard),
-              label: 'Dashboard',
-            ),
-            BottomNavigationBarItem(
-              icon: Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  const Icon(Icons.shopping_cart),
-                  // badge
-                  if (cartCount > 0)
-                    Positioned(
-                      right: -6,
-                      top: -6,
-                      child: Container(
-                        padding: const EdgeInsets.all(2),
-                        decoration: BoxDecoration(
-                          color: AppColors.accent,
-                          shape: BoxShape.circle,
-                          border: Border.all(color: AppColors.white, width: 1.5),
-                        ),
-                        constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
-                        child: Center(
-                          child: Text(
-                            '$cartCount',
-                            style: const TextStyle(
-                              color: AppColors.white,
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-              label: 'Cart',
-            ),
-            const BottomNavigationBarItem(
-              icon: Icon(Icons.person),
-              label: 'Profile',
-            ),
-          ],
-        ),
-      ),
+      extendBody: true,
+      body: _screens[_currentIndex],
+      bottomNavigationBar: _glassBottomNav(_currentIndex, (i) => setState(() => _currentIndex = i), cartQty),
     );
   }
 }
 
-// Extract the home content to a separate widget
-// ignore: use_key_in_widget_constructors
-class HomeContentScreen extends StatefulWidget {
-  @override
-  State<HomeContentScreen> createState() => _HomeContentScreenState();
+/* ---------- glass nav (unchanged) ---------- */
+Widget _glassBottomNav(int idx, ValueChanged<int> onTap, int cartQty) {
+  return Padding(
+    padding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
+    child: ClipRRect(
+      borderRadius: BorderRadius.circular(24),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+        child: Container(
+          height: 64,
+          decoration: BoxDecoration(
+            color: AppColors.white.withOpacity(.82),
+            border: Border.all(color: AppColors.white.withOpacity(.4)),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _navItem(Icons.home, 'Home', 0, idx, onTap),
+              _navItem(Icons.dashboard, 'Dashboard', 1, idx, onTap),
+              _navItem(
+                Icons.shopping_cart,
+                'Cart',
+                2,
+                idx,
+                onTap,
+                badge: cartQty,
+                iconKey: const ValueKey('cartIcon'),   // <-- KEY for target
+              ),
+              _navItem(Icons.person, 'Profile', 3, idx, onTap),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
 }
 
-class _HomeContentScreenState extends State<HomeContentScreen> with SingleTickerProviderStateMixin {
-  final TextEditingController _searchController = TextEditingController();
-  String _searchQuery = '';
-  String _selectedCategory = 'All';
+Widget _navItem(IconData icon, String label, int index, int selected, ValueChanged<int> onTap, {int badge = 0, Key? iconKey}) {
+  final isSelected = index == selected;
+  return Expanded(
+    child: GestureDetector(
+      onTap: () => onTap(index),
+      child: Container(
+        alignment: Alignment.center,
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Column(mainAxisSize: MainAxisSize.min, children: [
+              Icon(icon, 
+                  key: iconKey,
+                  color: isSelected ? AppColors.primary : AppColors.lightGray),
+              const SizedBox(height: 2),
+              Text(label, 
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 11, color: isSelected ? AppColors.primary : AppColors.lightGray))
+            ]),
+            if (badge > 0)
+              Positioned(
+                right: -4,
+                top: -2,
+                child: Container(
+                  padding: const EdgeInsets.all(2),
+                  decoration: BoxDecoration(color: AppColors.accent, shape: BoxShape.circle),
+                  constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                  child: Center(
+                      child: Text('$badge',
+                          style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold))),
+                ),
+              )
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+/* ----------------------------------------------------------
+   HOME TAB  (old look – normal AppBar + drawer + tabs)
+----------------------------------------------------------- */
+class _HomeTab extends StatefulWidget {
+  const _HomeTab();
+
+  @override
+  State<_HomeTab> createState() => _HomeTabState();
+}
+
+class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin {
+  final _searchCtrl = TextEditingController();
+  String _search = '';
+  int _tabIndex = 0;
+
+  late TabController _tabController;
   final Map<int, ScrollController> _scrollControllers = {};
-  bool _showScrollToTop = false;
-  TabController? _tabController;
 
-  // ensure we dispose/create the tab controller when categories change
-  void _ensureTabController(List<String> categories) {
-    // if controller already matches required length, keep it
-    if (_tabController != null && _tabController!.length == categories.length) return;
-
-    // dispose previous controller if any
-    _tabController?.removeListener(_handleTabChange);
-    _tabController?.dispose();
-
-    // create new controller and attach a single listener
-    _tabController = TabController(length: categories.length, vsync: this);
-    _tabController!.addListener(_handleTabChange);
-
-    // sync selected category index with controller
-    final idx = categories.indexOf(_selectedCategory);
-    if (idx >= 0 && idx < _tabController!.length) {
-      _tabController!.index = idx;
-    } else {
-      _selectedCategory = categories.isNotEmpty ? categories[0] : 'All';
-    }
-  }
-
-  void _handleTabChange() {
-    if (!mounted || _tabController == null) return;
-    if (_tabController!.indexIsChanging) {
-      setState(() {
-        // categories must be read from build scope; we update selectedCategory by index
-        // we'll clamp index defensively in build after categories are computed
-        _selectedCategory = _tabController!.index.toString(); // placeholder, replaced in build below
-      });
-    }
+  @override
+  void initState() {
+    super.initState();
+    final cats = context.read<MenuProvider>().menuItems
+                   .map((e) => e['category'])
+                   .toSet()
+                   .toList();
+    _tabController = TabController(length: cats.length + 1, vsync: this);
   }
 
   @override
   void dispose() {
-    for (final sc in _scrollControllers.values) sc.dispose();
-    _tabController?.removeListener(_handleTabChange);
-    _tabController?.dispose();
-    _searchController.dispose();
+    _searchCtrl.dispose();
+    _tabController.dispose();
+    for (final c in _scrollControllers.values) {
+      c.dispose();
+    }
     super.dispose();
   }
 
-  void _scrollToTop() {
-    final currentIndex = _tabController?.index ?? 0;
-    final sc = _ensureControllerForIndex(currentIndex);
-    if (!sc.hasClients) return;
-    sc.animateTo(
-      0,
-      duration: const Duration(milliseconds: 500),
-      curve: Curves.easeInOut,
-    );
-  }
-
-  void _scrollToBottom() {
-    final currentIndex = _tabController?.index ?? 0;
-    final sc = _ensureControllerForIndex(currentIndex);
-    if (!sc.hasClients) return;
-    sc.animateTo(
-      sc.position.maxScrollExtent,
-      duration: const Duration(milliseconds: 500),
-      curve: Curves.easeInOut,
-    );
-  }
-
-  // ensure a ScrollController exists for the given tab index and attach a listener
-  // that updates the floating action button state (_showScrollToTop)
-  ScrollController _ensureControllerForIndex(int index) {
-    // return existing controller if present
-    if (_scrollControllers.containsKey(index)) return _scrollControllers[index]!;
-
-    // create, register and attach listener
-    final sc = ScrollController();
-    sc.addListener(() {
-      if (!mounted) return;
-      final shouldShow = sc.hasClients && sc.offset > 200;
-      if (shouldShow != _showScrollToTop) {
-        setState(() => _showScrollToTop = shouldShow);
-      }
-    });
-
-    _scrollControllers[index] = sc;
-    return sc;
-  }
-
-  // Dummy menu items based on the provided menu
-  final List<Map<String, dynamic>> dummyMenuItems = [
-    {
-      'title': 'Ugali Nyama Choma',
-      'price': 210,
-      'category': 'Ugali Dishes',
-      'description': 'Traditional Kenyan maize meal with grilled meat',
-      'rating': 4.8,
-      'image': 'assets/images/ugali_nyama.jpg',
-    },
-    {
-      'title': 'Pilau Liver',
-      'price': 230,
-      'category': 'Rice Dishes',
-      'description': 'Spiced rice with tender liver pieces',
-      'rating': 4.5,
-      'image': 'assets/images/pilau.jpg',
-    },
-    {
-      'title': 'Ugali Samaki',
-      'price': 300,
-      'category': 'Ugali Dishes',
-      'description': 'Maize meal served with fried fish',
-      'rating': 4.7,
-      'image': 'assets/images/ugali_fish.jpg',
-    },
-    {
-      'title': 'Githeri',
-      'price': 120,
-      'category': 'Traditional',
-      'description': 'Boiled maize and beans mixture',
-      'rating': 4.3,
-      'image': 'assets/images/Githeri.jpg',
-    },
-    {
-      'title': 'Chapati',
-      'price': 20,
-      'category': 'Breakfast',
-      'description': 'Soft, flaky flatbread',
-      'rating': 4.6,
-      'image': 'assets/images/Chapati.jpg',
-    },
-    {
-      'title': 'Matoke Beef',
-      'price': 230,
-      'category': 'Traditional',
-      'description': 'Steamed bananas with beef stew',
-      'rating': 4.4,
-      'image': 'assets/images/matoke.jpg',
-    },
-    {
-      'title': 'Chips Beef',
-      'price': 210,
-      'category': 'Fast Food',
-      'description': 'Crispy fries with beef stew',
-      'rating': 4.2,
-      'image': 'assets/images/chips_beef.jpg',
-    },
-    {
-      'title': 'Beef Burger',
-      'price': 130,
-      'category': 'Fast Food',
-      'description': 'Juicy beef patty in a bun with veggies',
-      'rating': 4.1,
-      'image': 'assets/images/burger.jpg',
-    },
-    {
-      'title': 'Tea',
-      'price': 30,
-      'category': 'Beverages',
-      'description': 'Hot Kenyan tea with milk',
-      'rating': 4.5,
-      'image': 'assets/images/tea.jpg',
-    },
-    {
-      'title': 'Samosa',
-      'price': 20,
-      'category': 'Snacks',
-      'description': 'Crispy pastry filled with spiced meat',
-      'rating': 4.7,
-      'image': 'assets/images/samosa.jpg',
-    },
-    {
-      'title': 'Pilau Beef Fry',
-      'price': 180,
-      'category': 'Rice Dishes',
-      'description': 'Spiced rice with fried beef',
-      'rating': 4.6,
-      'image': 'assets/images/pilau_beef.jpg',
-    },
-    {
-      'title': 'Kuku Ugali',
-      'price': 220,
-      'category': 'Ugali Dishes',
-      'description': 'Maize meal with chicken stew',
-      'rating': 4.5,
-      'image': 'assets/images/kuku_ugali.jpg',
-    },
-  ];
-
-  // Filter meals based on search and category
-  List<Map<String, dynamic>> filteredMeals(List<Map<String, dynamic>> meals) {
-    return meals.where((meal) {
-      final title = (meal['title'] ?? '').toString().toLowerCase();
-      final matchesSearch = title.contains(_searchQuery.toLowerCase());
-      final matchesCategory = _selectedCategory == 'All' ||
-          (meal['category'] ?? '') == _selectedCategory;
-      return matchesSearch && matchesCategory;
-    }).toList();
-  }
+  ScrollController _controller(int index) =>
+      _scrollControllers.putIfAbsent(index, () => ScrollController());
 
   @override
   Widget build(BuildContext context) {
-    final menuProvider = Provider.of<MenuProvider>(context);
-    final List<Map<String, dynamic>> meals =
-        menuProvider.menuItems.isNotEmpty
-            ? List<Map<String, dynamic>>.from(menuProvider.menuItems)
-            : dummyMenuItems;
+    final meals = context.watch<MenuProvider>().menuItems;
+    final cats = ['All', ...meals.map((e) => e['category']).toSet()];
 
-    final Set<String> cats = {};
-    for (var meal in meals) {
-      final cat = meal['category']?.toString();
-      if (cat != null && cat.isNotEmpty) cats.add(cat);
-    }
-    final List<String> categories = ['All'] + cats.toList()..sort();
-
-    // create/update controller safely and provide a proper listener closure that captures categories
-    _ensureTabController(categories);
-    // replace the placeholder listener behavior: update selected category by index
-    _tabController?.removeListener(_handleTabChange);
-    _tabController?.addListener(() {
-      if (_tabController!.indexIsChanging) {
-        final idx = _tabController!.index.clamp(0, categories.length - 1);
-        setState(() => _selectedCategory = categories[idx]);
-      }
-    });
-
-    final width = MediaQuery.of(context).size.width;
-    final int crossAxisCount = width > 1000 ? 4 : (width > 700 ? 3 : 2);
+    final filtered = meals.where((m) {
+      final t = m['title'].toString().toLowerCase();
+      final s = _search.toLowerCase();
+      final c = _tabIndex == 0 ? true : m['category'] == cats[_tabIndex];
+      return t.contains(s) && c;
+    }).toList();
 
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: Row(
-          children: [
-            // small logo image; falls back to an Icon if asset missing
-            Container(
-              width: 34,
-              height: 34,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(8),
-                color: AppColors.primary.withOpacity(0.1),
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: Image.asset(
-                  'assets/images/app_icon.png',
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => const Icon(
-                    Icons.restaurant,
-                    color: AppColors.primary,
-                    size: 20,
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(width: 12),
-            const Text(
-              "Ouma's Delicacy",
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: AppColors.darkText,
-              ),
-            ),
-          ],
-        ),
+        title: Row(children: [
+          Image.asset('assets/images/app_icon.png', width: 32, height: 32, errorBuilder: (_, __, ___) => const Icon(Icons.restaurant, color: AppColors.primary)),
+          const SizedBox(width: 8),
+          const Text("Ouma's Delicacy", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.darkText)),
+        ]),
         backgroundColor: AppColors.white,
         elevation: 2,
-        iconTheme: IconThemeData(color: AppColors.darkText),
-        actionsIconTheme: IconThemeData(color: AppColors.darkText),
         actions: [
           IconButton(
-            icon: const Icon(Icons.logout),
-            tooltip: 'Logout',
-            onPressed: () {
-              Provider.of<AuthService>(context, listen: false).logout();
-            },
-          ),
+              onPressed: () async {
+                await Provider.of<AuthService>(context, listen: false).logout();
+                if (context.mounted) {
+                  // Navigate to login screen directly instead of using named route
+                  Navigator.of(context).pushAndRemoveUntil(
+                    MaterialPageRoute(builder: (_) => const LoginScreen()),
+                    (route) => false,
+                  );
+                }
+              },
+              icon: const Icon(Icons.logout, color: AppColors.darkText))
         ],
       ),
       drawer: Drawer(
@@ -418,70 +211,20 @@ class _HomeContentScreenState extends State<HomeContentScreen> with SingleTicker
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 DrawerHeader(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // App icon without background
-                      Image.asset(
-                        'assets/images/app_icon.png', 
-                        width: 56,
-                        height: 56,
-                      ),
-                      const SizedBox(height: 12),
-                      Text('Ouma\'s Delicacy',
-                          style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: AppColors.darkText)),
-                    ],
-                  ),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Image.asset('assets/images/app_icon.png', width: 56, height: 56),
+                    const SizedBox(height: 12),
+                    const Text('Ouma\'s Delicacy',
+                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.darkText)),
+                  ]),
                 ),
                 Expanded(
                   child: ListView(
                     children: [
-                      ListTile(
-                        leading: const Icon(Icons.home),
-                        title: const Text('Home'),
-                        onTap: () {
-                          Navigator.pop(context);
-                        },
-                      ),
-                      ListTile(
-                        leading: const Icon(Icons.dashboard),
-                        title: const Text('Dashboard'),
-                        onTap: () {
-                          Navigator.pop(context);
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                                builder: (context) => const DashboardScreen()),
-                          );
-                        },
-                      ),
-                      ListTile(
-                        leading: const Icon(Icons.shopping_cart),
-                        title: const Text('Cart'),
-                        onTap: () {
-                          Navigator.pop(context);
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                                builder: (context) => const CartScreen()),
-                          );
-                        },
-                      ),
-                      ListTile(
-                        leading: const Icon(Icons.person),
-                        title: const Text('Profile'),
-                        onTap: () {
-                          Navigator.pop(context);
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                                builder: (context) => const ProfileScreen()),
-                          );
-                        },
-                      ),
+                      ListTile(leading: const Icon(Icons.home), title: const Text('Home'), onTap: () => Navigator.pop(context)),
+                      ListTile(leading: const Icon(Icons.dashboard), title: const Text('Dashboard'), onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => const DashboardScreen())); }),
+                      ListTile(leading: const Icon(Icons.shopping_cart), title: const Text('Cart'), onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => const CartScreen())); }),
+                      ListTile(leading: const Icon(Icons.person), title: const Text('Profile'), onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => const ProfileScreen())); }),
                     ],
                   ),
                 ),
@@ -490,466 +233,591 @@ class _HomeContentScreenState extends State<HomeContentScreen> with SingleTicker
           ),
         ),
       ),
-      body: SafeArea(
-        child: Column(
-          children: [
-            // Search Bar - now separate from app bar
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              child: Container(
-                decoration: BoxDecoration(
-                  color: AppColors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.05),
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
-                ),
-                child: TextField(
-                  controller: _searchController,
-                  decoration: InputDecoration(
-                    hintText: 'Search meals...',
+      body: Column(
+        children: [
+          // search
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+            child: Container(
+              decoration: BoxDecoration(
+                color: AppColors.white,
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [
+                  BoxShadow(color: Colors.black.withOpacity(.05), blurRadius: 8, offset: const Offset(0, 2))
+                ],
+              ),
+              child: TextField(
+                controller: _searchCtrl,
+                onChanged: (v) => setState(() => _search = v),
+                decoration: InputDecoration(
+                    hintText: 'Search meals…',
                     prefixIcon: const Icon(Icons.search, color: AppColors.lightGray),
                     border: InputBorder.none,
-                    contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
-                    hintStyle: TextStyle(color: AppColors.lightGray),
-                  ),
-                  onChanged: (value) {
-                    setState(() {
-                      _searchQuery = value;
-                    });
-                  },
-                ),
+                    contentPadding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16)),
               ),
             ),
-            Expanded(
-              child: Column(
+          ),
+          // ----  NEW time-aware carousel  ----
+          Builder(builder: (context) {
+            final now = DateTime.now().hour;
+            final closed = now < 7 || now >= 21;
+
+            if (closed) {
+              return Column(children: [
+                const SizedBox(height: 12),
+                _closedCard(),
+              ]);
+            } else {
+              return Column(children: [
+                Carousel(
+                  height: 150,
+                  interval: const Duration(seconds: 4),
+                  children: meals.take(4).map((m) => _carouselCard(context, m)).toList(),
+                ),
+                const SizedBox(height: 12),
+              ]);
+            }
+          }),
+          // ------------------------------------
+          // category tabs
+          Container(
+            color: AppColors.white,
+            child: TabBar(
+              controller: _tabController,
+              isScrollable: true,
+              indicatorColor: AppColors.primary,
+              labelColor: AppColors.primary,
+              unselectedLabelColor: AppColors.darkText,
+              indicatorWeight: 3,
+              tabs: cats.map((c) => Tab(text: c)).toList(),
+              onTap: (i) => setState(() => _tabIndex = i),
+            ),
+          ),
+          // grid
+          Expanded(
+            child: TabBarView(
+              controller: _tabController,
+              children: cats.asMap().entries.map((e) {
+                final list = e.key == 0 ? filtered : filtered.where((m) => m['category'] == cats[e.key]).toList();
+                if (list.isEmpty) return const Center(child: Text('No meals found'));
+                return GridView.builder(
+                  controller: _controller(e.key),
+                  padding: const EdgeInsets.all(16),
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: MediaQuery.of(context).size.width > 600 ? 3 : 2,
+                      childAspectRatio: .75,
+                      crossAxisSpacing: 12,
+                      mainAxisSpacing: 12),
+                  itemCount: list.length,
+                  itemBuilder: (_, i) => _ModernMealCard(meal: list[i]),
+                );
+              }).toList(),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ----------------  HELPERS  ----------------
+  String _timeGreeting() {
+    final h = DateTime.now().hour;
+    if (h < 7)  return '😴 Closed – opens 7 AM';
+    if (h < 10) return '🌅 Early-break';
+    if (h < 12) return '☕ Mid-morning bunch';
+    if (h < 15) return '🍽️ Lunch o\'clock';
+    if (h < 18) return '🍵 Afternoon munch';
+    if (h < 21) return '🌆 Evening feast';
+    return '😴 Closed – see you tomorrow!';
+  }
+
+  Widget _carouselCard(BuildContext context, Map<String,dynamic> m) {
+    final greeting = _timeGreeting();
+    return GestureDetector(
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => MealDetailScreen(meal: m)),
+      ),
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 8),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(24),
+          gradient: LinearGradient(colors: [AppColors.primary, AppColors.accent]),
+        ),
+        child: Stack(
+          children: [
+            _floatingDots(),          // behind everything
+            // content
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+              child: Row(
                 children: [
-                  // promo carousel - now larger
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    child: PromoCarousel(
-                      promoItems: [
-                        {
-                          'image': 'assets/images/promo1.jpg',
-                          'title': 'Ramadan Offers',
-                          'subtitle': 'Get 25% off',
-                          'cta': 'Grab Offer'
-                        },
-                        {
-                          'image': 'assets/images/promo2.jpg',
-                          'title': 'Free Delivery',
-                          'subtitle': 'On orders over Ksh 500',
-                          'cta': 'Order Now'
-                        },
-                        {
-                          'image': 'assets/images/promo3.jpg',
-                          'title': 'New: Ugali Specials',
-                          'subtitle': 'From Ksh 150',
-                          'cta': 'See Menu'
-                        },
-                      ],
-                    ),
-                  ),
-                  Container(
-                    decoration: BoxDecoration(
-                      color: AppColors.white,
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.05),
-                          blurRadius: 2,
-                          offset: const Offset(0, 1),
-                        ),
-                      ],
-                    ),
-                    child: TabBar(
-                      controller: _tabController,
-                      isScrollable: true,
-                      indicatorColor: AppColors.primary,
-                      labelColor: AppColors.primary,
-                      unselectedLabelColor: AppColors.darkText,
-                      indicatorSize: TabBarIndicatorSize.tab,
-                      indicatorWeight: 3,
-                      labelStyle: const TextStyle(
-                        fontWeight: FontWeight.w600,
-                        fontSize: 14,
-                      ),
-                      unselectedLabelStyle: const TextStyle(
-                        fontWeight: FontWeight.normal,
-                        fontSize: 14,
-                      ),
-                      tabs: categories.map((cat) => Tab(text: cat)).toList(),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
+                  // CIRCULAR plated food (logo style)
+                  _circularPlate(context, m),
+                  const SizedBox(width: 16),
+                  // text
                   Expanded(
-                    child: TabBarView(
-                      controller: _tabController,
-                      children: categories.asMap().entries.map((entry) {
-                        final tabIndex = entry.key;
-                        final cat = entry.value;
-                        final mealsByCategory = cat == 'All'
-                            ? filteredMeals(meals)
-                            : filteredMeals(meals)
-                                .where((m) => m['category'] == cat)
-                                .toList();
-                        if (mealsByCategory.isEmpty) {
-                          return Center(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(
-                                  Icons.search_off,
-                                  size: 64,
-                                  color: AppColors.lightGray,
-                                ),
-                                const SizedBox(height: 16),
-                                Text(
-                                  "No meals found",
-                                  style: TextStyle(
-                                    color: AppColors.lightGray,
-                                    fontSize: 16,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          );
-                        }
-                        return GridView.builder(
-                          controller: _ensureControllerForIndex(tabIndex),
-                          padding: const EdgeInsets.all(16),
-                          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: crossAxisCount,
-                            childAspectRatio: 0.75,
-                            crossAxisSpacing: 12,
-                            mainAxisSpacing: 12,
-                          ),
-                          itemCount: mealsByCategory.length,
-                          itemBuilder: (context, index) =>
-                              MealCard(meal: mealsByCategory[index]),
-                        );
-                      }).toList(),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(greeting,
+                            style: const TextStyle(
+                                color: Colors.white70,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500)),
+                        const SizedBox(height: 4),
+                        Text(m['title'],
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold)),
+                        const SizedBox(height: 4),
+                        Text('Ksh ${m['price']}',
+                            style: const TextStyle(
+                                color: Colors.white70, fontSize: 14)),
+                      ],
                     ),
                   ),
+                  const Icon(Icons.chevron_right, color: Colors.white54),
                 ],
               ),
             ),
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        backgroundColor: AppColors.primary,
-        onPressed: _showScrollToTop ? _scrollToTop : _scrollToBottom,
-        child: Icon(
-          _showScrollToTop ? Icons.arrow_upward : Icons.arrow_downward,
-          color: AppColors.white,
+    );
+  }
+
+  Widget _circularPlate(BuildContext context, Map<String,dynamic> m) {
+    return GestureDetector(
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => MealDetailScreen(meal: m)),
+      ),
+      child: Material(
+        elevation: 6,
+        color: AppColors.cardBackground,
+        shape: const CircleBorder(),
+        child: Container(
+          width: 90,
+          height: 90,
+          padding: const EdgeInsets.all(6),
+          decoration: const BoxDecoration(shape: BoxShape.circle),
+          child: ClipOval(
+            child: Image.asset(
+              m['image'],
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) =>
+                  const Icon(Icons.fastfood, size: 40, color: AppColors.lightGray),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ----------  dots background (behind text) ----------
+  Widget _floatingDots() {
+    return SizedBox.expand(
+      child: Stack(
+        children: List.generate(
+          5,
+          (i) => Positioned(
+            left: 20.0 + i * (MediaQuery.of(context).size.width * 0.15),
+            bottom: 12,
+            child: AnimatedDot(
+              key: ValueKey('dot$i'), // new key every page → forces re-animation
+              index: i,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _closedCard() => Container(
+    margin: const EdgeInsets.symmetric(horizontal: 24),
+    height: 120,
+    decoration: BoxDecoration(
+      borderRadius: BorderRadius.circular(24),
+      color: AppColors.lightGray.withOpacity(.15),
+    ),
+    child: Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: const [
+          Icon(Icons.watch_later, size: 40, color: AppColors.primary),
+          SizedBox(height: 8),
+          Text('We\'re asleep 😴', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+          Text('Open again at 7 AM', style: TextStyle(fontSize: 12, color: Colors.grey)),
+        ],
+      ),
+    ),
+  );
+}
+
+// ----------  FLY TO CART ANIMATION  ----------
+OverlayEntry? _currentOverlay;
+
+void _flyToCart(BuildContext context, Key cartKey, Widget flyingWidget, VoidCallback onEnd) {
+  final overlay = Overlay.of(context);
+  final renderBox = context.findRenderObject() as RenderBox?;
+  
+  // Find the cart icon using the key
+  RenderBox? cartRenderBox;
+  void visitChildren(Element element) {
+    if (element.widget.key == cartKey) {
+      cartRenderBox = element.renderObject as RenderBox?;
+      return;
+    }
+    element.visitChildren(visitChildren);
+  }
+  
+  if (context.mounted) {
+    context.visitChildElements(visitChildren);
+  }
+  
+  if (renderBox == null || cartRenderBox == null) {
+    onEnd(); // fallback
+    return;
+  }
+
+  final start = renderBox.localToGlobal(Offset.zero);
+  final end = cartRenderBox!.localToGlobal(Offset.zero) + const Offset(12, 12);
+
+  late OverlayEntry entry;
+  entry = OverlayEntry(
+    builder: (_) => _FlyingWidget(
+      start: start,
+      end: end,
+      child: flyingWidget,
+      onEnd: () {
+        entry.remove();
+        _currentOverlay = null;
+        onEnd();
+      },
+    ),
+  );
+
+  _currentOverlay?.remove();
+  _currentOverlay = entry;
+  overlay.insert(entry);
+}
+
+class _FlyingWidget extends StatefulWidget {
+  final Offset start;
+  final Offset end;
+  final Widget child;
+  final VoidCallback onEnd;
+
+  const _FlyingWidget({
+    required this.start,
+    required this.end,
+    required this.child,
+    required this.onEnd,
+  });
+
+  @override
+  State<_FlyingWidget> createState() => _FlyingWidgetState();
+}
+
+class _FlyingWidgetState extends State<_FlyingWidget>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+  late final Animation<Offset> _position;
+  late final Animation<double> _scale;
+  late final Animation<double> _fade;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 700));
+    _position = Tween<Offset>(begin: widget.start, end: widget.end)
+        .animate(CurvedAnimation(parent: _ctrl, curve: Curves.fastOutSlowIn));
+    _scale = Tween<double>(begin: 1, end: .2).animate(_ctrl);
+    _fade = Tween<double>(begin: 1, end: 0).animate(_ctrl);
+
+    _ctrl.forward().whenComplete(() => widget.onEnd());
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _ctrl,
+      builder: (_, __) => Positioned(
+        left: _position.value.dx,
+        top: _position.value.dy,
+        child: Transform.scale(
+          scale: _scale.value,
+          child: Opacity(
+            opacity: _fade.value,
+            child: Material(
+              elevation: 0,
+              color: Colors.transparent,
+              child: widget.child,
+            ),
+          ),
         ),
       ),
     );
   }
 }
 
-class MealCard extends StatefulWidget {
+/* ----------------------------------------------------------
+   MODERN CARD  (fly-to-cart animation + shadow)
+----------------------------------------------------------- */
+class _ModernMealCard extends StatefulWidget {
   final Map<String, dynamic> meal;
-
-  const MealCard({super.key, required this.meal});
+  const _ModernMealCard({required this.meal});
 
   @override
-  State<MealCard> createState() => _MealCardState();
+  State<_ModernMealCard> createState() => _ModernMealCardState();
 }
 
-class _MealCardState extends State<MealCard> {
-  int _quantity = 0;
+class _ModernMealCardState extends State<_ModernMealCard>
+    with SingleTickerProviderStateMixin {
+  int _qty = 0;
+  late final AnimationController _ctrl;
 
-  void _increment() => setState(() => _quantity++);
-  void _decrement() {
-    if (_quantity > 0) setState(() => _quantity--);
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+        duration: const Duration(milliseconds: 400), vsync: this);
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
   }
 
   void _addToCart() {
-    if (_quantity <= 0) return;
-    final dynamic cartProvider = Provider.of<CartProvider>(context, listen: false);
-    final price = (widget.meal['price'] is num) ? (widget.meal['price'] as num).toDouble() : 0.0;
-    cartProvider.addItem(CartItem(
-      id: '${widget.meal['title']}_${DateTime.now().millisecondsSinceEpoch}',
-      mealTitle: widget.meal['title']?.toString() ?? 'Item',
-      price: price.toInt(),
-      quantity: _quantity,
-      mealImage: widget.meal['image']?.toString() ?? '',
-    ));
+    if (_qty <= 0) return;
+    final cartKey = const ValueKey('cartIcon');
+    final cart = context.read<CartProvider>();
+    cart.addItem(CartItem(
+          id: '${widget.meal['title']}_${DateTime.now().millisecondsSinceEpoch}',
+          mealTitle: widget.meal['title'],
+          price: (widget.meal['price'] as num).toInt(),
+          quantity: _qty,
+          mealImage: widget.meal['image'] ?? '',
+        ));
 
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text('$_quantity ${widget.meal['title']} added to cart'),
-      duration: const Duration(seconds: 2),
-    ));
-    setState(() => _quantity = 0);
+    // flying picture
+    final flyWidget = ClipOval(
+      child: Image.asset(
+        widget.meal['image'] ?? '',
+        width: 50,
+        height: 50,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) =>
+            const Icon(Icons.fastfood, size: 40, color: Colors.white),
+      ),
+    );
+
+    _flyToCart(context, cartKey, flyWidget, () {
+      // after landing → orange bar
+      final snack = SnackBar(
+        content: Row(
+          children: [
+            Icon(Icons.check_circle, color: AppColors.white),
+            const SizedBox(width: 8),
+            Text('$_qty × ${widget.meal['title']} added',
+                style: TextStyle(color: AppColors.white)),
+          ],
+        ),
+        backgroundColor: AppColors.accent,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        margin: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 2),
+      );
+      ScaffoldMessenger.of(context).showSnackBar(snack);
+    });
+
+    setState(() => _qty = 0);
   }
 
   @override
   Widget build(BuildContext context) {
-    final meal = widget.meal;
-
-    return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: InkWell(
-        onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => MealDetailScreen(meal: meal)),
-          );
-        },
-        borderRadius: BorderRadius.circular(12),
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            // compute a responsive image height based on available card height
-            final double cardMaxH = constraints.maxHeight.isFinite ? constraints.maxHeight : 220.0;
-            final double imageHeight = (cardMaxH * 0.45).clamp(80.0, 140.0);
-
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // Image section (height constrained)
-                SizedBox(
-                  height: imageHeight,
-                  child: Container(
-                    decoration: BoxDecoration(
-                      borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-                      color: AppColors.cardBackground,
-                    ),
-                    child: ClipRRect(
-                      borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-                      child: Image.asset(
-                        meal['image'] ?? '',
-                        fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) {
-                          return Container(
-                            color: AppColors.lightGray.withOpacity(0.3),
-                            alignment: Alignment.center,
-                            child: const Icon(
-                              Icons.fastfood,
-                              color: AppColors.lightGray,
-                              size: 40,
-                            ),
-                          );
-                        },
+    final m = widget.meal;
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        color: AppColors.white,
+        boxShadow: [
+          BoxShadow(
+              color: AppColors.primary.withOpacity(.08),
+              blurRadius: 12,
+              offset: const Offset(0, 6))
+        ],
+      ),
+      child: Column(children: [
+        // image
+        Expanded(
+          flex: 5,
+          child: Container(
+            width: double.infinity,
+            decoration: BoxDecoration(
+                borderRadius:
+                    const BorderRadius.vertical(top: Radius.circular(16)),
+                image: DecorationImage(
+                    image: AssetImage(m['image'] ?? ''),
+                    fit: BoxFit.cover,
+                    onError: (_, __) => const AssetImage(''))),
+          ),
+        ),
+        // info
+        Expanded(
+          flex: 3,
+          child: Padding(
+            padding: const EdgeInsets.all(8),
+            child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Flexible(
+                    child: FittedBox(                       // shrink to fit
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        m['title'],
+                        style: const TextStyle(
+                          fontSize: 14,                     // original desired size
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ),
                   ),
-                ),
-
-                // Remaining content uses the leftover space
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          meal['title']?.toString() ?? '',
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w600,
-                            fontSize: 14,
-                            height: 1.2,
-                          ),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          "Ksh ${meal['price']?.toString() ?? '0'}",
+                  const SizedBox(height: 4),
+                  Row(children: [
+                    Flexible(
+                      child: Text('Ksh ${m['price']}',
                           style: TextStyle(
-                            color: AppColors.primary,
-                            fontSize: 14,
-                            fontWeight: FontWeight.bold,
+                              color: AppColors.primary,
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold)),
+                    ),
+                    const SizedBox(width: 4),
+                    Container(
+                      decoration: BoxDecoration(
+                          color: AppColors.cardBackground,
+                          borderRadius: BorderRadius.circular(8)),
+                      child: Row(mainAxisSize: MainAxisSize.min, children: [
+                        SizedBox(
+                          width: 28,
+                          height: 28,
+                          child: IconButton(
+                              padding: EdgeInsets.zero,
+                              iconSize: 16,
+                              onPressed: () => setState(() => _qty = math.max(0, _qty - 1)),
+                              icon: const Icon(Icons.remove)),
+                        ),
+                        SizedBox(
+                          width: 20,
+                          child: Center(
+                            child: Text('$_qty',
+                                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
                           ),
                         ),
-                        const Spacer(),
-                        // Compact quantity controls + cart button
-                        Row(
-                          children: [
-                            SizedBox(
-                              width: 28,
-                              height: 28,
-                              child: ElevatedButton(
-                                style: ElevatedButton.styleFrom(
-                                  padding: EdgeInsets.zero,
-                                  backgroundColor: _quantity > 0 ? AppColors.primary : AppColors.lightGray,
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-                                ),
-                                onPressed: _decrement,
-                                child: const Icon(Icons.remove, size: 16, color: Colors.white),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Text('$_quantity', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.darkText)),
-                            const SizedBox(width: 8),
-                            SizedBox(
-                              width: 28,
-                              height: 28,
-                              child: ElevatedButton(
-                                style: ElevatedButton.styleFrom(
-                                  padding: EdgeInsets.zero,
-                                  backgroundColor: AppColors.primary,
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-                                ),
-                                onPressed: _increment,
-                                child: const Icon(Icons.add, size: 16, color: Colors.white),
-                              ),
-                            ),
-                            const Spacer(),
-                            SizedBox(
-                              width: 44,
-                              height: 36,
-                              child: ElevatedButton(
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: _quantity > 0 ? AppColors.accent : AppColors.lightGray,
-                                  padding: EdgeInsets.zero,
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                                ),
-                                onPressed: _quantity > 0 ? _addToCart : null,
-                                child: const Icon(Icons.shopping_cart, size: 18, color: Colors.white),
-                              ),
-                            ),
-                          ],
+                        SizedBox(
+                          width: 28,
+                          height: 28,
+                          child: IconButton(
+                              padding: EdgeInsets.zero,
+                              iconSize: 16,
+                              onPressed: () => setState(() => _qty++),
+                              icon: const Icon(Icons.add)),
                         ),
-                      ],
+                      ]),
                     ),
-                  ),
-                ),
-              ],
-            );
-          },
-        ),
-      ),
+                  ]),
+                  const SizedBox(height: 4),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 32,
+                    child: ScaleTransition(
+                      scale: Tween<double>(begin: 1, end: 1.4)
+                          .animate(CurvedAnimation(parent: _ctrl, curve: Curves.elasticOut)),
+                      child: ElevatedButton(
+                          onPressed: _addToCart,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: _qty > 0 ? AppColors.accent : AppColors.lightGray,
+                            padding: EdgeInsets.zero,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          ),
+                          child: const Icon(Icons.shopping_cart, color: Colors.white, size: 16)),
+                    ),
+                  )
+                ]),
+          ),
+        )
+      ]),
     );
   }
 }
 
-class PromoCarousel extends StatelessWidget {
-  final List<Map<String, dynamic>> promoItems;
+/// Simple animated dot used in the carousel background.
+/// Keeps the file-local implementation to resolve the undefined symbol.
+class AnimatedDot extends StatefulWidget {
+  final int index;
+  const AnimatedDot({super.key, required this.index});
 
-  const PromoCarousel({super.key, required this.promoItems});
+  @override
+  State<AnimatedDot> createState() => _AnimatedDotState();
+}
+
+class _AnimatedDotState extends State<AnimatedDot> with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<double> _offsetAnim;
+  late final Animation<double> _opacityAnim;
+
+  @override
+  void initState() {
+    super.initState();
+    final period = Duration(milliseconds: 1200 + (widget.index * 100));
+    _controller = AnimationController(vsync: this, duration: period);
+    _offsetAnim = Tween<double>(begin: 0, end: -8).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
+    _opacityAnim = Tween<double>(begin: 0.6, end: 1.0).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
+    _controller.repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: 140, // slightly reduced to give more room to tabs on small screens
-      margin: const EdgeInsets.symmetric(horizontal: 0),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.08),
-            blurRadius: 8,
-            offset: const Offset(0, 4),
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        return Transform.translate(
+          offset: Offset(0, _offsetAnim.value),
+          child: Opacity(
+            opacity: _opacityAnim.value,
+            child: Container(
+              width: 10,
+              height: 10,
+              decoration: const BoxDecoration(
+                color: Colors.white24,
+                shape: BoxShape.circle,
+              ),
+            ),
           ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(16),
-        child: PageView.builder(
-          itemCount: promoItems.length,
-          itemBuilder: (context, index) {
-            final item = promoItems[index];
-            return Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    AppColors.primary.withOpacity(0.95),
-                    AppColors.accent.withOpacity(0.85),
-                  ],
-                ),
-              ),
-              child: Stack(
-                children: [
-                  // Background pattern (safe: won't throw if asset missing)
-                  Positioned.fill(
-                    child: Opacity(
-                      opacity: 0.06,
-                      child: Image.asset(
-                        'assets/images/pattern.png',
-                        repeat: ImageRepeat.repeat,
-                        fit: BoxFit.none,
-                        errorBuilder: (ctx, err, st) => const SizedBox.shrink(),
-                      ),
-                    ),
-                  ),
-                  // Content — compact column with tuned spacing
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 14),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            item['title'] ?? '',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            item['subtitle'] ?? '',
-                            style: const TextStyle(
-                              color: Colors.white70,
-                              fontSize: 13,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          const SizedBox(height: 10),
-                          Material(
-                            color: Colors.transparent,
-                            child: ElevatedButton(
-                              onPressed: () {
-                                // Handle CTA button press
-                              },
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.white,
-                                foregroundColor: AppColors.primary,
-                                elevation: 0,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(18),
-                                ),
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                  vertical: 6,
-                                ),
-                                minimumSize: const Size(0, 34),
-                              ),
-                              child: Text(
-                                (item['cta'] ?? '').toString(),
-                                style: const TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            );
-          },
-        ),
-      ),
+        );
+      },
     );
   }
 }

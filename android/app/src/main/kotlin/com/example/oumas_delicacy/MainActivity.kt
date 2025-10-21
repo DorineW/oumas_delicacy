@@ -1,4 +1,4 @@
-package com.oumasdelicacy.app
+package com.example.oumas_delicacy
 
 import io.flutter.embedding.android.FlutterActivity
 

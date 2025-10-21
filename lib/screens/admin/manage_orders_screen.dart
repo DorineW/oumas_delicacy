@@ -22,7 +22,7 @@ class _ManageOrdersScreenState extends State<ManageOrdersScreen> {
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (widget.highlightOrderId != null) {
-        final provider = Provider.of<OrderProvider>(context, listen: false);
+        final provider = context.read<OrderProvider>();
         final index =
             provider.orders.indexWhere((o) => o.id == widget.highlightOrderId);
         if (index != -1) {
@@ -38,29 +38,31 @@ class _ManageOrdersScreenState extends State<ManageOrdersScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final provider = Provider.of<OrderProvider>(context);
-    provider.seedDemo(); // demo data
+    return Consumer<OrderProvider>(
+      builder: (context, provider, child) {
+        provider.seedDemo(); // demo data
+        final orders = provider.orders;
 
-    final orders = provider.orders;
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Manage Orders'),
-        backgroundColor: AppColors.primary,
-      ),
-      body: orders.isEmpty
-          ? const Center(child: Text('No orders found'))
-          : ListView.builder(
-              controller: _scrollController,
-              padding: const EdgeInsets.all(12),
-              itemCount: orders.length,
-              itemBuilder: (context, index) {
-                final o = orders[index];
-                final highlighted = widget.highlightOrderId != null &&
-                    widget.highlightOrderId == o.id;
-                return AdminOrderCard(order: o, highlighted: highlighted);
-              },
-            ),
+        return Scaffold(
+          appBar: AppBar(
+            title: const Text('Manage Orders'),
+            backgroundColor: AppColors.primary,
+          ),
+          body: orders.isEmpty
+              ? const Center(child: Text('No orders found'))
+              : ListView.builder(
+                  controller: _scrollController,
+                  padding: const EdgeInsets.all(12),
+                  itemCount: orders.length,
+                  itemBuilder: (context, index) {
+                    final o = orders[index];
+                    final highlighted = widget.highlightOrderId != null &&
+                        widget.highlightOrderId == o.id;
+                    return AdminOrderCard(order: o, highlighted: highlighted);
+                  },
+                ),
+        );
+      },
     );
   }
 }

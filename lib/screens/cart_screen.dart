@@ -80,22 +80,26 @@ class CartScreen extends StatelessWidget {
                         mainAxisSize: MainAxisSize.min,
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Text(
-                            'Ksh ${item.totalPrice}',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.accent, fontSize: 13),
+                          Flexible(
+                            child: Text(
+                              'Ksh ${item.totalPrice}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.accent, fontSize: 13),
+                            ),
                           ),
-                          const SizedBox(height: 6),
+                          const SizedBox(height: 2),
                           // compact delete control: constrained icon size + zero padding
-                          IconButton(
-                            padding: EdgeInsets.zero,
-                            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                            iconSize: 20,
-                            icon: const Icon(Icons.delete),
-                            color: Colors.red.shade700,
-                            onPressed: () => cartProvider.removeItem(item.id),
-                            tooltip: 'Remove item',
+                          Flexible(
+                            child: IconButton(
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                              iconSize: 18,
+                              icon: const Icon(Icons.delete),
+                              color: Colors.red.shade700,
+                              onPressed: () => cartProvider.removeItem(item.id),
+                              tooltip: 'Remove item',
+                            ),
                           ),
                         ],
                       ),

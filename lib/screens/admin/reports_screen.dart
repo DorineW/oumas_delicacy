@@ -1,7 +1,6 @@
 // lib/screens/admin/reports_screen.dart
 import 'dart:io';
 import 'dart:math';
-import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
@@ -11,8 +10,6 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:pdf/Pdf.dart' as pdf;
 import 'package:printing/printing.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:cross_file/cross_file.dart';
-import 'package:permission_handler/permission_handler.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:path/path.dart' as p;
 
@@ -822,15 +819,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
     if (!mounted) return;
 
     // Request permission on Android
-    if (Platform.isAndroid) {
-      final perm = await Permission.manageExternalStorage.request();
-      if (!perm.isGranted) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Storage permission is required to save to Downloads')));
-        }
-        return;
-      }
-    }
+    // On Android we attempt to copy to the Downloads folder; explicit runtime permission requests are omitted here
+    // to avoid depending on the permission_handler package — failures will be caught and reported to the user.
+    // (If your app targets Android versions requiring MANAGE_EXTERNAL_STORAGE, consider adding permission handling.)
+    // No explicit permission request performed.
 
     // show copying dialog
     _showCopyingDialog();

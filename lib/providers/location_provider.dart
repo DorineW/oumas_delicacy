@@ -1,16 +1,18 @@
 // lib/providers/location_provider.dart
 import 'package:flutter/material.dart';
-import 'package:geolocator/geolocator.dart';
 
 class LocationProvider with ChangeNotifier {
-  Position? _currentPosition;
+  double? _latitude;
+  double? _longitude;
   String? _deliveryAddress;
 
-  Position? get currentPosition => _currentPosition;
+  double? get latitude => _latitude;
+  double? get longitude => _longitude;
   String? get deliveryAddress => _deliveryAddress;
 
-  Future<void> setLocation(Position position) async {
-    _currentPosition = position;
+  Future<void> setLocation(double latitude, double longitude) async {
+    _latitude = latitude;
+    _longitude = longitude;
     notifyListeners();
   }
 
@@ -20,7 +22,8 @@ class LocationProvider with ChangeNotifier {
   }
 
   void clearLocation() {
-    _currentPosition = null;
+    _latitude = null;
+    _longitude = null;
     _deliveryAddress = null;
     notifyListeners();
   }

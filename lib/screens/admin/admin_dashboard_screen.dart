@@ -383,8 +383,14 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             icon: const Icon(Icons.logout),
             tooltip: 'Logout',
             color: AppColors.white,
-            onPressed: () {
-              Provider.of<AuthService>(context, listen: false).logout();
+            onPressed: () async {
+              if (!mounted) return;
+              await Provider.of<AuthService>(context, listen: false).logout();
+              if (!mounted) return;
+              Navigator.of(context).pushNamedAndRemoveUntil(
+                '/login',
+                (route) => false,
+              );
             },
           ),
         ],

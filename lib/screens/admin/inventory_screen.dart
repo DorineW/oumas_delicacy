@@ -50,8 +50,14 @@ class _InventoryScreenState extends State<InventoryScreen> {
             ),
           ),
           Expanded(
-            child: Consumer<InventoryService>(
+            child: Consumer<InventoryService?>(
               builder: (context, inventoryService, child) {
+                if (inventoryService == null) {
+                  return const Center(
+                    child: Text('InventoryService not available'),
+                  );
+                }
+
                 final items = inventoryService.items
                     .where((item) =>
                         item.name.toLowerCase().contains(_filter) ||
@@ -145,10 +151,13 @@ class _InventoryScreenState extends State<InventoryScreen> {
                   lowStockThreshold: double.tryParse(thresholdController.text) ?? 5,
                 );
                 
-                if (item == null) {
-                  Provider.of<InventoryService>(context, listen: false).addItem(newItem);
-                } else {
-                  Provider.of<InventoryService>(context, listen: false).updateItem(newItem);
+                final inventoryService = context.read<InventoryService?>();
+                if (inventoryService != null) {
+                  if (item == null) {
+                    inventoryService.addItem(newItem);
+                  } else {
+                    inventoryService.updateItem(newItem);
+                  }
                 }
                 
                 Navigator.of(context).pop();
@@ -175,7 +184,10 @@ class _InventoryScreenState extends State<InventoryScreen> {
             ),
             ElevatedButton(
               onPressed: () {
-                Provider.of<InventoryService>(context, listen: false).deleteItem(item.id);
+                final inventoryService = context.read<InventoryService?>();
+                if (inventoryService != null) {
+                  inventoryService.deleteItem(item.id);
+                }
                 Navigator.of(context).pop();
               },
               style: ElevatedButton.styleFrom(backgroundColor: Colors.red),

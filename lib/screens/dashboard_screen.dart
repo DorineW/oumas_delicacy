@@ -1,13 +1,25 @@
-//lib/screens/dashboard_screen.dart
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
 import '../constants/colors.dart';
+import '../constants/app_decorations.dart';
+import '../providers/order_provider.dart';
+import '../widgets/glass_card.dart';
 
 class DashboardScreen extends StatelessWidget {
   const DashboardScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    // ----------  single line that makes it reactive  ----------
+    final provider = context.watch<OrderProvider>();
+
+    // ----------  compute counts once, automatically  ----------
+        final int orderCount  = provider.orders.length;
+        final int favCount    = 0;   // placeholder until favoriteItems is implemented
+        final int reviewCount = 0;   // OrderProvider has no `reviews` getter, using fallback
+    
+        return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
         title: const Text("Dashboard"),
@@ -21,28 +33,25 @@ class DashboardScreen extends StatelessWidget {
           children: [
             const Text(
               "Welcome back, Dorin!",
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 20),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: const [
+              children: [
                 _DashboardCard(
                   title: 'Orders',
-                  count: '12',
+                  count: orderCount.toString(),        // <-- live
                   icon: Icons.shopping_bag,
                 ),
                 _DashboardCard(
                   title: 'Favorites',
-                  count: '5',
+                  count: favCount.toString(),          // <-- live
                   icon: Icons.favorite,
                 ),
                 _DashboardCard(
                   title: 'Reviews',
-                  count: '3',
+                  count: reviewCount.toString(),       // <-- live
                   icon: Icons.star,
                 ),
               ],
@@ -80,34 +89,38 @@ class _DashboardCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: 100,
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppColors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            // ignore: deprecated_member_use
-            color: Colors.grey.withOpacity(0.2),
-            blurRadius: 6,
-            offset: const Offset(0, 4),
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => HapticFeedback.lightImpact(),
+        child: GlassCard(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                icon,
+                size: 40,
+                color: AppColors.primary,
+              ),
+              const SizedBox(height: 10),
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(height: 5),
+              Text(
+                count,
+                style: const TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
-      child: Column(
-        children: [
-          Icon(icon, size: 30, color: AppColors.primary),
-          const SizedBox(height: 10),
-          Text(
-            count,
-            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-          ),
-          Text(
-            title,
-            style: const TextStyle(fontSize: 14, color: Colors.grey),
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -120,16 +133,23 @@ class _CategoryChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(right: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: AppColors.accent.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(color: AppColors.accent),
+    return GestureDetector(
+      onTap: () => HapticFeedback.selectionClick(),
+      child: Container(
+        margin: const EdgeInsets.only(right: 8.0),
+        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+        decoration: BoxDecoration(
+          color: AppColors.primary,
+          borderRadius: AppDecorations.radius24,
+          boxShadow: [AppDecorations.cardShadow],
+        ),
+        child: Text(
+          label,
+          style: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
       ),
     );
   }
