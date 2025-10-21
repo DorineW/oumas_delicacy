@@ -6,6 +6,7 @@
 import 'dart:ui';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../widgets/carousel.dart';
 
@@ -601,48 +602,39 @@ class _ModernMealCardState extends State<_ModernMealCard>
     super.dispose();
   }
 
-  void _addToCart() {
+  Future<void> _addToCart() async {
     if (_qty <= 0) return;
+
+    HapticFeedback.lightImpact(); // 1. vibration
+
     final cartKey = const ValueKey('cartIcon');
     final cart = context.read<CartProvider>();
     cart.addItem(CartItem(
-          id: '${widget.meal['title']}_${DateTime.now().millisecondsSinceEpoch}',
-          mealTitle: widget.meal['title'],
-          price: (widget.meal['price'] as num).toInt(),
-          quantity: _qty,
-          mealImage: widget.meal['image'] ?? '',
-        ));
+      id: '${widget.meal['title']}_${DateTime.now().millisecondsSinceEpoch}',
+      mealTitle: widget.meal['title'],
+      price: (widget.meal['price'] as num).toInt(),
+      quantity: _qty,
+      mealImage: widget.meal['image'] ?? '',
+    ));
 
-    // flying picture
+    // 2. fly animation
     final flyWidget = ClipOval(
-      child: Image.asset(
-        widget.meal['image'] ?? '',
-        width: 50,
-        height: 50,
-        fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) =>
-            const Icon(Icons.fastfood, size: 40, color: Colors.white),
-      ),
+      child: Image.asset(widget.meal['image'] ?? '',
+          width: 50, height: 50, fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => const Icon(Icons.fastfood, size: 40)),
     );
-
     _flyToCart(context, cartKey, flyWidget, () {
-      // after landing → orange bar
-      final snack = SnackBar(
-        content: Row(
-          children: [
-            Icon(Icons.check_circle, color: AppColors.white),
-            const SizedBox(width: 8),
-            Text('$_qty × ${widget.meal['title']} added',
-                style: TextStyle(color: AppColors.white)),
-          ],
+      // 3. orange snack-bar
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('$_qty × ${widget.meal['title']} added'),
+          backgroundColor: AppColors.accent,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          margin: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 2),
         ),
-        backgroundColor: AppColors.accent,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        margin: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-        behavior: SnackBarBehavior.floating,
-        duration: const Duration(seconds: 2),
       );
-      ScaffoldMessenger.of(context).showSnackBar(snack);
     });
 
     setState(() => _qty = 0);

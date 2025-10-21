@@ -7,6 +7,7 @@ import '../constants/colors.dart';
 import '../services/auth_service.dart';
 import 'home_screen.dart';
 import 'admin/admin_dashboard_screen.dart';
+import 'rider/rider_dashboard_screen.dart';
 import '../widgets/bike_animation.dart'; // Import the bike animation
 
 class LoginScreen extends StatefulWidget {
@@ -89,166 +90,212 @@ class _LoginScreenState extends State<LoginScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 40),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            // App Logo
-            Image.asset(
-              "assets/images/app_icon.png",
-              height: 120,
-            ),
-            const SizedBox(height: 20),
-
-            // Sliding slogan
-            SlideTransition(
-              position: _slideAnimation,
-              child: const Text(
-                "Make Meals Magical!",
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 22,
-                  fontStyle: FontStyle.italic,
-                  color: AppColors.darkText,
-                ),
-              ),
-            ),
-            const SizedBox(height: 30),
-
-            // Bike animation
-            SizedBox(
-              height: 100,
-              child: BikeAnimation(size: 80),
-            ),
-            const SizedBox(height: 30),
-
-            // Email field
-            TextFormField(
-              controller: _emailController,
-              decoration: InputDecoration(
-                labelText: 'Email',
-                filled: true,
-                fillColor: AppColors.cardBackground,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              keyboardType: TextInputType.emailAddress,
-            ),
-            const SizedBox(height: 16),
-
-            // Password field
-            TextFormField(
-              controller: _passwordController,
-              decoration: InputDecoration(
-                labelText: 'Password',
-                filled: true,
-                fillColor: AppColors.cardBackground,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              obscureText: true,
-            ),
-            const SizedBox(height: 12),
-
-            // Forgot password
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton(
-                onPressed: () {
-                  // TODO: Implement forgot password logic
-                },
-                child: const Text(
-                  "Forgot Password?",
-                  style: TextStyle(color: AppColors.primary),
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 12),
-
-            // Login Button
-            ElevatedButton(
-              onPressed: _isLoading ? null : _login,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                foregroundColor: AppColors.white,
-                minimumSize: const Size(double.infinity, 50),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              child: _isLoading
-                  ? const CircularProgressIndicator(color: AppColors.white)
-                  : const Text('Login'),
-            ),
-
-            const SizedBox(height: 24),
-
-            // Divider with "or continue with"
-            Row(
+      body: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Expanded(child: Divider(thickness: 1)),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                // App Logo
+                Image.asset(
+                  "assets/images/app_icon.png",
+                  height: 120,
+                ),
+                const SizedBox(height: 20),
+
+                // Sliding slogan
+                SlideTransition(
+                  position: _slideAnimation,
+                  child: const Text(
+                    "Make Meals Magical!",
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 22,
+                      fontStyle: FontStyle.italic,
+                      color: AppColors.darkText,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 30),
+
+                // Bike animation
+                SizedBox(
+                  height: 100,
+                  child: BikeAnimation(size: 80),
+                ),
+                const SizedBox(height: 30),
+
+                // Email field
+                TextField(
+                  controller: _emailController,
+                  decoration: InputDecoration(
+                    labelText: 'Email',
+                    filled: true,
+                    fillColor: AppColors.cardBackground,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  keyboardType: TextInputType.emailAddress,
+                ),
+                const SizedBox(height: 16),
+                
+                // Password field
+                TextField(
+                  controller: _passwordController,
+                  decoration: InputDecoration(
+                    labelText: 'Password',
+                    filled: true,
+                    fillColor: AppColors.cardBackground,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  obscureText: true,
+                ),
+                const SizedBox(height: 24),
+                
+                // Customer Login button
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: _isLoading ? null : _login,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      foregroundColor: AppColors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: _isLoading
+                        ? const SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(
+                              color: AppColors.white,
+                              strokeWidth: 2,
+                            ),
+                          )
+                        : const Text(
+                            'Login as Customer',
+                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                          ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                
+                // Rider Login button
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: _isLoading ? null : () {
+                      Navigator.pushReplacement(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const RiderDashboardScreen(),
+                        ),
+                      );
+                    },
+                    icon: const Icon(Icons.delivery_dining, size: 20),
+                    label: const Text(
+                      'Login as Rider',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppColors.accent,
+                      side: BorderSide(color: AppColors.accent, width: 2),
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
+                ),
+                
+                const SizedBox(height: 12),
+
+                // Forgot password
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton(
+                    onPressed: () {
+                      // TODO: Implement forgot password logic
+                    },
+                    child: const Text(
+                      "Forgot Password?",
+                      style: TextStyle(color: AppColors.primary),
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 12),
+
+                // Divider with "or continue with"
+                Row(
+                  children: [
+                    const Expanded(child: Divider(thickness: 1)),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                      child: Text(
+                        "or continue with",
+                        style: TextStyle(color: AppColors.lightGray),
+                      ),
+                    ),
+                    const Expanded(child: Divider(thickness: 1)),
+                  ],
+                ),
+                const SizedBox(height: 16),
+
+                // Social login buttons (using sign_in_button)
+                Column(
+                  children: [
+                    SignInButton(
+                      Buttons.facebook,
+                      onPressed: () {
+                        // TODO: Facebook login
+                      },
+                    ),
+                    const SizedBox(height: 10),
+                    SignInButton(
+                      Buttons.google,
+                      onPressed: () {
+                        // TODO: Google login
+                      },
+                    ),
+                    const SizedBox(height: 10),
+                    SignInButton(
+                      Buttons.apple,
+                      onPressed: () {
+                        // TODO: Apple login
+                      },
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 30),
+
+                // Demo admin login
+                TextButton(
+                  onPressed: kDebugMode
+                      ? () async {
+                          // set demo credentials and trigger the login flow (debug only)
+                          _emailController.text = 'admin@example.com';
+                          _passwordController.text = 'admin123';
+
+                          // call the same login function you already use
+                          await _login();
+                        }
+                      : null, // disabled in release builds
                   child: Text(
-                    "or continue with",
+                    'Use admin credentials (demo)',
                     style: TextStyle(color: AppColors.lightGray),
                   ),
                 ),
-                const Expanded(child: Divider(thickness: 1)),
               ],
             ),
-            const SizedBox(height: 16),
-
-            // Social login buttons (using sign_in_button)
-            Column(
-              children: [
-                SignInButton(
-                  Buttons.facebook,
-                  onPressed: () {
-                    // TODO: Facebook login
-                  },
-                ),
-                const SizedBox(height: 10),
-                SignInButton(
-                  Buttons.google,
-                  onPressed: () {
-                    // TODO: Google login
-                  },
-                ),
-                const SizedBox(height: 10),
-                SignInButton(
-                  Buttons.apple,
-                  onPressed: () {
-                    // TODO: Apple login
-                  },
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 30),
-
-            // Demo admin login
-            TextButton(
-              onPressed: kDebugMode
-                  ? () async {
-                      // set demo credentials and trigger the login flow (debug only)
-                      _emailController.text = 'admin@example.com';
-                      _passwordController.text = 'admin123';
-
-                      // call the same login function you already use
-                      await _login();
-                    }
-                  : null, // disabled in release builds
-              child: Text(
-                'Use admin credentials (demo)',
-                style: TextStyle(color: AppColors.lightGray),
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );

@@ -41,6 +41,7 @@ dependencies:
   geolocator: ^14.0.2
   google_maps_flutter: ^2.13.1
   geocoding: ^4.0.0
+  url_launcher: ^6.2.2
 
 dev_dependencies:
   flutter_test:
@@ -87,3 +88,14 @@ flutter_launcher_icons:
 
   adaptive_icon_background: "#FFF3E0" 
   adaptive_icon_foreground: "assets/images/app_icon.png"
+
+flutter_native_splash:
+  color: "#FFF3E0"
+  image: assets/images/app_icon.png
+  color_dark: "#1A1A1A"
+  image_dark: assets/images/app_icon.png
+  android_12:
+    image: assets/images/app_icon.png
+    color: "#FFF3E0"
+    image_dark: assets/images/app_icon.png
+    color_dark: "#1A1A1A"

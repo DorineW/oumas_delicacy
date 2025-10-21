@@ -2,9 +2,9 @@
 // ignore_for_file: deprecated_member_use
 
 import 'dart:io';
-import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../constants/colors.dart';
@@ -487,7 +487,9 @@ class _MealDetailScreenState extends State<MealDetailScreen> {
                     ),
                     elevation: 3,
                   ),
-                  onPressed: () async {
+                  onPressed: () {
+                    HapticFeedback.lightImpact(); // 1. vibration
+
                     final cartItem = CartItem(
                       id: DateTime.now().millisecondsSinceEpoch.toString(),
                       mealTitle: title,
@@ -528,10 +530,11 @@ class _MealDetailScreenState extends State<MealDetailScreen> {
 
                     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
                       content: Text(added ? "$title added to cart (x$quantity)" : "Could not add $title to cart"),
-                      backgroundColor: added ? AppColors.success : Colors.redAccent,
-                      duration: const Duration(seconds: 1),
+                      backgroundColor: added ? AppColors.accent : Colors.redAccent,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      margin: const EdgeInsets.fromLTRB(16, 0, 16, 24),
                       behavior: SnackBarBehavior.floating,
-                      margin: const EdgeInsets.all(12),
+                      duration: const Duration(seconds: 2),
                     ));
                   },
                 ),

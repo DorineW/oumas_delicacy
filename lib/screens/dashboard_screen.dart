@@ -1,10 +1,12 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:like_button/like_button.dart';
+import 'package:shimmer/shimmer.dart';
 import '../constants/colors.dart';
 import '../constants/app_decorations.dart';
 import '../providers/order_provider.dart';
-import '../widgets/glass_card.dart';
 
 class DashboardScreen extends StatelessWidget {
   const DashboardScreen({super.key});
@@ -68,7 +70,30 @@ class DashboardScreen extends StatelessWidget {
                 _CategoryChip(label: 'Githeri'),
                 _CategoryChip(label: 'Ugali'),
               ],
-            )
+            ),
+            const SizedBox(height: 20),
+            Expanded(
+              child: Shimmer.fromColors(
+                baseColor: Colors.grey[300]!,
+                highlightColor: Colors.grey[100]!,
+                child: GridView.builder(
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 2,
+                    childAspectRatio: 1.2,
+                    crossAxisSpacing: 12,
+                    mainAxisSpacing: 12,
+                  ),
+                  itemCount: 6,
+                  itemBuilder: (_, __) => Container(
+                    margin: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: AppDecorations.radius12,
+                    ),
+                  ),
+                ),
+              ),
+            ),
           ],
         ),
       ),
@@ -92,16 +117,34 @@ class _DashboardCard extends StatelessWidget {
     return Expanded(
       child: GestureDetector(
         onTap: () => HapticFeedback.lightImpact(),
-        child: GlassCard(
-          padding: const EdgeInsets.all(16.0),
+        child: Container(
+          width: 88,
+          padding: const EdgeInsets.all(10),
+          margin: const EdgeInsets.symmetric(horizontal: 4),
+          decoration: BoxDecoration(
+            color: AppColors.white,
+            borderRadius: AppDecorations.radius12,
+            boxShadow: [AppDecorations.softShadow],
+          ),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(
-                icon,
-                size: 40,
-                color: AppColors.primary,
-              ),
+              if (title == 'Favorites')
+                LikeButton(
+                  size: 40,
+                  circleColor: const CircleColor(start: Color(0xff00ddff), end: Color(0xff0099cc)),
+                  bubblesColor: const BubblesColor(dotPrimaryColor: Color(0xff33b5e5), dotSecondaryColor: Color(0xff00aacc), dotLastColor: Color(0xff0099cc)),
+                  onTap: (isLiked) async {
+                    HapticFeedback.lightImpact();
+                    return !isLiked;
+                  },
+                )
+              else
+                Icon(
+                  icon,
+                  size: 40,
+                  color: AppColors.primary,
+                ),
               const SizedBox(height: 10),
               Text(
                 title,
@@ -153,4 +196,22 @@ class _CategoryChip extends StatelessWidget {
       ),
     );
   }
+}
+
+// ----------  glass-card helper  ----------
+Widget glassCard({required Widget child}) {
+  return ClipRRect(
+    borderRadius: BorderRadius.circular(24),
+    child: BackdropFilter(
+      filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.65),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.4)),
+          borderRadius: BorderRadius.circular(24),
+        ),
+        child: child,
+      ),
+    ),
+  );
 }

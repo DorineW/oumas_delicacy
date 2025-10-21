@@ -8,20 +8,20 @@ class AppDecorations {
   static BorderRadius radius24 = BorderRadius.circular(24);
 
   static BoxShadow get softShadow => BoxShadow(
-        color: AppColors.primary.withOpacity(.10),
-        blurRadius: 16,
-        offset: const Offset(0, 6),
+        color: AppColors.primary.withOpacity(0.10),
+        blurRadius: 16.0,
+        offset: const Offset(0.0, 6.0),
       );
 
   static BoxShadow get cardShadow => BoxShadow(
-        color: Colors.black.withOpacity(.05),
-        blurRadius: 12,
-        offset: const Offset(0, 4),
+        color: Colors.black.withOpacity(0.05),
+        blurRadius: 12.0,
+        offset: const Offset(0.0, 4.0),
       );
 
   static BoxShadow get glassShadow => BoxShadow(
-        color: Colors.black.withOpacity(.08),
-        blurRadius: 20,
-        offset: const Offset(0, 8),
+        color: Colors.black.withOpacity(0.08),
+        blurRadius: 20.0,
+        offset: const Offset(0.0, 8.0),
       );
 }

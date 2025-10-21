@@ -2,7 +2,6 @@
 // ignore_for_file: unused_import
 
 import 'package:flutter/material.dart';
-import 'package:flutter/cupertino.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_core/firebase_core.dart';
 // If you ran `flutterfire configure`, this file will exist:
@@ -13,6 +12,7 @@ import 'services/auth_service.dart';
 import 'providers/cart_provider.dart';
 import 'providers/menu_provider.dart';
 import 'providers/order_provider.dart';
+import 'providers/rider_provider.dart';
 import 'constants/colors.dart';
 
 void main() async {
@@ -53,22 +53,32 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => CartProvider()),
         ChangeNotifierProvider(create: (_) => MenuProvider()),
         ChangeNotifierProvider(create: (_) => OrderProvider()),
+        ChangeNotifierProvider(create: (_) => RiderProvider()),
         // add other providers HomeScreen/AdminDashboard need
       ],
       child: MaterialApp(
         title: "Ouma's Delicacy",
         theme: ThemeData(
           primaryColor: AppColors.primary,
+          brightness: Brightness.light,
+          scaffoldBackgroundColor: AppColors.background,
           pageTransitionsTheme: PageTransitionsTheme(
             builders: {
               for (final platform in TargetPlatform.values)
-                platform: const CupertinoPageTransitionsBuilder(), // iOS-style swipe
+                platform: const CupertinoPageTransitionsBuilder(),
             },
           ),
         ),
-        scrollBehavior: const MaterialScrollBehavior().copyWith(
-          physics: const BouncingScrollPhysics(), // rubber-band on Android too
+        darkTheme: ThemeData(
+          primaryColor: AppColors.primary,
+          brightness: Brightness.dark,
+          scaffoldBackgroundColor: const Color(0xff121212),
+          cardColor: const Color(0xff1e1e1e),
+          // optional : tweak text/button colours if needed
         ),
+        themeMode: ThemeMode.system, // follow phone setting
+        scrollBehavior: const MaterialScrollBehavior()
+            .copyWith(physics: const BouncingScrollPhysics()),
         home: const LoginScreen(),
       ),
     );

@@ -3,15 +3,17 @@ import 'dart:io';
 import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pdf/widgets.dart' as pw;
-import 'package:pdf/Pdf.dart' as pdf;
+import 'package:pdf/pdf.dart' as pdf;
 import 'package:printing/printing.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:path/path.dart' as p;
+import 'dart:ui';
 
 import '../../constants/colors.dart';
 
@@ -36,16 +38,20 @@ class _ReportsScreenState extends State<ReportsScreen> {
   final currencyFmt = NumberFormat.currency(locale: 'en_US', symbol: 'Ksh ');
 
   bool _loading = false;
-
-  // --- new state for copying and downloads button ---
   bool _isCopying = false;
   String _copyProgressMessage = '';
-  String? _lastSavedDir; // path to downloads folder used for last save
+  String? _lastSavedDir;
 
   @override
   void initState() {
     super.initState();
     _loadDataForCurrentSelection();
+  }
+
+  @override
+  void dispose() {
+    // ScreenshotController doesn't need disposal
+    super.dispose();
   }
 
   Future<void> _loadDataForCurrentSelection() async {
@@ -352,23 +358,13 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
   Widget _buildChartArea() {
     if (_loading) {
-      return Container(
-        height: 320,
-        decoration: BoxDecoration(
-          border: Border.all(color: AppColors.lightGray),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: const Center(child: CircularProgressIndicator()),
+      return _glassCard(
+        child: const SizedBox(height: 320, child: Center(child: CircularProgressIndicator())),
       );
     }
     if (_chartData.isEmpty) {
-      return Container(
-        height: 320,
-        decoration: BoxDecoration(
-          border: Border.all(color: AppColors.lightGray),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: const Center(child: Text('No data for this period')),
+      return _glassCard(
+        child: const SizedBox(height: 320, child: Center(child: Text('No data for this period'))),
       );
     }
 
@@ -385,19 +381,19 @@ class _ReportsScreenState extends State<ReportsScreen> {
       chart = _buildPieChart(_chartData);
     }
 
-    return Container(
-      height: 320,
-      decoration: BoxDecoration(
-        border: Border.all(color: AppColors.lightGray),
-        borderRadius: BorderRadius.circular(12),
-        color: AppColors.white,
+    return _glassCard(
+      child: Container(
+        color: Theme.of(context).cardColor,
+        child: SizedBox(
+          height: 320,
+          child: _chartType == ChartType.pie
+              ? chart
+              : SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: SizedBox(width: chartWidth, child: chart),
+                ),
+        ),
       ),
-      child: _chartType == ChartType.pie 
-          ? chart 
-          : SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: SizedBox(width: chartWidth, child: chart),
-            ),
     );
   }
 
@@ -1074,6 +1070,23 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
   Widget _buildSectionTitle(String text) {
     return Text(text, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.darkText));
+  }
+
+  Widget _glassCard({required Widget child}) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(24),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+        child: Container(
+          decoration: BoxDecoration(
+            color: Theme.of(context).cardColor.withOpacity(0.65),
+            border: Border.all(color: Colors.white.withOpacity(0.2)),
+            borderRadius: BorderRadius.circular(24),
+          ),
+          child: child,
+        ),
+      ),
+    );
   }
 }
 
