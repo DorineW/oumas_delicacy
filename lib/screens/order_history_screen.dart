@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../constants/colors.dart';
 import '../models/order.dart';
+import '../models/cart_item.dart';
 import '../providers/order_provider.dart';
+import '../providers/cart_provider.dart';
 
 class OrderHistoryScreen extends StatefulWidget {
   // optional: pass the current customerId to show only their orders
@@ -15,10 +17,14 @@ class OrderHistoryScreen extends StatefulWidget {
   State<OrderHistoryScreen> createState() => _OrderHistoryScreenState();
 }
 
-class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
+class _OrderHistoryScreenState extends State<OrderHistoryScreen> with SingleTickerProviderStateMixin {
+  late TabController _tabController;
+
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(length: 3, vsync: this);
+    
     // Seed demo data after the first frame so we don't mutate provider during build
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final provider = Provider.of<OrderProvider>(context, listen: false);
@@ -26,146 +32,340 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
     });
   }
 
-  String _formatDate(DateTime date) {
-    return "${date.day}/${date.month}/${date.year} ${date.hour.toString().padLeft(2,'0')}:${date.minute.toString().padLeft(2,'0')}";
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
   }
 
-  Widget _statusIcon(OrderStatus status) {
+  bool _canOrderBeCancelled(Order order) {
+    if (order.status == OrderStatus.cancelled || 
+        order.status == OrderStatus.delivered) {
+      return false;
+    }
+
+    final timeSinceOrder = DateTime.now().difference(order.date).inMinutes;
+    return timeSinceOrder < 5; // 5-minute cancellation window
+  }
+
+  void _reorderItems(Order order, BuildContext context) {
+    final cartProvider = Provider.of<CartProvider>(context, listen: false);
+
+    cartProvider.clear();
+
+    for (final item in order.items) {
+      cartProvider.addItem(CartItem(
+        id: item.id,
+        mealTitle: item.title,
+        price: item.price,
+        quantity: item.quantity,
+        mealImage: '',
+      ));
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('${order.items.length} items added to cart'),
+        backgroundColor: AppColors.success,
+      ),
+    );
+
+    Navigator.popUntil(context, (route) => route.isFirst);
+  }
+
+  Widget _buildOrderStats(OrderProvider provider) {
+    final orders = widget.customerId != null 
+        ? provider.ordersForCustomer(widget.customerId!)
+        : provider.orders;
+    final totalOrders = orders.length;
+    final completedOrders = orders.where((o) => o.status == OrderStatus.delivered).length;
+    final totalSpent = orders.fold<double>(0, (sum, order) => sum + order.totalAmount.toDouble());
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.primary.withOpacity(0.05),
+        border: Border(
+          bottom: BorderSide(color: AppColors.primary.withOpacity(0.1)),
+        ),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        children: [
+          _buildStatItem('Total Orders', totalOrders.toString(), Icons.receipt),
+          _buildStatItem('Completed', completedOrders.toString(), Icons.check_circle),
+          _buildStatItem('Total Spent', 'Ksh ${totalSpent.toStringAsFixed(0)}', Icons.attach_money),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatItem(String label, String value, IconData icon) {
+    return Column(
+      children: [
+        Icon(icon, size: 20, color: AppColors.primary),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          style: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            color: AppColors.darkText.withOpacity(0.6),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildOrderCard(BuildContext context, Order order) {
+    final canCancel = _canOrderBeCancelled(order);
+
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 8),
+      elevation: 2,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Order #${order.id}',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: _getStatusColor(order.status).withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: _getStatusColor(order.status)),
+                  ),
+                  child: Text(
+                    _getStatusText(order.status),
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: _getStatusColor(order.status),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _formatDate(order.date),
+              style: TextStyle(
+                color: AppColors.darkText.withOpacity(0.6),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              order.items.map((item) => '${item.title} x${item.quantity}').join(', '),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: AppColors.darkText.withOpacity(0.8),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Ksh ${order.totalAmount}',
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                if (canCancel)
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => _cancelOrder(context, order),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.red,
+                        side: const BorderSide(color: Colors.red),
+                      ),
+                      child: const Text('Cancel Order'),
+                    ),
+                  ),
+                if (canCancel) const SizedBox(width: 8),
+                if (order.status == OrderStatus.delivered)
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: () => _reorderItems(order, context),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.primary,
+                        foregroundColor: Colors.white,
+                      ),
+                      child: const Text('Reorder'),
+                    ),
+                  ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _cancelOrder(BuildContext context, Order order) async {
+    final provider = Provider.of<OrderProvider>(context, listen: false);
+    
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Cancel Order?'),
+        content: const Text('Are you sure you want to cancel this order?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Keep Order'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Cancel Order'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      provider.updateStatus(order.id, OrderStatus.cancelled);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Order #${order.id} has been cancelled'),
+          backgroundColor: AppColors.success,
+        ),
+      );
+    }
+  }
+
+  String _formatDate(DateTime date) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final orderDay = DateTime(date.year, date.month, date.day);
+
+    if (orderDay == today) {
+      return 'Today at ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+    } else if (orderDay == today.subtract(const Duration(days: 1))) {
+      return 'Yesterday at ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+    } else {
+      return '${date.day}/${date.month}/${date.year} ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+    }
+  }
+
+  Color _getStatusColor(OrderStatus status) {
     switch (status) {
       case OrderStatus.pending:
+        return Colors.orange;
       case OrderStatus.confirmed:
-        return const Icon(Icons.check_circle_outline, color: Colors.orange, size: 28);
+        return Colors.blue;
       case OrderStatus.inProcess:
-        return const Icon(Icons.local_shipping, color: Colors.blue, size: 28);
+        return Colors.purple;
       case OrderStatus.delivered:
-        return const Icon(Icons.done_all, color: Colors.green, size: 28);
+        return AppColors.success;
       case OrderStatus.cancelled:
-        return const Icon(Icons.cancel, color: Colors.red, size: 28);
+        return Colors.red;
     }
+  }
+
+  String _getStatusText(OrderStatus status) {
+    return status.toString().split('.').last;
   }
 
   @override
   Widget build(BuildContext context) {
     final provider = Provider.of<OrderProvider>(context);
-
-    final orders = widget.customerId == null
-        ? provider.orders
-        : provider.ordersForCustomer(widget.customerId!);
-
-    final confirmed = orders.where((o) => o.status == OrderStatus.confirmed).toList();
-    final inProcess = orders.where((o) => o.status == OrderStatus.inProcess).toList();
-    final delivered = orders.where((o) => o.status == OrderStatus.delivered).toList();
-    final cancelled = orders.where((o) => o.status == OrderStatus.cancelled).toList();
-    final pending = orders.where((o) => o.status == OrderStatus.pending).toList();
-
-    final sections = <Map<String, List<Order>>>[
-      if (pending.isNotEmpty) {'Pending': pending},
-      if (confirmed.isNotEmpty) {'Confirmed': confirmed},
-      if (inProcess.isNotEmpty) {'In Process': inProcess},
-      if (delivered.isNotEmpty) {'Delivered': delivered},
-      if (cancelled.isNotEmpty) {'Cancelled': cancelled},
-    ];
+    
+    final orders = widget.customerId != null 
+        ? provider.ordersForCustomer(widget.customerId!)
+        : provider.orders;
+    final activeOrders = orders.where((o) => 
+        o.status != OrderStatus.delivered && o.status != OrderStatus.cancelled).toList();
+    final pastOrders = orders.where((o) => 
+        o.status == OrderStatus.delivered || o.status == OrderStatus.cancelled).toList();
 
     return Scaffold(
       appBar: AppBar(
         title: const Text("Order History"),
         backgroundColor: AppColors.primary,
-        elevation: 0,
+        foregroundColor: AppColors.white,
+        bottom: TabBar(
+          controller: _tabController,
+          labelColor: AppColors.white,
+          unselectedLabelColor: AppColors.white.withOpacity(0.7),
+          indicatorColor: AppColors.white,
+          tabs: const [
+            Tab(text: 'All Orders'),
+            Tab(text: 'Active'),
+            Tab(text: 'Past Orders'),
+          ],
+        ),
       ),
       backgroundColor: AppColors.background,
-      body: Padding(
-        padding: const EdgeInsets.all(12),
-        child: orders.isEmpty
-            ? const Center(
-                child: Text("No orders found.",
-                    style: TextStyle(fontSize: 18, color: Colors.grey)),
-              )
-            : ListView(
-                children: sections.expand((section) {
-                  final title = section.keys.first;
-                  final list = section.values.first;
-                  return [
-                    Text(title,
-                        style: const TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            color: AppColors.primary)),
-                    const SizedBox(height: 8),
-                    ...list.map((order) => _orderCard(context, order)),
-                    const SizedBox(height: 18),
-                  ];
-                }).toList(),
-              ),
-      ),
-    );
-  }
-
-  Widget _orderCard(BuildContext context, Order order) {
-    final provider = Provider.of<OrderProvider>(context, listen: false);
-
-    return Card(
-      margin: const EdgeInsets.symmetric(vertical: 6),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      elevation: 3,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            Icon(Icons.receipt_long, color: AppColors.primary, size: 36),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text("Order #${order.id}",
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-                const SizedBox(height: 4),
-                Text("Date: ${_formatDate(order.date)}\nTotal: Ksh ${order.totalAmount}",
-                    style: const TextStyle(fontSize: 14)),
-              ]),
+      body: Column(
+        children: [
+          _buildOrderStats(provider),
+          Expanded(
+            child: TabBarView(
+              controller: _tabController,
+              children: [
+                _buildOrderList(orders),
+                _buildOrderList(activeOrders),
+                _buildOrderList(pastOrders),
+              ],
             ),
-            _statusIcon(order.status),
-          ]),
-          const SizedBox(height: 10),
-          if (order.status == OrderStatus.pending ||
-              order.status == OrderStatus.confirmed ||
-              order.status == OrderStatus.inProcess)
-            Align(
-              alignment: Alignment.centerRight,
-              child: ElevatedButton.icon(
-                onPressed: () => _confirmCancel(context, order, provider),
-                icon: const Icon(Icons.cancel, size: 18),
-                label: const Text("Cancel Order"),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.redAccent,
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                ),
-              ),
-            ),
-        ]),
-      ),
-    );
-  }
-
-  void _confirmCancel(BuildContext context, Order order, OrderProvider provider) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text("Cancel Order"),
-        content: Text("Are you sure you want to cancel order #${order.id}?"),
-        actions: [
-          TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text("No")),
-          TextButton(
-            onPressed: () {
-              Navigator.of(ctx).pop();
-              provider.cancelOrder(order.id);
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text("Order #${order.id} cancelled."), backgroundColor: Colors.redAccent),
-              );
-            },
-            child: const Text("Yes", style: TextStyle(color: Colors.red)),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildOrderList(List<Order> orders) {
+    if (orders.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.receipt_long,
+              size: 80,
+              color: AppColors.darkText.withOpacity(0.3),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'No Orders Found',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: AppColors.darkText.withOpacity(0.5),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: orders.length,
+      itemBuilder: (context, index) {
+        final order = orders[index];
+        return _buildOrderCard(context, order);
+      },
     );
   }
 }
