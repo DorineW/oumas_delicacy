@@ -5,7 +5,7 @@ import '../models/cart_item.dart';
 class CartProvider extends ChangeNotifier {
   final List<CartItem> _items = [];
 
-  List<CartItem> get items => List.unmodifiable(_items);
+  List<CartItem> get items => [..._items];
 
   // total item count (sum of quantities)
   int get totalQuantity => _items.fold(0, (s, i) => s + i.quantity);
@@ -26,6 +26,12 @@ class CartProvider extends ChangeNotifier {
 
   void removeItem(String id) {
     _items.removeWhere((i) => i.id == id);
+    notifyListeners();
+  }
+
+  // Add clearCart method
+  void clearCart() {
+    _items.clear();
     notifyListeners();
   }
 

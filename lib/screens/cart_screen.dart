@@ -1,12 +1,12 @@
 //lib/screens/cart_screen.dart
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../models/cart_item.dart';
 import '../constants/colors.dart';
 import '../providers/cart_provider.dart';
 import 'checkout_screen.dart';
-import 'home_screen.dart'; // add near other imports
 
 class CartScreen extends StatelessWidget {
   const CartScreen({super.key});
@@ -21,150 +21,452 @@ class CartScreen extends StatelessWidget {
     final subtotal = _subtotal(items);
     const int deliveryFee = 150;
     final grandTotal = subtotal + (items.isEmpty ? 0 : deliveryFee);
+    
+    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
 
-    // approximate bottom bar height to avoid content being hidden / overflowing
-    final double bottomBarHeight = items.isEmpty ? 0.0 : 160.0;
-
-    return Scaffold(
-      // red header with back button that returns to previous (home) screen
-      appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () {
-            // Replace navigation stack with HomeScreen to avoid landing on a blank route
-            Navigator.of(context).pushAndRemoveUntil(
-              MaterialPageRoute(builder: (_) => const HomeScreen()),
-              (route) => false,
-            );
-          },
-          color: Colors.white,
-        ),
-        title: const Text('Cart', style: TextStyle(color: Colors.white)),
-        backgroundColor: Colors.red,
-        elevation: 2,
-      ),
-      body: items.isEmpty
-          ? Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.shopping_cart_outlined, size: 72, color: AppColors.lightGray),
-                  const SizedBox(height: 12),
-                  Text('Your cart is empty', style: TextStyle(color: AppColors.lightGray, fontSize: 16)),
-                ],
-              ),
-            )
-          : ListView.separated(
-              // make room at the bottom so last item won't be overlapped by the bottom bar
-              padding: EdgeInsets.fromLTRB(12, 12, 12, bottomBarHeight + MediaQuery.of(context).padding.bottom),
-              itemBuilder: (context, index) {
-                final item = items[index];
-                return ListTile(
-                  contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
-                  leading: SizedBox(
-                    width: 64,
-                    height: 64,
-                    child: item.mealImage.isNotEmpty
-                        ? ClipRRect(
-                            borderRadius: BorderRadius.circular(8),
-                            child: Image.asset(item.mealImage, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.fastfood)),
-                          )
-                        : const Icon(Icons.fastfood),
+    // UPDATED: Match dashboard_screen.dart PopScope pattern
+    return PopScope(
+      canPop: false,
+      onPopInvoked: (didPop) {
+        // Let parent HomeScreen handle navigation
+      },
+      child: Scaffold(
+        backgroundColor: AppColors.background,
+        appBar: AppBar(
+          title: const Text('My Cart'),
+          backgroundColor: AppColors.primary,
+          elevation: 0,
+          iconTheme: const IconThemeData(color: AppColors.white),
+          titleTextStyle: const TextStyle(color: AppColors.white, fontSize: 18, fontWeight: FontWeight.bold),
+          automaticallyImplyLeading: false,
+          actions: items.isNotEmpty
+              ? [
+                  TextButton(
+                    onPressed: () {
+                      showDialog(
+                        context: context,
+                        builder: (ctx) => AlertDialog(
+                          title: const Text('Clear Cart'),
+                          content: const Text('Are you sure you want to remove all items?'),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(ctx),
+                              child: const Text('Cancel'),
+                            ),
+                            TextButton(
+                              onPressed: () {
+                                cartProvider.clearCart();
+                                Navigator.pop(ctx);
+                              },
+                              style: TextButton.styleFrom(foregroundColor: Colors.red),
+                              child: const Text('Clear All'),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                    child: const Text(
+                      'Clear All',
+                      style: TextStyle(color: AppColors.white),
+                    ),
                   ),
-                  title: Text(item.mealTitle, maxLines: 2, overflow: TextOverflow.ellipsis),
-                  subtitle: Text('Ksh ${item.price}  •  Qty: ${item.quantity}'),
-                  trailing: 
-                    SizedBox(
-                      width: 72, // give trailing a fixed, small width so it can't collapse and overflow vertically
+                ]
+              : null,
+        ),
+        body: items.isEmpty
+            ? _buildEmptyState()
+            : LayoutBuilder(
+                builder: (context, constraints) {
+                  return SingleChildScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: EdgeInsets.fromLTRB(16, isLandscape ? 12 : 16, 16, 180),
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(minHeight: constraints.maxHeight - 180),
                       child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Flexible(
-                            child: Text(
-                              'Ksh ${item.totalPrice}',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.accent, fontSize: 13),
+                          // Summary Card
+                          Container(
+                            margin: EdgeInsets.only(bottom: isLandscape ? 12 : 16),
+                            padding: EdgeInsets.all(isLandscape ? 14 : 16),
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                                colors: [
+                                  AppColors.primary,
+                                  AppColors.primary.withOpacity(0.8),
+                                ],
+                              ),
+                              borderRadius: BorderRadius.circular(16),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: AppColors.primary.withOpacity(0.3),
+                                  blurRadius: 10,
+                                  offset: const Offset(0, 4),
+                                ),
+                              ],
+                            ),
+                            child: Column(
+                              children: [
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    const Text(
+                                      'Cart Summary',
+                                      style: TextStyle(
+                                        color: AppColors.white,
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                      decoration: BoxDecoration(
+                                        color: AppColors.white.withOpacity(0.2),
+                                        borderRadius: BorderRadius.circular(20),
+                                      ),
+                                      child: Text(
+                                        '${items.length} ${items.length == 1 ? 'item' : 'items'}',
+                                        style: const TextStyle(
+                                          color: AppColors.white,
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 16),
+                                _buildSummaryRow('Subtotal', 'Ksh $subtotal'),
+                                const SizedBox(height: 8),
+                                _buildSummaryRow('Delivery Fee', 'Ksh $deliveryFee'),
+                                const Divider(color: AppColors.white, height: 24, thickness: 0.5),
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    const Text(
+                                      'Total',
+                                      style: TextStyle(
+                                        color: AppColors.white,
+                                        fontSize: 20,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                    Text(
+                                      'Ksh $grandTotal',
+                                      style: const TextStyle(
+                                        color: AppColors.white,
+                                        fontSize: 24,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
                             ),
                           ),
-                          const SizedBox(height: 2),
-                          // compact delete control: constrained icon size + zero padding
-                          Flexible(
-                            child: IconButton(
-                              padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-                              iconSize: 18,
-                              icon: const Icon(Icons.delete),
-                              color: Colors.red.shade700,
-                              onPressed: () => cartProvider.removeItem(item.id),
-                              tooltip: 'Remove item',
+
+                          // Items Title
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 0),
+                            child: Row(
+                              children: [
+                                Text(
+                                  'Items in Cart',
+                                  style: TextStyle(
+                                    fontSize: isLandscape ? 16 : 18,
+                                    fontWeight: FontWeight.bold,
+                                    color: AppColors.darkText,
+                                  ),
+                                ),
+                                const Spacer(),
+                                Text(
+                                  '${items.length}',
+                                  style: TextStyle(
+                                    fontSize: isLandscape ? 14 : 16,
+                                    fontWeight: FontWeight.bold,
+                                    color: AppColors.primary,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
+                          SizedBox(height: isLandscape ? 10 : 12),
+
+                          // Cart Items List
+                          ...items.map((item) => _CartItemCard(
+                            item: item,
+                            onRemove: () => cartProvider.removeItem(item.id),
+                            onIncrement: () => HapticFeedback.lightImpact(),
+                            onDecrement: () => HapticFeedback.lightImpact(),
+                          )),
                         ],
                       ),
                     ),
-                );
-              },
-              separatorBuilder: (_, __) => const Divider(height: 12),
-              itemCount: items.length,
-            ),
-      bottomNavigationBar: items.isEmpty
-          ? null
-          : SafeArea(
-              top: false,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                decoration: BoxDecoration(
-                  color: AppColors.white,
-                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.06), blurRadius: 8, offset: const Offset(0, -2))],
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Row(
-                      children: [
-                        const Text('Subtotal'),
-                        const Spacer(),
-                        Text('Ksh $subtotal', style: TextStyle(color: AppColors.darkText)),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    Row(
-                      children: [
-                        const Text('Delivery'),
-                        const Spacer(),
-                        Text(items.isEmpty ? 'Ksh 0' : 'Ksh $deliveryFee', style: TextStyle(color: AppColors.darkText)),
-                      ],
-                    ),
-                    const Divider(height: 20),
-                    Row(
-                      children: [
-                        Text('Total', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-                        const Spacer(),
-                        Text('Ksh $grandTotal', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.accent, fontSize: 18)),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.primary,
-                        foregroundColor: AppColors.white,
-                        minimumSize: const Size.fromHeight(44),
-                        padding: const EdgeInsets.symmetric(vertical: 10),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  );
+                },
+              ),
+        bottomNavigationBar: items.isEmpty
+            ? null
+            : SafeArea(
+                child: Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: AppColors.white,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.1),
+                        blurRadius: 10,
+                        offset: const Offset(0, -4),
                       ),
-                      onPressed: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(builder: (_) => CheckoutScreen(selectedItems: items)),
-                        );
-                      },
-                      child: const Text('Checkout', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                    ],
+                  ),
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      foregroundColor: AppColors.white,
+                      minimumSize: const Size.fromHeight(52),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      elevation: 0,
                     ),
-                  ],
+                    onPressed: () {
+                      HapticFeedback.mediumImpact();
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => CheckoutScreen(selectedItems: items),
+                        ),
+                      );
+                    },
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Text(
+                          'Proceed to Checkout',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          '• Ksh $grandTotal',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
               ),
+      ),
+    );
+  }
+
+  Widget _buildSummaryRow(String label, String value) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            color: AppColors.white.withOpacity(0.9),
+            fontSize: 14,
+          ),
+        ),
+        Text(
+          value,
+          style: const TextStyle(
+            color: AppColors.white,
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(40),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.shopping_cart_outlined,
+              size: 100,
+              color: AppColors.darkText.withOpacity(0.3),
             ),
+            const SizedBox(height: 24),
+            Text(
+              'Your Cart is Empty',
+              style: TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+                color: AppColors.darkText.withOpacity(0.5),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Add some delicious meals to get started!',
+              style: TextStyle(
+                fontSize: 14,
+                color: AppColors.darkText.withOpacity(0.4),
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// Cart Item Card Widget
+class _CartItemCard extends StatelessWidget {
+  final CartItem item;
+  final VoidCallback onRemove;
+  final VoidCallback onIncrement;
+  final VoidCallback onDecrement;
+
+  const _CartItemCard({
+    required this.item,
+    required this.onRemove,
+    required this.onIncrement,
+    required this.onDecrement,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: AppColors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          // Image
+          Container(
+            width: 90,
+            height: 90,
+            decoration: BoxDecoration(
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(12),
+                bottomLeft: Radius.circular(12),
+              ),
+              image: item.mealImage.isNotEmpty
+                  ? DecorationImage(
+                      image: AssetImage(item.mealImage),
+                      fit: BoxFit.cover,
+                    )
+                  : null,
+            ),
+            child: item.mealImage.isEmpty
+                ? Icon(Icons.fastfood, size: 40, color: AppColors.primary)
+                : null,
+          ),
+          // Content
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          item.mealTitle,
+                          style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.darkText,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      IconButton(
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                        iconSize: 20,
+                        onPressed: () {
+                          HapticFeedback.lightImpact();
+                          onRemove();
+                        },
+                        icon: const Icon(Icons.delete_outline),
+                        color: Colors.red,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Ksh ${item.price} each',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: AppColors.darkText.withOpacity(0.6),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      // Quantity badge
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: AppColors.primary.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.shopping_bag_outlined,
+                              size: 14,
+                              color: AppColors.primary,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              'Qty: ${item.quantity}',
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color: AppColors.primary,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      // Total price
+                      Text(
+                        'Ksh ${item.totalPrice}',
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.primary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

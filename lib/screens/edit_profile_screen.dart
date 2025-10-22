@@ -287,187 +287,192 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(
-        title: const Text("Edit Profile"),
-        backgroundColor: AppColors.primary,
-      ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(16.0),
-          child: Form(
-            key: _formKey,
-            child: Column(
-              children: [
-                const SizedBox(height: 8),
-                Stack(
-                  alignment: Alignment.bottomRight,
-                  children: [
-                    CircleAvatar(
-                      radius: 50,
-                      backgroundImage: _profileImageFile != null
-                          ? FileImage(_profileImageFile!) as ImageProvider
-                          : const AssetImage('assets/images/profile.jpg'),
+    return PopScope(
+      canPop: true,
+      child: Scaffold(
+        backgroundColor: AppColors.background,
+        appBar: AppBar(
+          title: const Text('Edit Profile'),
+          backgroundColor: AppColors.primary,
+          elevation: 0,
+          iconTheme: const IconThemeData(color: AppColors.white),
+          titleTextStyle: const TextStyle(
+            color: AppColors.white,
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        body: SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            children: [
+              const SizedBox(height: 8),
+              Stack(
+                alignment: Alignment.bottomRight,
+                children: [
+                  CircleAvatar(
+                    radius: 50,
+                    backgroundImage: _profileImageFile != null
+                        ? FileImage(_profileImageFile!) as ImageProvider
+                        : const AssetImage('assets/images/profile.jpg'),
+                  ),
+                  PopupMenuButton<int>(
+                    onSelected: (v) {
+                      if (v == 0) _pickImage(ImageSource.camera);
+                      if (v == 1) _pickImage(ImageSource.gallery);
+                      if (v == 2) {
+                        setState(() => _profileImageFile = null);
+                      }
+                    },
+                    itemBuilder: (_) => const [
+                      PopupMenuItem(value: 0, child: Text('Camera')),
+                      PopupMenuItem(value: 1, child: Text('Gallery')),
+                      PopupMenuItem(value: 2, child: Text('Remove')),
+                    ],
+                    icon: const CircleAvatar(
+                      radius: 18,
+                      backgroundColor: Colors.white70,
+                      child: Icon(Icons.edit, size: 18),
                     ),
-                    PopupMenuButton<int>(
-                      onSelected: (v) {
-                        if (v == 0) _pickImage(ImageSource.camera);
-                        if (v == 1) _pickImage(ImageSource.gallery);
-                        if (v == 2) {
-                          setState(() => _profileImageFile = null);
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _nameController,
+                decoration: const InputDecoration(
+                  labelText: 'Full Name',
+                  border: OutlineInputBorder(),
+                ),
+                validator: (v) => (v == null || v.trim().isEmpty) ? 'Name required' : null,
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _emailCont,
+                decoration: const InputDecoration(
+                  labelText: 'Email',
+                  border: OutlineInputBorder(),
+                ),
+                validator: _validateEmail,
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _phoneCont,
+                keyboardType: TextInputType.phone,
+                decoration: const InputDecoration(
+                  labelText: 'Phone Number',
+                  border: OutlineInputBorder(),
+                ),
+                validator: _validatePhone,
+              ),
+              const SizedBox(height: 12),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Notifications'),
+                trailing: Switch(
+                  value: _notificationsEnabled,
+                  onChanged: (v) => setState(() => _notificationsEnabled = v),
+                  activeThumbColor: AppColors.primary,
+                ),
+              ),
+              const Divider(),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('Delivery Addresses', style: TextStyle(fontWeight: FontWeight.bold)),
+                  TextButton.icon(
+                    onPressed: _addAddressDialog,
+                    icon: const Icon(Icons.add),
+                    label: const Text('Add'),
+                  )
+                ],
+              ),
+              ..._addresses.asMap().entries.map((e) {
+                final idx = e.key;
+                final addr = e.value;
+                final isDefault = _defaultAddressIndex == idx;
+                return Card(
+                  child: ListTile(
+                    title: Text(addr),
+                    leading: isDefault ? const Icon(Icons.home) : null,
+                    trailing: PopupMenuButton<String>(
+                      onSelected: (choice) {
+                        if (choice == 'set_default') {
+                          setState(() => _defaultAddressIndex = idx);
+                        } else if (choice == 'remove') {
+                          _removeAddress(idx);
+                        } else if (choice == 'edit') {
+                          _editAddressDialog(idx);
                         }
                       },
                       itemBuilder: (_) => const [
-                        PopupMenuItem(value: 0, child: Text('Camera')),
-                        PopupMenuItem(value: 1, child: Text('Gallery')),
-                        PopupMenuItem(value: 2, child: Text('Remove')),
+                        PopupMenuItem(value: 'set_default', child: Text('Set Default')),
+                        PopupMenuItem(value: 'edit', child: Text('Edit')),
+                        PopupMenuItem(value: 'remove', child: Text('Remove')),
                       ],
-                      icon: const CircleAvatar(
-                        radius: 18,
-                        backgroundColor: Colors.white70,
-                        child: Icon(Icons.edit, size: 18),
-                      ),
                     ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: _nameController,
-                  decoration: const InputDecoration(
-                    labelText: 'Full Name',
-                    border: OutlineInputBorder(),
                   ),
-                  validator: (v) => (v == null || v.trim().isEmpty) ? 'Name required' : null,
+                );
+              }),
+              if (_addresses.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 8),
+                  child: Text('No addresses yet. Add one for faster checkout.'),
                 ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: _emailCont,
-                  decoration: const InputDecoration(
-                    labelText: 'Email',
-                    border: OutlineInputBorder(),
-                  ),
-                  validator: _validateEmail,
+              const Divider(),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('Payment Method', style: TextStyle(fontWeight: FontWeight.bold)),
+                  TextButton.icon(
+                    onPressed: _addPaymentDialog,
+                    icon: const Icon(Icons.add_card),
+                    label: const Text('Add'),
+                  )
+                ],
+              ),
+              Card(
+                child: ListTile(
+                  title: Text(_paymentMethod != null
+                      ? '${_paymentMethod!['brand']} • ${_maskCard(_paymentMethod!['last4']!)}'
+                      : 'No payment method'),
+                  trailing: _paymentMethod != null
+                      ? IconButton(
+                          onPressed: () {
+                            setState(() => _paymentMethod = null);
+                          },
+                          icon: const Icon(Icons.delete),
+                        )
+                      : null,
                 ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: _phoneCont,
-                  keyboardType: TextInputType.phone,
-                  decoration: const InputDecoration(
-                    labelText: 'Phone Number',
-                    border: OutlineInputBorder(),
-                  ),
-                  validator: _validatePhone,
-                ),
-                const SizedBox(height: 12),
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('Notifications'),
-                  trailing: Switch(
-                    value: _notificationsEnabled,
-                    onChanged: (v) => setState(() => _notificationsEnabled = v),
-                    activeThumbColor: AppColors.primary,
-                  ),
-                ),
-                const Divider(),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text('Delivery Addresses', style: TextStyle(fontWeight: FontWeight.bold)),
-                    TextButton.icon(
-                      onPressed: _addAddressDialog,
-                      icon: const Icon(Icons.add),
-                      label: const Text('Add'),
-                    )
-                  ],
-                ),
-                ..._addresses.asMap().entries.map((e) {
-                  final idx = e.key;
-                  final addr = e.value;
-                  final isDefault = _defaultAddressIndex == idx;
-                  return Card(
-                    child: ListTile(
-                      title: Text(addr),
-                      leading: isDefault ? const Icon(Icons.home) : null,
-                      trailing: PopupMenuButton<String>(
-                        onSelected: (choice) {
-                          if (choice == 'set_default') {
-                            setState(() => _defaultAddressIndex = idx);
-                          } else if (choice == 'remove') {
-                            _removeAddress(idx);
-                          } else if (choice == 'edit') {
-                            _editAddressDialog(idx);
-                          }
-                        },
-                        itemBuilder: (_) => const [
-                          PopupMenuItem(value: 'set_default', child: Text('Set Default')),
-                          PopupMenuItem(value: 'edit', child: Text('Edit')),
-                          PopupMenuItem(value: 'remove', child: Text('Remove')),
-                        ],
-                      ),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: _changePasswordDialog,
+                      child: const Text('Change Password'),
                     ),
-                  );
-                }),
-                if (_addresses.isEmpty)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 8),
-                    child: Text('No addresses yet. Add one for faster checkout.'),
+                  )
+                ],
+              ),
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: _isSaving ? null : _saveProfile,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    minimumSize: const Size(double.infinity, 50),
                   ),
-                const Divider(),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text('Payment Method', style: TextStyle(fontWeight: FontWeight.bold)),
-                    TextButton.icon(
-                      onPressed: _addPaymentDialog,
-                      icon: const Icon(Icons.add_card),
-                      label: const Text('Add'),
-                    )
-                  ],
+                  child: _isSaving
+                      ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Text('Save Changes'),
                 ),
-                Card(
-                  child: ListTile(
-                    title: Text(_paymentMethod != null
-                        ? '${_paymentMethod!['brand']} • ${_maskCard(_paymentMethod!['last4']!)}'
-                        : 'No payment method'),
-                    trailing: _paymentMethod != null
-                        ? IconButton(
-                            onPressed: () {
-                              setState(() => _paymentMethod = null);
-                            },
-                            icon: const Icon(Icons.delete),
-                          )
-                        : null,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: _changePasswordDialog,
-                        child: const Text('Change Password'),
-                      ),
-                    )
-                  ],
-                ),
-                const SizedBox(height: 24),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: _isSaving ? null : _saveProfile,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.primary,
-                      minimumSize: const Size(double.infinity, 50),
-                    ),
-                    child: _isSaving
-                        ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                        : const Text('Save Changes'),
-                  ),
-                ),
-                const SizedBox(height: 24),
-              ],
-            ),
+              ),
+              const SizedBox(height: 24),
+            ],
           ),
         ),
       ),

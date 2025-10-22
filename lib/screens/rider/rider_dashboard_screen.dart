@@ -10,6 +10,7 @@ import '../../providers/rider_provider.dart';
 import 'rider_orders_screen.dart';
 import 'rider_profile_screen.dart';
 import 'rider_earnings_screen.dart';
+import '../../utils/responsive_helper.dart';
 
 class RiderDashboardScreen extends StatefulWidget {
   const RiderDashboardScreen({super.key});
@@ -95,6 +96,7 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen> {
   Widget _buildActiveOrders() {
     final provider = Provider.of<RiderProvider>(context);
     final activeOrders = provider.activeOrders;
+    final isLandscape = ResponsiveHelper.isLandscape(context);
 
     if (activeOrders.isEmpty) {
       return Center(
@@ -128,16 +130,22 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen> {
       );
     }
 
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: activeOrders.length,
-      itemBuilder: (context, index) {
-        final order = activeOrders[index];
-        return _OrderCard(
-          order: order,
-          onCallCustomer: () => _callCustomer(order.customerPhone),
-          onOpenMaps: () => _openMaps(order.deliveryAddress),
-          onUpdateStatus: (newStatus) => _updateOrderStatus(order.id, newStatus),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: EdgeInsets.all(isLandscape ? 12 : 16),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: constraints.maxHeight),
+            child: Column(
+              children: activeOrders.map((order) => _OrderCard(
+                order: order,
+                onCallCustomer: () => _callCustomer(order.customerPhone),
+                onOpenMaps: () => _openMaps(order.deliveryAddress),
+                onUpdateStatus: (newStatus) => _updateOrderStatus(order.id, newStatus),
+              )).toList(),
+            ),
+          ),
         );
       },
     );

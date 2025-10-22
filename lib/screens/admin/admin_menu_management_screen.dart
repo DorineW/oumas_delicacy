@@ -18,29 +18,27 @@ class AdminMenuManagementScreen extends StatefulWidget {
 }
 
 class _AdminMenuManagementScreenState extends State<AdminMenuManagementScreen> {
-  static const double _defaultRating = 4.5; // default rating for new items
+  static const double _defaultRating = 4.5;
 
   final _formKey = GlobalKey<FormState>();
   final TextEditingController _titleController = TextEditingController();
   final TextEditingController _priceController = TextEditingController();
   final TextEditingController _descriptionController = TextEditingController();
-  final TextEditingController _categoryController = TextEditingController();
+  final TextEditingController _newCategoryController = TextEditingController();
 
-  /// We store selected image as bytes so it works on Web and Mobile.
   Uint8List? _selectedImageBytes;
-
-  /// If editing an existing item and its image is a String (asset or URL),
-  /// we keep the string here for preview (don't convert it to bytes).
   String? _editingImageString;
-
-  int? _editingIndex; // Track which item is being edited
+  int? _editingIndex;
+  
+  String? _selectedCategory;
+  bool _showNewCategoryField = false;
 
   @override
   void dispose() {
     _titleController.dispose();
     _priceController.dispose();
     _descriptionController.dispose();
-    _categoryController.dispose();
+    _newCategoryController.dispose();
     super.dispose();
   }
 
@@ -49,11 +47,13 @@ class _AdminMenuManagementScreenState extends State<AdminMenuManagementScreen> {
     _titleController.clear();
     _priceController.clear();
     _descriptionController.clear();
-    _categoryController.clear();
+    _newCategoryController.clear();
     setState(() {
       _selectedImageBytes = null;
       _editingImageString = null;
       _editingIndex = null;
+      _selectedCategory = null;
+      _showNewCategoryField = false;
     });
   }
 
@@ -62,8 +62,9 @@ class _AdminMenuManagementScreenState extends State<AdminMenuManagementScreen> {
       _editingIndex = index;
       _titleController.text = item['title'] ?? '';
       _priceController.text = (item['price'] ?? '').toString();
-      _categoryController.text = item['category'] ?? '';
+      _selectedCategory = item['category'] ?? '';
       _descriptionController.text = item['description'] ?? '';
+      _showNewCategoryField = false;
 
       _selectedImageBytes = null;
       _editingImageString = null;
@@ -73,61 +74,97 @@ class _AdminMenuManagementScreenState extends State<AdminMenuManagementScreen> {
         if (imageValue is Uint8List) {
           _selectedImageBytes = imageValue;
         } else if (imageValue is String) {
-          // Could be 'assets/...' or an http(s) URL or a path string.
-          // We'll keep the string for preview. On web, paths that are local won't work;
-          // preferrable approach is to use bytes/URLs.
           _editingImageString = imageValue;
         }
       }
     });
 
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return _buildAddItemDialog(isEditing: true);
-      },
-    );
+    _showAddEditDialog(isEditing: true);
   }
 
-  void _deleteItem(int index) {
+  void _showDeleteConfirmation(int index, BuildContext context) {
+    final menuProvider = Provider.of<MenuProvider>(context, listen: false);
+    final item = menuProvider.menuItems[index];
+    final title = item['title'] ?? 'this item';
+
     showDialog(
       context: context,
-      builder: (BuildContext context) {
-        final title = Provider.of<MenuProvider>(context, listen: false)
-                .menuItems[index]['title'] ??
-            '';
-        return AlertDialog(
-          title: const Text('Confirm Delete'),
-          content: Text('Are you sure you want to delete "$title"?'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Cancel'),
-            ),
-            TextButton(
-              onPressed: () {
-                Provider.of<MenuProvider>(context, listen: false)
-                    .removeMenuItem(index);
-                Navigator.of(context).pop();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Item deleted'),
-                    backgroundColor: Colors.red,
-                    duration: Duration(seconds: 2),
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.warning, color: Colors.orange),
+            SizedBox(width: 8),
+            Text('Confirm Delete'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Are you sure you want to delete "$title"?'),
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.red.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.info, color: Colors.red.withOpacity(0.8), size: 16),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'This item will be removed from the customer menu immediately.',
+                      style: TextStyle(
+                        color: Colors.red.withOpacity(0.8),
+                        fontSize: 12,
+                      ),
+                    ),
                   ),
-                );
-              },
-              child: const Text('Delete', style: TextStyle(color: Colors.red)),
+                ],
+              ),
             ),
           ],
-        );
-      },
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () {
+              menuProvider.removeMenuItem(index);
+              Navigator.of(context).pop();
+              _showSuccessSnackBar('"$title" deleted successfully', Colors.red);
+            },
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
     );
   }
 
   Future<void> _submitForm() async {
     if (_formKey.currentState!.validate()) {
-      // default image asset if none chosen
+      final category = _showNewCategoryField 
+          ? _newCategoryController.text.trim()
+          : _selectedCategory;
+
+      if (category == null || category.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Please select or enter a category'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
       dynamic imageValue = 'assets/images/default.jpg';
       if (_selectedImageBytes != null) {
         imageValue = _selectedImageBytes!;
@@ -144,89 +181,283 @@ class _AdminMenuManagementScreenState extends State<AdminMenuManagementScreen> {
                 _defaultRating
             : _defaultRating,
         'image': imageValue,
-        'category': _categoryController.text.trim(),
+        'category': category,
         'description': _descriptionController.text.isNotEmpty
             ? _descriptionController.text.trim()
             : 'Delicious ${_titleController.text.trim()}',
       };
 
+      final menuProvider = Provider.of<MenuProvider>(context, listen: false);
+      
       if (_editingIndex != null) {
-        Provider.of<MenuProvider>(context, listen: false)
-            .updateMenuItem(_editingIndex!, newItem);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('${_titleController.text} updated'),
-            backgroundColor: AppColors.success,
-            duration: const Duration(seconds: 2),
-          ),
-        );
+        _showUpdateConfirmation(menuProvider, newItem);
       } else {
-        Provider.of<MenuProvider>(context, listen: false).addMenuItem(newItem);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('${_titleController.text} added to menu'),
-            backgroundColor: AppColors.success,
-            duration: const Duration(seconds: 2),
-          ),
-        );
+        _showAddConfirmation(menuProvider, newItem);
       }
-
-      _clearForm();
     }
   }
 
-  Future<void> _pickImageFromGallery() async {
-    final ImagePicker picker = ImagePicker();
-    final XFile? image = await picker.pickImage(
-      source: ImageSource.gallery,
-      imageQuality: 80,
-      maxWidth: 1200,
-    );
+  void _showUpdateConfirmation(MenuProvider menuProvider, Map<String, dynamic> newItem) {
+    final oldItem = menuProvider.menuItems[_editingIndex!];
+    final hasChanges = _hasSignificantChanges(oldItem, newItem);
 
-    if (image != null) {
-      final bytes = await image.readAsBytes();
-      setState(() {
-        _selectedImageBytes = bytes;
-        _editingImageString = null;
-      });
+    if (!hasChanges) {
+      _performUpdate(menuProvider, newItem);
+      return;
+    }
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.update, color: Colors.blue),
+            SizedBox(width: 8),
+            Text('Confirm Update'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Update "${_titleController.text}"?'),
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.blue.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'This change will appear in the customer menu immediately.',
+                    style: TextStyle(
+                      color: Colors.blue.withOpacity(0.8),
+                      fontSize: 12,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  if (oldItem['category'] != newItem['category'])
+                    Text(
+                      '• Category: ${oldItem['category']} → ${newItem['category']}',
+                      style: TextStyle(
+                        color: Colors.blue.withOpacity(0.8),
+                        fontSize: 12,
+                      ),
+                    ),
+                  if (oldItem['price'] != newItem['price'])
+                    Text(
+                      '• Price: Ksh ${oldItem['price']} → Ksh ${newItem['price']}',
+                      style: TextStyle(
+                        color: Colors.blue.withOpacity(0.8),
+                        fontSize: 12,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.blue,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () {
+              Navigator.of(context).pop();
+              _performUpdate(menuProvider, newItem);
+            },
+            child: const Text('Update'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showAddConfirmation(MenuProvider menuProvider, Map<String, dynamic> newItem) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.add_circle, color: AppColors.success),
+            SizedBox(width: 8),
+            Text('Confirm Add Item'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Add "${_titleController.text}" to menu?'),
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.success.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                'This item will appear in the customer menu immediately.',
+                style: TextStyle(
+                  color: AppColors.success.withOpacity(0.8),
+                  fontSize: 12,
+                ),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.success,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () {
+              Navigator.of(context).pop();
+              _performAdd(menuProvider, newItem);
+            },
+            child: const Text('Add Item'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  bool _hasSignificantChanges(Map<String, dynamic> oldItem, Map<String, dynamic> newItem) {
+    return oldItem['title'] != newItem['title'] ||
+        oldItem['price'] != newItem['price'] ||
+        oldItem['category'] != newItem['category'] ||
+        oldItem['description'] != newItem['description'];
+  }
+
+  void _performUpdate(MenuProvider menuProvider, Map<String, dynamic> newItem) {
+    menuProvider.updateMenuItem(_editingIndex!, newItem);
+    _showSuccessSnackBar('"${_titleController.text}" updated successfully');
+    _clearForm();
+    if (mounted) Navigator.of(context).pop();
+  }
+
+  void _performAdd(MenuProvider menuProvider, Map<String, dynamic> newItem) {
+    menuProvider.addMenuItem(newItem);
+    _showSuccessSnackBar('"${_titleController.text}" added to menu');
+    _clearForm();
+    if (mounted) Navigator.of(context).pop();
+  }
+
+  void _showSuccessSnackBar(String message, [Color? color]) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            Icon(Icons.check_circle, color: color ?? AppColors.success),
+            const SizedBox(width: 8),
+            Expanded(child: Text(message)),
+          ],
+        ),
+        backgroundColor: Colors.white,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(8),
+          side: BorderSide(color: (color ?? AppColors.success).withOpacity(0.3)),
+        ),
+        duration: const Duration(seconds: 3),
+      ),
+    );
+  }
+
+  void _showErrorSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const Icon(Icons.error, color: Colors.red),
+            const SizedBox(width: 8),
+            Expanded(child: Text(message)),
+          ],
+        ),
+        backgroundColor: Colors.white,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(8),
+          side: BorderSide(color: Colors.red.withOpacity(0.3)),
+        ),
+        duration: const Duration(seconds: 3),
+      ),
+    );
+  }
+
+  Future<void> _pickImageFromGallery() async {
+    try {
+      final ImagePicker picker = ImagePicker();
+      final XFile? image = await picker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 80,
+        maxWidth: 1200,
+      );
+
+      if (image != null) {
+        final bytes = await image.readAsBytes();
+        setState(() {
+          _selectedImageBytes = bytes;
+          _editingImageString = null;
+        });
+      }
+    } catch (e) {
+      _showErrorSnackBar('Failed to pick image: $e');
     }
   }
 
   Future<void> _pickImageFromCamera() async {
-    final ImagePicker picker = ImagePicker();
-    final XFile? image = await picker.pickImage(
-      source: ImageSource.camera,
-      imageQuality: 80,
-      maxWidth: 1200,
-    );
+    try {
+      final ImagePicker picker = ImagePicker();
+      final XFile? image = await picker.pickImage(
+        source: ImageSource.camera,
+        imageQuality: 80,
+        maxWidth: 1200,
+      );
 
-    if (image != null) {
-      final bytes = await image.readAsBytes();
-      setState(() {
-        _selectedImageBytes = bytes;
-        _editingImageString = null;
-      });
+      if (image != null) {
+        final bytes = await image.readAsBytes();
+        setState(() {
+          _selectedImageBytes = bytes;
+          _editingImageString = null;
+        });
+      }
+    } catch (e) {
+      _showErrorSnackBar('Failed to capture image: $e');
     }
   }
 
-  Future<void> _pickImage() async {
-    showModalBottomSheet(
+  Future<void> _showImageSourceDialog() async {
+    await showModalBottomSheet(
       context: context,
       builder: (BuildContext context) {
         return SafeArea(
           child: Wrap(
             children: [
               ListTile(
-                leading: const Icon(Icons.photo_library),
-                title: const Text('Gallery'),
+                leading: Icon(Icons.photo_library, color: AppColors.primary),
+                title: const Text('Choose from Gallery'),
                 onTap: () {
                   Navigator.of(context).pop();
                   _pickImageFromGallery();
                 },
               ),
               ListTile(
-                leading: const Icon(Icons.photo_camera),
-                title: const Text('Camera'),
+                leading: Icon(Icons.photo_camera, color: AppColors.primary),
+                title: const Text('Take a Photo'),
                 onTap: () {
                   Navigator.of(context).pop();
                   _pickImageFromCamera();
@@ -239,60 +470,262 @@ class _AdminMenuManagementScreenState extends State<AdminMenuManagementScreen> {
     );
   }
 
-  /// Builds a small 50x50 preview for list tiles.
-  Widget _buildImage(dynamic imageValue, {double width = 50, double height = 50}) {
-    if (imageValue == null) {
-      return _placeholderBox(width, height);
+  Widget _buildImageContent() {
+    if (_selectedImageBytes != null) {
+      return Image.memory(
+        _selectedImageBytes!,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => _buildPlaceholder(),
+      );
     }
 
-    if (imageValue is Uint8List) {
-      return Image.memory(
-        imageValue,
-        width: width,
-        height: height,
+    if (_editingImageString != null) {
+      final image = _editingImageString!;
+      if (image.startsWith('assets/')) {
+        return Image.asset(
+          image,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => _buildPlaceholder(),
+        );
+      }
+      return Image.network(
+        image,
         fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => _placeholderBox(width, height),
+        errorBuilder: (_, __, ___) => _buildPlaceholder(),
+      );
+    }
+
+    return _buildPlaceholder();
+  }
+
+  Widget _buildPlaceholder() {
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(Icons.camera_alt, size: 40, color: AppColors.primary.withOpacity(0.5)),
+        const SizedBox(height: 8),
+        Text(
+          'Tap to add image',
+          style: TextStyle(
+            color: AppColors.primary,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCategoryDropdown(MenuProvider menuProvider) {
+    final categories = menuProvider.menuItems
+        .map((item) => item['category'] as String?)
+        .where((c) => c != null && c.trim().isNotEmpty)
+        .map((c) => c!.trim())
+        .toSet()
+        .toList();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        DropdownButtonFormField<String>(
+          value: _selectedCategory,
+          isExpanded: true, // prevent right overflow in dialog
+          decoration: InputDecoration(
+            labelText: 'Category',
+            border: const OutlineInputBorder(),
+            prefixIcon: Icon(Icons.category, color: AppColors.primary),
+            suffixIcon: _selectedCategory != null
+                ? IconButton(
+                    icon: const Icon(Icons.clear, size: 18),
+                    onPressed: () {
+                      setState(() {
+                        _selectedCategory = null;
+                        _showNewCategoryField = false;
+                      });
+                    },
+                  )
+                : null,
+          ),
+          hint: const Text('Select a category'),
+          items: [
+            // categories
+            ...categories.map((category) {
+              return DropdownMenuItem(
+                value: category,
+                child: Text(category, overflow: TextOverflow.ellipsis),
+              );
+            }).toList(),
+            // add new category (short label to avoid overflow)
+            const DropdownMenuItem(
+              value: 'add_new',
+              child: Text('Add new category...'),
+            ),
+          ],
+          onChanged: (value) {
+            setState(() {
+              if (value == 'add_new') {
+                _showNewCategoryField = true;
+                _selectedCategory = null;
+                _newCategoryController.clear();
+              } else {
+                _selectedCategory = value;
+                _showNewCategoryField = false;
+              }
+            });
+          },
+          validator: (value) {
+            if (!_showNewCategoryField && (value == null || value.isEmpty)) {
+              return 'Please select a category';
+            }
+            return null;
+          },
+        ),
+        if (_showNewCategoryField) ...[
+          const SizedBox(height: 16),
+          TextFormField(
+            controller: _newCategoryController,
+            decoration: InputDecoration(
+              labelText: 'New Category Name',
+              border: const OutlineInputBorder(),
+              prefixIcon: Icon(Icons.create_new_folder, color: AppColors.primary),
+            ),
+            validator: (value) {
+              if (_showNewCategoryField && (value == null || value.trim().isEmpty)) {
+                return 'Please enter a category name';
+              }
+              return null;
+            },
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildMenuItemImage(dynamic imageValue) {
+    const double size = 56.0;
+
+    if (imageValue == null) {
+      return Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          color: AppColors.lightGray,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: const Center(
+          child: Icon(Icons.image, color: Colors.grey),
+        ),
+      );
+    }
+
+    Widget errorWidget = Container(
+      width: size,
+      height: size,
+      color: AppColors.lightGray,
+      child: const Center(
+        child: Icon(Icons.broken_image, color: Colors.grey),
+      ),
+    );
+
+    if (imageValue is Uint8List) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: Image.memory(
+          imageValue,
+          width: size,
+          height: size,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => errorWidget,
+        ),
       );
     }
 
     if (imageValue is String) {
       if (imageValue.startsWith('assets/')) {
-        return Image.asset(
-          imageValue,
-          width: width,
-          height: height,
-          fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => _placeholderBox(width, height),
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: Image.asset(
+            imageValue,
+            width: size,
+            height: size,
+            fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => errorWidget,
+          ),
         );
       }
-      if (imageValue.startsWith('http')) {
-        return Image.network(
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: Image.network(
           imageValue,
-          width: width,
-          height: height,
+          width: size,
+          height: size,
           fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => _placeholderBox(width, height),
-        );
-      }
-      // Fallback: try network (may fail if it's a local path, but avoids dart:io import)
-      return Image.network(
-        imageValue,
-        width: width,
-        height: height,
-        fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => _placeholderBox(width, height),
+          errorBuilder: (_, __, ___) => errorWidget,
+        ),
       );
     }
 
-    return _placeholderBox(width, height);
+    return errorWidget;
   }
 
-  Widget _placeholderBox(double width, double height) {
+  Widget _buildStatsHeader(MenuProvider menuProvider) {
+    final menuItems = menuProvider.menuItems;
+    final totalItems = menuItems.length;
+    final categories = menuItems
+        .map((item) => item['category']?.toString() ?? '')
+        .where((c) => c.trim().isNotEmpty)
+        .toSet()
+        .length;
+    final averagePrice = totalItems > 0 
+        ? menuItems.fold<num>(0, (sum, item) => sum + (item['price'] ?? 0)).toDouble() / totalItems
+        : 0.0;
+
     return Container(
-      width: width,
-      height: height,
-      color: AppColors.lightGray,
-      child: const Icon(Icons.fastfood),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.primary.withOpacity(0.05),
+        border: Border(
+          bottom: BorderSide(color: AppColors.primary.withOpacity(0.1)),
+        ),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        children: [
+          _buildStatItem('Total Items', totalItems.toString(), Icons.restaurant, AppColors.primary),
+          _buildStatItem('Categories', categories.toString(), Icons.category, Colors.blue),
+          _buildStatItem('Avg Price', 'Ksh ${averagePrice.toStringAsFixed(0)}', Icons.attach_money, AppColors.success),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatItem(String label, String value, IconData icon, Color color) {
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.1),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(icon, size: 20, color: color),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: color,
+          ),
+        ),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            color: AppColors.darkText.withOpacity(0.6),
+          ),
+        ),
+      ],
     );
   }
 
@@ -314,13 +747,128 @@ class _AdminMenuManagementScreenState extends State<AdminMenuManagementScreen> {
             tooltip: 'Add menu item',
             onPressed: () {
               _clearForm();
-              showDialog(
-                context: context,
-                builder: (BuildContext context) {
-                  return _buildAddItemDialog();
-                },
-              );
+              _showAddEditDialog();
             },
+          ),
+        ],
+      ),
+      body: Column(
+        children: [
+          _buildStatsHeader(menuProvider),
+          const SizedBox(height: 8),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Menu Items (${menuItems.length})',
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.darkText,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Expanded(
+                    child: menuItems.isEmpty
+                        ? Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.restaurant_menu,
+                                  size: 80,
+                                  color: AppColors.darkText.withOpacity(0.3),
+                                ),
+                                const SizedBox(height: 16),
+                                Text(
+                                  'No Menu Items Yet',
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                    color: AppColors.darkText.withOpacity(0.5),
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  'Tap the + button to add your first item',
+                                  style: TextStyle(
+                                    color: AppColors.darkText.withOpacity(0.4),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          )
+                        : ListView.builder(
+                            itemCount: menuItems.length,
+                            itemBuilder: (context, index) {
+                              final item = menuItems[index];
+                              return Card(
+                                margin: const EdgeInsets.only(bottom: 12),
+                                elevation: 2,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: ListTile(
+                                  contentPadding: const EdgeInsets.symmetric(
+                                      vertical: 8, horizontal: 16),
+                                  leading: _buildMenuItemImage(item['image']),
+                                  title: Text(
+                                    item['title'] ?? '',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      color: AppColors.darkText,
+                                    ),
+                                  ),
+                                  subtitle: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        'Ksh ${item['price']} • ${item['category'] ?? ''}',
+                                        style: TextStyle(
+                                          color: AppColors.darkText.withOpacity(0.7),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Row(
+                                        children: [
+                                          const Icon(Icons.star,
+                                              size: 16, color: Colors.amber),
+                                          const SizedBox(width: 4),
+                                          Text(
+                                            '${item['rating'] ?? _defaultRating}',
+                                            style: TextStyle(
+                                              color: AppColors.darkText.withOpacity(0.6),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                  trailing: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      IconButton(
+                                        icon: const Icon(Icons.edit, color: AppColors.primary),
+                                        onPressed: () => _editItem(index, item),
+                                      ),
+                                      IconButton(
+                                        icon: const Icon(Icons.delete, color: Colors.red),
+                                        onPressed: () => _showDeleteConfirmation(index, context),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                  ),
+                ],
+              ),
+            ),
           ),
         ],
       ),
@@ -328,229 +876,129 @@ class _AdminMenuManagementScreenState extends State<AdminMenuManagementScreen> {
         backgroundColor: AppColors.primary,
         onPressed: () {
           _clearForm();
-          showDialog(context: context, builder: (_) => _buildAddItemDialog());
+          _showAddEditDialog();
         },
         tooltip: 'Add menu item',
-        child: const Icon(Icons.add),
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Menu Items (${menuItems.length})',
-              style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: AppColors.darkText,
-              ),
-            ),
-            const SizedBox(height: 16),
-            Expanded(
-              child: menuItems.isEmpty
-                  ? Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.restaurant_menu,
-                            size: 64,
-                            color: AppColors.lightGray,
-                          ),
-                          const SizedBox(height: 16),
-                          const Text(
-                            'No menu items yet',
-                            style: TextStyle(
-                              fontSize: 18,
-                              color: AppColors.darkText,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            'Tap the + button to add your first item',
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: AppColors.darkText.withOpacity(0.7),
-                            ),
-                          ),
-                        ],
-                      ),
-                    )
-                  : ListView.builder(
-                      itemCount: menuItems.length,
-                      itemBuilder: (context, index) {
-                        final item = menuItems[index];
-                        return Card(
-                          margin: const EdgeInsets.only(bottom: 12),
-                          child: ListTile(
-                            leading: ClipRRect(
-                              borderRadius: BorderRadius.circular(8),
-                              child: _buildImage(item['image'] ?? 'assets/images/default.jpg'),
-                            ),
-                            title: Text(
-                              item['title'] ?? '',
-                              style: const TextStyle(fontWeight: FontWeight.bold),
-                            ),
-                            subtitle: Text(
-                              'Ksh ${item['price']} • ${item['category'] ?? ''} • ⭐${item['rating'] ?? _defaultRating}',
-                            ),
-                            trailing: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                IconButton(
-                                  icon: const Icon(Icons.edit, color: AppColors.primary),
-                                  onPressed: () => _editItem(index, item),
-                                ),
-                                IconButton(
-                                  icon: const Icon(Icons.delete, color: Colors.red),
-                                  onPressed: () => _deleteItem(index),
-                                ),
-                              ],
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-            ),
-          ],
-        ),
+        child: const Icon(Icons.add, color: Colors.white),
       ),
     );
   }
 
-  Widget _buildAddItemDialog({bool isEditing = false}) {
-    // For preview inside dialog prefer selected bytes first, then editing string, then default.
-    Widget dialogImagePreview() {
-      if (_selectedImageBytes != null) {
-        return Image.memory(_selectedImageBytes!, fit: BoxFit.cover);
-      }
-      if (_editingImageString != null) {
-        final v = _editingImageString!;
-        if (v.startsWith('assets/')) {
-          return Image.asset(v, fit: BoxFit.cover);
-        }
-        if (v.startsWith('http')) {
-          return Image.network(v, fit: BoxFit.cover);
-        }
-        // fallback to network attempt
-        return Image.network(v, fit: BoxFit.cover);
-      }
-      // default placeholder
-      return Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.camera_alt, size: 40, color: AppColors.primary),
-          const SizedBox(height: 8),
-          Text('Tap to ${isEditing ? 'change' : 'add'} image',
-              style: TextStyle(color: AppColors.primary)),
-        ],
-      );
-    }
+  void _showAddEditDialog({bool isEditing = false}) {
+    final menuProvider = Provider.of<MenuProvider>(context, listen: false);
 
-    return AlertDialog(
-      title: Text(isEditing ? 'Edit Menu Item' : 'Add New Menu Item'),
-      content: SingleChildScrollView(
-        child: Form(
-          key: _formKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Image preview and picker
-              GestureDetector(
-                onTap: _pickImage,
-                child: Container(
-                  height: 150,
-                  width: double.infinity,
-                  decoration: BoxDecoration(
-                    color: AppColors.lightGray,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: AppColors.primary.withOpacity(0.3)),
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: Text(isEditing ? 'Edit Menu Item' : 'Add New Menu Item'),
+              content: SingleChildScrollView(
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      GestureDetector(
+                        onTap: () {
+                          _showImageSourceDialog();
+                          setDialogState(() {});
+                        },
+                        child: Container(
+                          height: 150,
+                          width: double.infinity,
+                          decoration: BoxDecoration(
+                            color: AppColors.lightGray,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: AppColors.primary.withOpacity(0.3)),
+                          ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: _buildImageContent(),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: _titleController,
+                        decoration: InputDecoration(
+                          labelText: 'Item Name',
+                          border: const OutlineInputBorder(),
+                          prefixIcon: Icon(Icons.fastfood, color: AppColors.primary),
+                        ),
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'Please enter an item name';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 16),
+                      // Replace $ icon with "KSh" text to avoid confusion
+                      TextFormField(
+                        controller: _priceController,
+                        decoration: InputDecoration(
+                          labelText: 'Price',
+                          border: const OutlineInputBorder(),
+                          prefixText: 'KSh ',
+                          prefixStyle: const TextStyle(
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.primary,
+                          ),
+                        ),
+                        keyboardType: TextInputType.number,
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'Please enter a price';
+                          }
+                          if (int.tryParse(value.trim()) == null) {
+                            return 'Please enter a valid number';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 16),
+                      _buildCategoryDropdown(menuProvider),
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: _descriptionController,
+                        decoration: InputDecoration(
+                          labelText: 'Description (Optional)',
+                          border: const OutlineInputBorder(),
+                          prefixIcon: Icon(Icons.description, color: AppColors.primary),
+                        ),
+                        maxLines: 3,
+                      ),
+                    ],
                   ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: dialogImagePreview(),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                    _clearForm();
+                  },
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    foregroundColor: Colors.white,
                   ),
+                  onPressed: () {
+                    if (_formKey.currentState!.validate()) {
+                      _submitForm();
+                    }
+                  },
+                  child: Text(isEditing ? 'Update Item' : 'Add Item'),
                 ),
-              ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: _titleController,
-                decoration: const InputDecoration(
-                  labelText: 'Item Name',
-                  border: OutlineInputBorder(),
-                ),
-                validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
-                    return 'Please enter an item name';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: _priceController,
-                decoration: const InputDecoration(
-                  labelText: 'Price (Ksh)',
-                  border: OutlineInputBorder(),
-                ),
-                keyboardType: TextInputType.number,
-                validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
-                    return 'Please enter a price';
-                  }
-                  if (int.tryParse(value.trim()) == null) {
-                    return 'Please enter a valid number';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 16),
-              // Category input
-              TextFormField(
-                controller: _categoryController,
-                decoration: const InputDecoration(
-                  labelText: 'Category',
-                  border: OutlineInputBorder(),
-                ),
-                validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
-                    return 'Please enter a category';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: _descriptionController,
-                decoration: const InputDecoration(
-                  labelText: 'Description (Optional)',
-                  border: OutlineInputBorder(),
-                ),
-                maxLines: 2,
-              ),
-            ],
-          ),
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () {
-            Navigator.of(context).pop();
-            _clearForm();
+              ],
+            );
           },
-          child: const Text('Cancel'),
-        ),
-        ElevatedButton(
-          onPressed: () {
-            if (_formKey.currentState!.validate()) {
-              _submitForm();
-              Navigator.of(context).pop();
-            }
-          },
-          child: Text(isEditing ? 'Update Item' : 'Add Item'),
-        ),
-      ],
+        );
+      },
     );
   }
 }

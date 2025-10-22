@@ -1,225 +1,155 @@
 import 'package:flutter/material.dart';
 import '../constants/colors.dart';
 
-class PaymentMethodsScreen extends StatefulWidget {
+class PaymentMethodsScreen extends StatelessWidget {
   const PaymentMethodsScreen({super.key});
 
   @override
-  State<PaymentMethodsScreen> createState() => _PaymentMethodsScreenState();
+  Widget build(BuildContext context) {
+    return PopScope(
+      canPop: true,
+      child: Scaffold(
+        backgroundColor: AppColors.background,
+        appBar: AppBar(
+          title: const Text('Payment Methods'),
+          backgroundColor: AppColors.primary,
+          elevation: 0,
+          iconTheme: const IconThemeData(color: AppColors.white),
+          titleTextStyle: const TextStyle(
+            color: AppColors.white,
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        body: ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            _PaymentMethodCard(
+              icon: Icons.credit_card,
+              title: 'Credit Card',
+              subtitle: '**** **** **** 1234',
+              isDefault: true,
+            ),
+            const SizedBox(height: 12),
+            _PaymentMethodCard(
+              icon: Icons.account_balance,
+              title: 'Bank Account',
+              subtitle: 'ABC Bank - ****5678',
+              isDefault: false,
+            ),
+            const SizedBox(height: 12),
+            _PaymentMethodCard(
+              icon: Icons.phone_android,
+              title: 'M-Pesa',
+              subtitle: '+254 712 345 678',
+              isDefault: false,
+            ),
+            const SizedBox(height: 24),
+            ElevatedButton.icon(
+              onPressed: () {
+                // Add payment method
+              },
+              icon: const Icon(Icons.add),
+              label: const Text('Add Payment Method'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: AppColors.white,
+                minimumSize: const Size.fromHeight(50),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
-class _PaymentMethodsScreenState extends State<PaymentMethodsScreen> {
-  String _selectedMethod = 'mpesa'; // Default selected method
-  final TextEditingController _phoneController = TextEditingController();
-  final TextEditingController _mpesaPhoneController = TextEditingController();
+class _PaymentMethodCard extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final bool isDefault;
 
-  @override
-  void initState() {
-    super.initState();
-    // Pre-fill with a placeholder or user's saved number if available
-    _phoneController.text = '0712 345 678';
-    _mpesaPhoneController.text = '0712 345 678';
-  }
-
-  @override
-  void dispose() {
-    _phoneController.dispose();
-    _mpesaPhoneController.dispose();
-    super.dispose();
-  }
+  const _PaymentMethodCard({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.isDefault,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(
-        title: const Text("Payment Methods"),
-        backgroundColor: AppColors.primary,
-        foregroundColor: AppColors.white,
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: isDefault
+            ? Border.all(color: AppColors.primary, width: 2)
+            : null,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              "Select Payment Method",
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: AppColors.darkText,
-              ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: AppColors.primary.withOpacity(0.1),
+              shape: BoxShape.circle,
             ),
-            const SizedBox(height: 16),
-            
-            // Cash on Delivery Option
-            _buildPaymentOption(
-              title: "Cash on Delivery",
-              subtitle: "Pay with cash when your order is delivered",
-              value: 'cash',
-              icon: Icons.money,
-            ),
-            
-            // Show phone input if cash is selected
-            if (_selectedMethod == 'cash') ...[
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: _phoneController,
-                decoration: const InputDecoration(
-                  labelText: 'Phone Number for Delivery Updates',
-                  border: OutlineInputBorder(),
-                  filled: true,
-                  fillColor: AppColors.cardBackground,
-                  prefixText: '+254 ',
-                ),
-                keyboardType: TextInputType.phone,
-              ),
-            ],
-            
-            const SizedBox(height: 16),
-            
-            // M-Pesa Option
-            _buildPaymentOption(
-              title: "M-Pesa",
-              subtitle: "Pay securely via M-Pesa",
-              value: 'mpesa',
-              icon: Icons.phone_android,
-            ),
-            
-            // Show M-Pesa details if selected
-            if (_selectedMethod == 'mpesa') ...[
-              const SizedBox(height: 16),
-              const Card(
-                color: AppColors.cardBackground,
-                child: Padding(
-                  padding: EdgeInsets.all(16.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        "M-Pesa Till Number",
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                          color: AppColors.darkText,
-                        ),
-                      ),
-                      SizedBox(height: 8),
-                      Text(
-                        "123456",
-                        style: TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.primary,
-                        ),
-                      ),
-                      SizedBox(height: 8),
-                      Text(
-                        "Please use this till number when making payment",
-                        style: TextStyle(
-                          color: AppColors.darkText,
-                        ),
-                      ),
-                    ],
+            child: Icon(icon, color: AppColors.primary),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.darkText,
                   ),
                 ),
-              ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: _mpesaPhoneController,
-                decoration: const InputDecoration(
-                  labelText: 'Your M-Pesa Phone Number',
-                  border: OutlineInputBorder(),
-                  filled: true,
-                  fillColor: AppColors.cardBackground,
-                  prefixText: '+254 ',
-                ),
-                keyboardType: TextInputType.phone,
-              ),
-            ],
-            
-            const Spacer(),
-            
-            // Save Button
-            ElevatedButton(
-              onPressed: () {
-                // Save the selected payment method
-                _savePaymentMethod();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text("Payment method updated successfully"),
-                    backgroundColor: AppColors.success,
+                const SizedBox(height: 4),
+                Text(
+                  subtitle,
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: AppColors.darkText.withOpacity(0.6),
                   ),
-                );
-                Navigator.pop(context);
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.accent,
-                foregroundColor: AppColors.white,
-                minimumSize: const Size(double.infinity, 50),
-              ),
-              child: const Text('Save Payment Method'),
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+          if (isDefault)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: AppColors.primary,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: const Text(
+                'Default',
+                style: TextStyle(
+                  color: AppColors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+        ],
       ),
     );
-  }
-
-  Widget _buildPaymentOption({
-    required String title,
-    required String subtitle,
-    required String value,
-    required IconData icon,
-  }) {
-    return Card(
-      color: AppColors.cardBackground,
-      child: RadioListTile<String>(
-        title: Row(
-          children: [
-            Icon(icon, color: AppColors.primary),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.darkText,
-                    ),
-                  ),
-                  Text(
-                    subtitle,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: AppColors.darkText,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-        value: value,
-        groupValue: _selectedMethod,
-        activeColor: AppColors.primary,
-        onChanged: (String? value) {
-          setState(() {
-            _selectedMethod = value!;
-          });
-        },
-      ),
-    );
-  }
-
-  void _savePaymentMethod() {
-    // Here you would typically save the payment method to your backend
-    if (_selectedMethod == 'cash') {
-      print("Saved cash on delivery with phone: ${_phoneController.text}");
-    } else if (_selectedMethod == 'mpesa') {
-      print("Saved M-Pesa with phone: ${_mpesaPhoneController.text}");
-    }
   }
 }

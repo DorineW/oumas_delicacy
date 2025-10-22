@@ -39,92 +39,53 @@ class ProfileScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(
-        title: const Text("My Profile"),
-        backgroundColor: AppColors.primary,
-        foregroundColor: AppColors.white,
-        elevation: 0,
-      ),
-      body: Column(
-        children: [
-          const SizedBox(height: 30),
-          const CircleAvatar(
-            radius: 50,
-            backgroundImage: AssetImage('assets/images/profile.jpg'),
-          ),
-          const SizedBox(height: 16),
-          const Text(
-            "Dorin N.",
-            style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-          ),
-          const Text(
-            "dorin@example.com",
-            style: TextStyle(fontSize: 16, color: Colors.grey),
-          ),
-          const SizedBox(height: 30),
-          Expanded(
-            child: ListView(
-              children: [
-                _ProfileOption(
-                  icon: Icons.edit,
-                  title: "Edit Profile",
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const EditProfileScreen(),
+    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
+    
+    return PopScope(
+      canPop: false,
+      onPopInvoked: (didPop) {},
+      child: Scaffold(
+        backgroundColor: AppColors.background,
+        appBar: AppBar(
+          title: const Text("Profile"),
+          backgroundColor: AppColors.primary,
+          elevation: 0,
+          iconTheme: const IconThemeData(color: AppColors.white),
+          titleTextStyle: const TextStyle(color: AppColors.white, fontSize: 18, fontWeight: FontWeight.bold),
+          automaticallyImplyLeading: false,
+        ),
+        body: LayoutBuilder(
+          builder: (context, constraints) {
+            return SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                child: Column(
+                  children: [
+                    SizedBox(height: isLandscape ? 20 : 30),
+                    CircleAvatar(radius: isLandscape ? 40 : 50, backgroundImage: const AssetImage('assets/images/profile.jpg')),
+                    SizedBox(height: isLandscape ? 12 : 16),
+                    Text("Dorin N.", style: TextStyle(fontSize: isLandscape ? 20 : 22, fontWeight: FontWeight.bold)),
+                    Text("dorin@example.com", style: TextStyle(fontSize: isLandscape ? 14 : 16, color: Colors.grey)),
+                    SizedBox(height: isLandscape ? 20 : 30),
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 100),
+                      child: Column(
+                        children: [
+                          _ProfileOption(icon: Icons.edit, title: "Edit Profile", onTap: () { Navigator.push(context, MaterialPageRoute(builder: (context) => const EditProfileScreen())); }),
+                          _ProfileOption(icon: Icons.history, title: "Order History", onTap: () { Navigator.push(context, MaterialPageRoute(builder: (context) => const OrderHistoryScreen())); }),
+                          _ProfileOption(icon: Icons.payment, title: "Payment Methods", onTap: () { Navigator.push(context, MaterialPageRoute(builder: (context) => const PaymentMethodsScreen())); }),
+                          _ProfileOption(icon: Icons.notifications, title: "Notifications", onTap: () { Navigator.push(context, MaterialPageRoute(builder: (context) => const NotificationsScreen())); }),
+                          _ProfileOption(icon: Icons.logout, title: "Logout", isDestructive: true, onTap: () => _showLogoutDialog(context)),
+                        ],
                       ),
-                    );
-                  },
+                    ),
+                  ],
                 ),
-                _ProfileOption(
-                  icon: Icons.history,
-                  title: "Order History",
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const OrderHistoryScreen(),
-                      ),
-                    );
-                  },
-                ),
-                _ProfileOption(
-                  icon: Icons.payment,
-                  title: "Payment Methods",
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const PaymentMethodsScreen(),
-                      ),
-                    );
-                  },
-                ),
-                _ProfileOption(
-                  icon: Icons.notifications,
-                  title: "Notifications",
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const NotificationsScreen(),
-                      ),
-                    );
-                  },
-                ),
-                _ProfileOption(
-                  icon: Icons.logout,
-                  title: "Logout",
-                  isDestructive: true,
-                  onTap: () => _showLogoutDialog(context),
-                ),
-              ],
-            ),
-          )
-        ],
+              ),
+            );
+          },
+        ),
       ),
     );
   }
