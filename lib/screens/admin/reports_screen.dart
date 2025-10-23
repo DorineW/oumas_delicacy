@@ -13,7 +13,6 @@ import 'package:printing/printing.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:path/path.dart' as p;
-import 'dart:ui';
 
 import '../../constants/colors.dart';
 
@@ -208,176 +207,176 @@ class _ReportsScreenState extends State<ReportsScreen> {
     }
   }
 
-  Future<DateTime?> _showMonthPicker(BuildContext context, DateTime initialDate) {
-    final currentYear = DateTime.now().year;
-    final years = List<int>.generate(11, (i) => currentYear - 5 + i);
+  Future<DateTime?> _showMonthPicker(BuildContext context, DateTime initialDate) async {
     int selectedYear = initialDate.year;
     int selectedMonth = initialDate.month;
+    final now = DateTime.now();
+    final years = List.generate(5, (i) => now.year - i);
 
-    return showModalBottomSheet<DateTime>(
+    DateTime? result;
+
+    await showDialog(
       context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (ctx) {
-        return StatefulBuilder(builder: (context, setState) {
-          return Container(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Row(
-                  children: [
-                    const SizedBox(width: 4),
-                    Expanded(
-                      child: Text('Select Month & Year',
-                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.darkText)),
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            title: const Text('Select Month'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // FIXED: Year selector with proper constraints
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: AppColors.cardBackground,
+                      borderRadius: BorderRadius.circular(12),
                     ),
-                    IconButton(
-                      icon: const Icon(Icons.close),
-                      color: AppColors.darkText,
-                      onPressed: () => Navigator.pop(ctx),
-                    )
-                  ],
-                ),
-                const SizedBox(height: 16),
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: AppColors.cardBackground,
-                    borderRadius: BorderRadius.circular(12),
+                    child: Column(
+                      children: [
+                        // Year label and dropdown
+                        Row(
+                          children: [
+                            const Icon(Icons.calendar_today, size: 18, color: AppColors.primary),
+                            const SizedBox(width: 8),
+                            const Text('Year:', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8),
+                                decoration: BoxDecoration(
+                                  color: AppColors.white,
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: AppColors.lightGray),
+                                ),
+                                child: DropdownButton<int>(
+                                  value: selectedYear,
+                                  isExpanded: true,
+                                  underline: const SizedBox(),
+                                  items: years.map((y) => DropdownMenuItem(
+                                    value: y,
+                                    child: Text(
+                                      y.toString(),
+                                      style: const TextStyle(fontSize: 14),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  )).toList(),
+                                  onChanged: (y) {
+                                    if (y == null) return;
+                                    setDialogState(() => selectedYear = y);
+                                  },
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        // Navigation buttons
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            IconButton(
+                              tooltip: 'Previous year',
+                              onPressed: () => setDialogState(() {
+                                selectedYear = (selectedYear - 1);
+                                if (selectedYear < years.last) selectedYear = years.last;
+                              }),
+                              icon: const Icon(Icons.chevron_left, size: 20),
+                              style: IconButton.styleFrom(
+                                backgroundColor: AppColors.primary.withOpacity(0.1),
+                                padding: const EdgeInsets.all(8),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            IconButton(
+                              tooltip: 'Next year',
+                              onPressed: () => setDialogState(() {
+                                selectedYear = (selectedYear + 1);
+                                if (selectedYear > years.first) selectedYear = years.first;
+                              }),
+                              icon: const Icon(Icons.chevron_right, size: 20),
+                              style: IconButton.styleFrom(
+                                backgroundColor: AppColors.primary.withOpacity(0.1),
+                                padding: const EdgeInsets.all(8),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.calendar_today, size: 20, color: AppColors.primary),
-                      const SizedBox(width: 12),
-                      const Text('Year:', style: TextStyle(fontWeight: FontWeight.w600)),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: DropdownButton<int>(
-                          value: selectedYear,
-                          isExpanded: true,
-                          items: years.map((y) => DropdownMenuItem(
-                            value: y, 
-                            child: Text(y.toString(), style: TextStyle(color: AppColors.darkText)),
-                          )).toList(),
-                          onChanged: (y) {
-                            if (y == null) return;
-                            setState(() => selectedYear = y);
-                          },
+                  const SizedBox(height: 16),
+                  // Month grid
+                  GridView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 3,
+                      crossAxisSpacing: 8,
+                      mainAxisSpacing: 8,
+                      childAspectRatio: 2,
+                    ),
+                    itemCount: 12,
+                    itemBuilder: (context, index) {
+                      final month = index + 1;
+                      final isSelected = month == selectedMonth;
+                      return InkWell(
+                        onTap: () => setDialogState(() => selectedMonth = month),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          decoration: BoxDecoration(
+                            color: isSelected ? AppColors.primary : AppColors.white,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: isSelected ? AppColors.primary : AppColors.lightGray,
+                            ),
+                          ),
+                          child: Center(
+                            child: Text(
+                              _getMonthName(month),
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                color: isSelected ? AppColors.white : AppColors.darkText,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: 12),
-                      IconButton(
-                        tooltip: 'Previous year',
-                        onPressed: () => setState(() {
-                          selectedYear = (selectedYear - 1);
-                          if (selectedYear < years.first) selectedYear = years.first;
-                        }),
-                        icon: const Icon(Icons.chevron_left),
-                        style: IconButton.styleFrom(
-                          backgroundColor: AppColors.primary.withOpacity(0.1),
-                        ),
-                      ),
-                      IconButton(
-                        tooltip: 'Next year',
-                        onPressed: () => setState(() {
-                          selectedYear = (selectedYear + 1);
-                          if (selectedYear > years.last) selectedYear = years.last;
-                        }),
-                        icon: const Icon(Icons.chevron_right),
-                        style: IconButton.styleFrom(
-                          backgroundColor: AppColors.primary.withOpacity(0.1),
-                        ),
-                      ),
-                    ],
+                      );
+                    },
                   ),
-                ),
-                const SizedBox(height: 16),
-                Text('Select Month', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: AppColors.darkText)),
-                const SizedBox(height: 12),
-                GridView.count(
-                  crossAxisCount: 3,
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  mainAxisSpacing: 12,
-                  crossAxisSpacing: 12,
-                  childAspectRatio: 2.2,
-                  children: List.generate(12, (index) {
-                    final m = index + 1;
-                    final monthName = DateFormat.MMM().format(DateTime(0, m));
-                    final isSelected = selectedMonth == m;
-                    final isCurrentMonth = m == DateTime.now().month && selectedYear == DateTime.now().year;
-                    
-                    return GestureDetector(
-                      onTap: () => setState(() => selectedMonth = m),
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 200),
-                        decoration: BoxDecoration(
-                          color: isSelected ? AppColors.primary : (isCurrentMonth ? AppColors.primary.withOpacity(0.1) : AppColors.cardBackground),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: isSelected ? AppColors.primary : AppColors.lightGray.withOpacity(0.4),
-                            width: isSelected ? 2 : 1,
-                          ),
-                          boxShadow: isSelected ? [
-                            BoxShadow(
-                              color: AppColors.primary.withOpacity(0.3),
-                              blurRadius: 8,
-                              offset: const Offset(0, 2),
-                            )
-                          ] : null,
-                        ),
-                        alignment: Alignment.center,
-                        child: Text(
-                          monthName,
-                          style: TextStyle(
-                            color: isSelected ? AppColors.white : AppColors.darkText, 
-                            fontWeight: FontWeight.w600,
-                            fontSize: 14,
-                          ),
-                        ),
-                      ),
-                    );
-                  }),
-                ),
-                const SizedBox(height: 20),
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: () => Navigator.pop(ctx),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: AppColors.darkText,
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        ),
-                        child: const Text('Cancel', style: TextStyle(fontWeight: FontWeight.w600)),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: ElevatedButton(
-                        onPressed: () => Navigator.pop(ctx, DateTime(selectedYear, selectedMonth, 1)),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.primary, 
-                          foregroundColor: AppColors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        ),
-                        child: const Text('Select', style: TextStyle(fontWeight: FontWeight.w600)), // Fixed: removed TextWeight
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-              ],
+                ],
+              ),
             ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  result = DateTime(selectedYear, selectedMonth, 1);
+                  Navigator.pop(ctx);
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                ),
+                child: const Text('OK'),
+              ),
+            ],
           );
-        });
-      },
+        },
+      ),
     );
+
+    return result;
+  }
+
+  String _getMonthName(int month) {
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
+                    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return months[month - 1];
   }
 
   // ---------------------------
@@ -470,9 +469,11 @@ class _ReportsScreenState extends State<ReportsScreen> {
   // UI sections
   // ---------------------------
   Widget _buildPeriodSelector() {
-    return Row(
+    return Column(
       children: [
-        Expanded(
+        // FIXED: Make ToggleButtons scrollable in its own row
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
           child: ToggleButtons(
             isSelected: [
               _period == ReportPeriod.day,
@@ -490,6 +491,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
             selectedColor: AppColors.white,
             fillColor: AppColors.primary,
             color: AppColors.darkText,
+            constraints: const BoxConstraints(
+              minHeight: 40,
+              minWidth: 70,
+            ),
             children: const [
               Padding(padding: EdgeInsets.symmetric(horizontal: 12), child: Text('Day')),
               Padding(padding: EdgeInsets.symmetric(horizontal: 12), child: Text('Week')),
@@ -498,21 +503,28 @@ class _ReportsScreenState extends State<ReportsScreen> {
             ],
           ),
         ),
-        const SizedBox(width: 12),
-        ElevatedButton.icon(
-          style: ElevatedButton.styleFrom(
-            backgroundColor: AppColors.primary,
-            foregroundColor: AppColors.white,
+        const SizedBox(height: 12),
+        // Date picker button on its own row
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              foregroundColor: AppColors.white,
+              padding: const EdgeInsets.symmetric(vertical: 12),
+            ),
+            onPressed: _pickDate,
+            icon: const Icon(Icons.calendar_today, size: 16),
+            label: Text(
+              _period == ReportPeriod.day
+                  ? DateFormat.yMMMd().format(_selectedDate)
+                  : _period == ReportPeriod.week
+                      ? 'Week of ${DateFormat.MMMMd().format(_selectedDate)}'
+                      : _period == ReportPeriod.month
+                          ? DateFormat.yMMM().format(_selectedDate)
+                          : DateFormat.y().format(_selectedDate),
+            ),
           ),
-          onPressed: _pickDate,
-          icon: const Icon(Icons.calendar_today, size: 16),
-          label: Text(_period == ReportPeriod.day
-              ? DateFormat.yMMMd().format(_selectedDate)
-              : _period == ReportPeriod.week
-                  ? 'Week of ${DateFormat.MMMMd().format(_selectedDate)}'
-                  : _period == ReportPeriod.month
-                      ? DateFormat.yMMM().format(_selectedDate)
-                      : DateFormat.y().format(_selectedDate)),
         ),
       ],
     );

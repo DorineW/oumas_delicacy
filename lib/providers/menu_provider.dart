@@ -34,6 +34,39 @@ class MenuProvider with ChangeNotifier {
     _menuItems.clear();
     notifyListeners();
   }
+
+  // ADDED: Toggle availability of a menu item
+  void toggleAvailability(int index) {
+    if (index >= 0 && index < _menuItems.length) {
+      _menuItems[index]['isAvailable'] = !(_menuItems[index]['isAvailable'] ?? true);
+      notifyListeners();
+    }
+  }
+
+  // ADDED: Check if item is available
+  bool isItemAvailable(String title) {
+    final item = _menuItems.firstWhere(
+      (item) => item['title'] == title,
+      orElse: () => {'isAvailable': true},
+    );
+    return item['isAvailable'] ?? true;
+  }
+
+  // ADDED: Mark item as unavailable
+  void markAsUnavailable(int index) {
+    if (index >= 0 && index < _menuItems.length) {
+      _menuItems[index]['isAvailable'] = false;
+      notifyListeners();
+    }
+  }
+
+  // ADDED: Mark item as available
+  void markAsAvailable(int index) {
+    if (index >= 0 && index < _menuItems.length) {
+      _menuItems[index]['isAvailable'] = true;
+      notifyListeners();
+    }
+  }
 }
 
 // same dummy list you had before

@@ -9,7 +9,9 @@ import '../models/order.dart' show DeliveryType;
 import '../services/location_service.dart';
 import '../services/auth_service.dart';
 import '../constants/colors.dart';
-import 'location.dart'; // LocationScreen
+import 'location.dart';
+import '../providers/cart_provider.dart';
+import '../providers/menu_provider.dart';
 
 enum PaymentMethod { cash, mpesa }
 
@@ -29,10 +31,11 @@ class CheckoutScreen extends StatefulWidget {
 
 class _CheckoutScreenState extends State<CheckoutScreen> {
   PaymentMethod _selectedMethod = PaymentMethod.cash;
-  LatLng? _deliveryLatLng; // we store lat/lng here (safer than constructing Position)
+  LatLng? _deliveryLatLng;
   bool _isLocationLoading = false;
-  bool _showDeliveryFields = false;
   bool _isProcessing = false;
+
+  final _formKey = GlobalKey<FormState>();
 
   final TextEditingController _phoneController = TextEditingController();
   final TextEditingController _mpesaPhoneController = TextEditingController();
@@ -73,7 +76,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       if (pos != null) {
         setState(() {
           _deliveryLatLng = LatLng(pos.latitude, pos.longitude);
-          _showDeliveryFields = true;
         });
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -111,7 +113,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       if (result is Position) {
         setState(() {
           _deliveryLatLng = LatLng(result.latitude, result.longitude);
-          _showDeliveryFields = true;
         });
         return;
       }
@@ -120,19 +121,17 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       if (result is LatLng) {
         setState(() {
           _deliveryLatLng = result;
-          _showDeliveryFields = true;
         });
         return;
       }
 
-      // If it returned a Map or other structure with lat/lng keys
+      // If LocationScreen returned a Map or other structure with lat/lng keys
       if (result is Map && result.containsKey('latitude') && result.containsKey('longitude')) {
         final lat = result['latitude'];
         final lng = result['longitude'];
         if (lat is num && lng is num) {
           setState(() {
             _deliveryLatLng = LatLng(lat.toDouble(), lng.toDouble());
-            _showDeliveryFields = true;
           });
           return;
         }
@@ -150,45 +149,39 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     }
   }
 
-  bool _validateInputs() {
-    if (_showDeliveryFields && _deliveryAddressController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter delivery address details')),
-      );
-      return false;
-    }
-
-    if (_selectedMethod == PaymentMethod.cash && _phoneController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter phone number for delivery updates')),
-      );
-      return false;
-    }
-
-    if (_selectedMethod == PaymentMethod.mpesa && _mpesaPhoneController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter M-Pesa phone number')),
-      );
-      return false;
-    }
-
-    return true;
-  }
-
   Future<void> _payNow() async {
-    if (!_validateInputs()) return;
+    // ADDED: Final availability check before processing payment
+    final menuProvider = context.read<MenuProvider>();
+    
+    final unavailableItems = widget.selectedItems.where(
+      (item) => !menuProvider.isItemAvailable(item.mealTitle)
+    ).toList();
+
+    if (unavailableItems.isNotEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Some items became unavailable. Please review your cart.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
 
     setState(() => _isProcessing = true);
     try {
       // Simulate processing
-      await Future.delayed(const Duration(seconds: 2));
+      await Future.delayed(const Duration(seconds: 1));
       if (!mounted) return;
 
       final auth = Provider.of<AuthService>(context, listen: false);
       final customerId = auth.currentUser?.id ?? 'guest';
       final customerName = auth.currentUser?.name ?? 'Guest';
 
-      Navigator.pushNamed(
+      // ADDED: Clear cart after successful payment
+      final cart = Provider.of<CartProvider>(context, listen: false);
+      
+      // FIXED: Navigate to confirmation screen
+      await Navigator.pushNamed(
         context,
         '/confirmation',
         arguments: {
@@ -198,208 +191,710 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           'paymentMethod': _selectedMethod == PaymentMethod.cash ? 'Cash on Delivery' : 'M-Pesa',
           'customerId': customerId,
           'customerName': customerName,
+          'deliveryAddress': _deliveryAddressController.text.trim(),
+          'phoneNumber': _selectedMethod == PaymentMethod.cash 
+              ? _phoneController.text.trim() 
+              : _mpesaPhoneController.text.trim(),
+          'deliveryLocation': _deliveryLatLng != null 
+              ? {
+                  'latitude': _deliveryLatLng!.latitude,
+                  'longitude': _deliveryLatLng!.longitude,
+                }
+              : null,
         },
       );
+
+      // ADDED: Clear cart items after confirmation screen is shown
+      if (mounted) {
+        for (final item in widget.selectedItems) {
+          cart.removeItem(item.id);
+        }
+        
+        // Pop back to home after clearing cart
+        Navigator.of(context).popUntil((route) => route.isFirst);
+      }
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Payment failed: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Payment error: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
     } finally {
       if (!mounted) return;
       setState(() => _isProcessing = false);
     }
   }
 
-  Widget _buildDeliverySection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const SizedBox(height: 20),
-        const Text('Delivery Information', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-        const SizedBox(height: 12),
-        if (_deliveryLatLng == null)
-          Row(
-            children: [
-              Expanded(
-                child: ElevatedButton.icon(
-                  onPressed: _isLocationLoading ? null : _getUserLocation,
-                  icon: _isLocationLoading
-                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                      : const Icon(Icons.my_location),
-                  label: Text(_isLocationLoading ? 'Getting location...' : 'Use Current Location'),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: ElevatedButton.icon(
-                  onPressed: _selectLocationOnMap,
-                  icon: const Icon(Icons.map_outlined),
-                  label: const Text('Select on Map'),
-                ),
-              ),
-            ],
-          ),
-        if (_deliveryLatLng != null) ...[
-          const SizedBox(height: 12),
-          ListTile(
-            leading: const Icon(Icons.location_on, color: Colors.green),
-            title: const Text('Delivery location selected'),
-            subtitle: Text('Lat: ${_deliveryLatLng!.latitude.toStringAsFixed(5)}, '
-                'Lng: ${_deliveryLatLng!.longitude.toStringAsFixed(5)}'),
-            trailing: IconButton(
-              icon: const Icon(Icons.edit_outlined),
-              onPressed: _selectLocationOnMap,
-              tooltip: 'Edit on map',
-            ),
-          ),
-          const SizedBox(height: 10),
-          TextField(
-            controller: _deliveryAddressController,
-            maxLines: 2,
-            decoration: const InputDecoration(
-              labelText: 'Delivery Address Details',
-              hintText: 'Building name, floor, apartment, landmark...',
-              border: OutlineInputBorder(),
-              filled: true,
-            ),
-          ),
-          const SizedBox(height: 8),
-          const Text('Delivery fee: KES 150', style: TextStyle(fontWeight: FontWeight.bold)),
-        ],
-      ],
-    );
-  }
-
-  Widget _buildSelectedItemsList() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text('Order Summary:', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-        const SizedBox(height: 8),
-        ...widget.selectedItems.map((item) {
-          return Padding(
-            padding: const EdgeInsets.symmetric(vertical: 6),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Expanded(child: Text('${item.mealTitle} x${item.quantity}')),
-                Text('KES ${item.price * item.quantity}'),
-              ],
-            ),
-          );
-        }),
-        const Divider(height: 20, thickness: 1.5),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            const Text('Total', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-            Text('KES $totalAmount', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-          ],
-        ),
-      ],
-    );
-  }
-
-  Widget _buildPaymentOption(PaymentMethod method, String title, String subtitle, IconData icon) {
-    return Card(
-      color: AppColors.cardBackground,
-      child: ListTile(
-        leading: Icon(icon, color: AppColors.primary),
-        title: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(title, style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.darkText)),
-          const SizedBox(height: 4),
-          Text(subtitle, style: const TextStyle(fontSize: 12, color: AppColors.darkText)),
-        ]),
-        trailing: Radio<PaymentMethod>(
-          value: method,
-          groupValue: _selectedMethod,
-          activeColor: AppColors.primary,
-          onChanged: (v) {
-            if (v == null) return;
-            setState(() => _selectedMethod = v);
-          },
-        ),
-        onTap: () => setState(() => _selectedMethod = method),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
+    final cart = context.watch<CartProvider>();
+    final menuProvider = context.watch<MenuProvider>();
+
+    // FIXED: Check for unavailable items during checkout
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final unavailableItems = <CartItem>[];
+      
+      for (final item in widget.selectedItems) {
+        if (!menuProvider.isItemAvailable(item.mealTitle)) {
+          unavailableItems.add(item);
+        }
+      }
+
+      if (unavailableItems.isNotEmpty && mounted) {
+        // Remove unavailable items
+        for (final item in unavailableItems) {
+          cart.removeItem(item.id);
+        }
+
+        // Build content widgets explicitly to avoid complex inline collection syntax
+        final List<Widget> contentWidgets = [
+          const Text('The following items are currently out of stock and have been removed:'),
+          const SizedBox(height: 12),
+        ];
+
+        for (final item in unavailableItems) {
+          contentWidgets.add(
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(
+                children: [
+                  const Icon(Icons.close, color: Colors.red, size: 16),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '${item.quantity}x ${item.mealTitle}',
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+
+        contentWidgets.add(const SizedBox(height: 12));
+
+        if (cart.items.isEmpty) {
+          contentWidgets.add(
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.red.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Text(
+                'Your cart is now empty. Please add items to continue.',
+                style: TextStyle(fontSize: 12),
+              ),
+            ),
+          );
+        }
+
+        // Build actions explicitly
+        final List<Widget> actionButtons = [];
+        if (cart.items.isEmpty) {
+          actionButtons.add(
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop(); // Close dialog
+                Navigator.of(context).pop(); // Go back to cart
+              },
+              child: const Text('Back to Menu'),
+            ),
+          );
+        } else {
+          actionButtons.addAll([
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop(); // Close dialog
+                Navigator.of(context).pop(); // Go back to cart
+              },
+              child: const Text('Review Cart'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.of(context).pop(); // Close dialog and continue
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Continue Checkout'),
+            ),
+          ]);
+        }
+
+        // Show dialog
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => AlertDialog(
+            title: Row(
+              children: [
+                const Icon(Icons.warning, color: Colors.orange),
+                const SizedBox(width: 8),
+                const Text('Items Unavailable'),
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: contentWidgets,
+            ),
+            actions: actionButtons,
+          ),
+        );
+      }
+    });
+
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
         title: const Text('Checkout'),
         backgroundColor: AppColors.primary,
-        foregroundColor: AppColors.white,
+        iconTheme: const IconThemeData(color: AppColors.white),
+        titleTextStyle: const TextStyle(color: AppColors.white, fontSize: 18, fontWeight: FontWeight.bold),
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          _buildSelectedItemsList(),
-          _buildDeliverySection(),
-          const SizedBox(height: 20),
-          const Text('Select Payment Method', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 12),
-          _buildPaymentOption(PaymentMethod.cash, 'Cash on Delivery', 'Pay with cash when delivered', Icons.money),
-          if (_selectedMethod == PaymentMethod.cash) ...[
+      body: Form(
+        key: _formKey,
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildSelectedItemsList(),
+              const SizedBox(height: 16),
+              _buildDeliverySection(),
+              const SizedBox(height: 16),
+              _buildPaymentSection(),
+              const SizedBox(height: 24),
+              _buildPayButton(),
+              const SizedBox(height: 24),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSelectedItemsList() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.receipt_long, color: AppColors.primary, size: 20),
+              ),
+              const SizedBox(width: 12),
+              const Text(
+                'Order Summary',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.darkText),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          ...widget.selectedItems.map((item) {
+            return Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Row(
+                children: [
+                  Container(
+                    width: 8,
+                    height: 8,
+                    decoration: const BoxDecoration(
+                      color: AppColors.primary,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      '${item.mealTitle} x${item.quantity}',
+                      style: const TextStyle(fontWeight: FontWeight.w500),
+                    ),
+                  ),
+                  Text(
+                    'KES ${item.price * item.quantity}',
+                    style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.primary),
+                  ),
+                ],
+              ),
+            );
+          }),
+          const Divider(height: 24, thickness: 1.5),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('Total Amount', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+              Text(
+                'KES $totalAmount',
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: AppColors.primary),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDeliverySection() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.delivery_dining, color: AppColors.primary, size: 20),
+              ),
+              const SizedBox(width: 12),
+              const Text(
+                'Delivery Information',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.darkText),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          
+          if (_deliveryLatLng == null) ...[
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: _isLocationLoading ? null : _getUserLocation,
+                    icon: _isLocationLoading
+                        ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.white))
+                        : const Icon(Icons.my_location, size: 20),
+                    label: Text(_isLocationLoading ? 'Getting...' : 'Current Location'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      foregroundColor: AppColors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _selectLocationOnMap,
+                    icon: const Icon(Icons.map_outlined, size: 20),
+                    label: const Text('Select on Map'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppColors.primary,
+                      side: const BorderSide(color: AppColors.primary),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ] else ...[
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.success.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: AppColors.success.withOpacity(0.3)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.location_on, color: AppColors.success, size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Location Selected',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: AppColors.success),
+                        ),
+                        Text(
+                          'Lat: ${_deliveryLatLng!.latitude.toStringAsFixed(5)}, Lng: ${_deliveryLatLng!.longitude.toStringAsFixed(5)}',
+                          style: TextStyle(fontSize: 11, color: AppColors.darkText.withOpacity(0.7)),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.edit, color: AppColors.primary, size: 20),
+                    onPressed: _selectLocationOnMap,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                  ),
+                ],
+              ),
+            ),
             const SizedBox(height: 12),
             TextFormField(
+              controller: _deliveryAddressController,
+              maxLines: 3,
+              decoration: InputDecoration(
+                labelText: 'Delivery Address Details',
+                hintText: 'Building, floor, apartment, landmark...',
+                prefixIcon: const Icon(Icons.home_outlined, color: AppColors.primary),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: const BorderSide(color: AppColors.lightGray),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(color: AppColors.lightGray.withOpacity(0.3)),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: const BorderSide(color: AppColors.primary, width: 2),
+                ),
+                filled: true,
+                fillColor: AppColors.background,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.primary.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.local_shipping, color: AppColors.primary, size: 18),
+                  const SizedBox(width: 8),
+                  const Text(
+                    'Delivery Fee:',
+                    style: TextStyle(fontWeight: FontWeight.w500, color: AppColors.darkText),
+                  ),
+                  const Spacer(),
+                  const Text(
+                    'KES 150',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppColors.primary),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPaymentSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: AppColors.primary.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(Icons.payment, color: AppColors.primary, size: 20),
+            ),
+            const SizedBox(width: 12),
+            const Text(
+              'Payment Method',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.darkText),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        _buildPaymentOption(
+          PaymentMethod.cash,
+          'Cash on Delivery',
+          'Pay with cash when your order arrives',
+          Icons.money,
+        ),
+        if (_selectedMethod == PaymentMethod.cash) ...[
+          Container(
+            margin: const EdgeInsets.only(top: 12),
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: AppColors.white,
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.05),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: TextFormField(
               controller: _phoneController,
               keyboardType: TextInputType.phone,
-              decoration: const InputDecoration(
-                labelText: 'Phone Number for delivery updates',
+              decoration: InputDecoration(
+                labelText: 'Phone Number',
+                hintText: 'For delivery updates',
                 prefixText: '+254 ',
-                border: OutlineInputBorder(),
+                prefixIcon: const Icon(Icons.phone_outlined, color: AppColors.primary),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: const BorderSide(color: AppColors.lightGray),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(color: AppColors.lightGray.withOpacity(0.3)),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: const BorderSide(color: AppColors.primary, width: 2),
+                ),
                 filled: true,
+                fillColor: AppColors.background,
               ),
-            ),
-          ],
-          const SizedBox(height: 14),
-          _buildPaymentOption(PaymentMethod.mpesa, 'M-Pesa', 'Pay securely via M-Pesa', Icons.phone_android),
-          if (_selectedMethod == PaymentMethod.mpesa) ...[
-            const SizedBox(height: 12),
-            const Card(
-              color: AppColors.cardBackground,
-              child: Padding(
-                padding: EdgeInsets.all(12.0),
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text('M-Pesa Till Number', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                  SizedBox(height: 6),
-                  Text('123456', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                  SizedBox(height: 6),
-                  Text('Use this till number when making payment'),
-                ]),
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextFormField(
-              controller: _mpesaPhoneController,
-              keyboardType: TextInputType.phone,
-              decoration: const InputDecoration(
-                labelText: 'Your M-Pesa Phone Number',
-                prefixText: '+254 ',
-                border: OutlineInputBorder(),
-                filled: true,
-              ),
-            ),
-          ],
-          const SizedBox(height: 24),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: _isProcessing ? null : _payNow,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.accent,
-                foregroundColor: AppColors.white,
-                minimumSize: const Size(double.infinity, 50),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-              ),
-              child: _isProcessing
-                  ? const SizedBox(height: 24, width: 24, child: CircularProgressIndicator(color: Colors.white))
-                  : const Text('Pay Now', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
             ),
           ),
-        ]),
+        ],
+        const SizedBox(height: 12),
+        _buildPaymentOption(
+          PaymentMethod.mpesa,
+          'M-Pesa Payment',
+          'Pay securely via M-Pesa mobile money',
+          Icons.phone_android,
+        ),
+        if (_selectedMethod == PaymentMethod.mpesa) ...[
+          Container(
+            margin: const EdgeInsets.only(top: 12),
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: AppColors.white,
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.05),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [AppColors.success, AppColors.success.withOpacity(0.8)],
+                    ),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(Icons.phone_android, color: AppColors.white, size: 20),
+                          const SizedBox(width: 8),
+                          const Text(
+                            'M-Pesa Till Number',
+                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: AppColors.white),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        '123456',
+                        style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: AppColors.white),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Use this number when making payment',
+                        style: TextStyle(fontSize: 12, color: AppColors.white.withOpacity(0.9)),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: _mpesaPhoneController,
+                  keyboardType: TextInputType.phone,
+                  decoration: InputDecoration(
+                    labelText: 'Your M-Pesa Number',
+                    hintText: 'Enter phone number',
+                    prefixText: '+254 ',
+                    prefixIcon: const Icon(Icons.phone_outlined, color: AppColors.primary),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: const BorderSide(color: AppColors.lightGray),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: BorderSide(color: AppColors.lightGray.withOpacity(0.3)),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: const BorderSide(color: AppColors.primary, width: 2),
+                    ),
+                    filled: true,
+                    fillColor: AppColors.background,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildPaymentOption(PaymentMethod method, String title, String subtitle, IconData icon) {
+    final isSelected = _selectedMethod == method;
+    
+    return GestureDetector(
+      onTap: () => setState(() => _selectedMethod = method),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: AppColors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isSelected ? AppColors.primary : AppColors.lightGray.withOpacity(0.3),
+            width: isSelected ? 2 : 1,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: (isSelected ? AppColors.primary : AppColors.lightGray).withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(icon, color: isSelected ? AppColors.primary : AppColors.darkText, size: 24),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 15,
+                      color: isSelected ? AppColors.primary : AppColors.darkText,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: AppColors.darkText.withOpacity(0.6),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Radio<PaymentMethod>(
+              value: method,
+              groupValue: _selectedMethod,
+              activeColor: AppColors.primary,
+              onChanged: (v) {
+                if (v == null) return;
+                setState(() => _selectedMethod = v);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPayButton() {
+    return Container(
+      width: double.infinity,
+      height: 54,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [AppColors.accent, AppColors.accent.withOpacity(0.8)],
+        ),
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.accent.withOpacity(0.3),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: ElevatedButton(
+        onPressed: _isProcessing ? null : _payNow,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.transparent,
+          shadowColor: Colors.transparent,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+        child: _isProcessing
+            ? const SizedBox(
+                height: 20,
+                width: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(AppColors.white),
+                ),
+              )
+            : const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.check_circle_outline, color: AppColors.white),
+                  SizedBox(width: 8),
+                  Text('Complete Payment', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.white)),
+                ],
+              ),
       ),
     );
   }

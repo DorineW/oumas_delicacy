@@ -17,7 +17,11 @@ class DashboardScreen extends StatelessWidget {
 
     final int orderCount = orders.length;
     final int favCount = 0;
-    final int reviewCount = 0;
+    // FIXED: Calculate actual review count from rated items
+    final int reviewCount = orders.fold<int>(
+      0,
+      (sum, order) => sum + order.items.where((item) => item.rating != null).length,
+    );
 
     final completedOrders = orders.where((o) => o.status == OrderStatus.delivered).length;
     final totalSpent = orders
@@ -257,6 +261,7 @@ class DashboardScreen extends StatelessWidget {
                           ? _EmptyState()
                           : Column(
                               children: orders
+                                  .where((order) => order.status == OrderStatus.delivered)
                                   .take(3)
                                   .map((order) => _RecentOrderCard(order: order))
                                   .toList(),
@@ -415,6 +420,12 @@ class _RecentOrderCard extends StatelessWidget {
         return Colors.orange;
       case OrderStatus.confirmed:
         return Colors.blue;
+      case OrderStatus.assigned: // ADDED
+        return Colors.purple;
+      case OrderStatus.pickedUp: // ADDED
+        return Colors.teal;
+      case OrderStatus.onRoute: // ADDED
+        return Colors.indigo;
       case OrderStatus.inProcess:
         return Colors.purple;
       case OrderStatus.delivered:
@@ -432,7 +443,7 @@ class _RecentOrderCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(14), // Reduced from 16
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: AppColors.white,
         borderRadius: BorderRadius.circular(12),
@@ -454,7 +465,7 @@ class _RecentOrderCard extends StatelessWidget {
                 child: Text(
                   'Order #${order.id}',
                   style: const TextStyle(
-                    fontSize: 15, // Reduced from 16
+                    fontSize: 15,
                     fontWeight: FontWeight.bold,
                     color: AppColors.darkText,
                   ),
@@ -464,7 +475,7 @@ class _RecentOrderCard extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4), // Reduced horizontal
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
                   color: _getStatusColor(order.status).withOpacity(0.1),
                   borderRadius: BorderRadius.circular(12),
@@ -473,7 +484,7 @@ class _RecentOrderCard extends StatelessWidget {
                 child: Text(
                   _getStatusText(order.status),
                   style: TextStyle(
-                    fontSize: 10, // Reduced from 11
+                    fontSize: 10,
                     fontWeight: FontWeight.bold,
                     color: _getStatusColor(order.status),
                   ),
@@ -482,12 +493,15 @@ class _RecentOrderCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 8),
+          // UPDATED: Show item names instead of count
           Text(
-            '${order.items.length} ${order.items.length == 1 ? 'item' : 'items'}',
+            order.items.map((item) => '${item.quantity}x ${item.title}').join(', '),
             style: TextStyle(
-              fontSize: 13, // Reduced from 14
-              color: AppColors.darkText.withOpacity(0.6),
+              fontSize: 13,
+              color: AppColors.darkText.withOpacity(0.8),
             ),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
           ),
           const SizedBox(height: 8),
           Row(
@@ -497,7 +511,7 @@ class _RecentOrderCard extends StatelessWidget {
                 child: Text(
                   'KES ${order.totalAmount}',
                   style: const TextStyle(
-                    fontSize: 16, // Reduced from 18
+                    fontSize: 16,
                     fontWeight: FontWeight.bold,
                     color: AppColors.primary,
                   ),
@@ -506,17 +520,37 @@ class _RecentOrderCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 8),
-              Text(
-                _formatDate(order.date),
-                style: TextStyle(
-                  fontSize: 11, // Reduced from 12
-                  color: AppColors.darkText.withOpacity(0.5),
+              // ADDED: Rate button for delivered orders
+              if (order.status == OrderStatus.delivered)
+                TextButton.icon(
+                  onPressed: () => _showRatingDialog(context, order),
+                  icon: const Icon(Icons.star, size: 16),
+                  label: const Text('Rate', style: TextStyle(fontSize: 12)),
+                  style: TextButton.styleFrom(
+                    foregroundColor: Colors.amber,
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  ),
+                )
+              else
+                Text(
+                  _formatDate(order.date),
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: AppColors.darkText.withOpacity(0.5),
+                  ),
                 ),
-              ),
             ],
           ),
         ],
       ),
+    );
+  }
+
+  // ADDED: Show rating dialog for each item
+  void _showRatingDialog(BuildContext context, Order order) {
+    showDialog(
+      context: context,
+      builder: (context) => _RatingDialog(order: order),
     );
   }
 
@@ -526,6 +560,321 @@ class _RecentOrderCard extends StatelessWidget {
     if (diff.inDays == 0) return 'Today';
     if (diff.inDays == 1) return 'Yesterday';
     return '${date.day}/${date.month}/${date.year}';
+  }
+}
+
+// UPDATED: Rating Dialog Widget - matches order_history_screen styling
+class _RatingDialog extends StatefulWidget {
+  final Order order;
+
+  const _RatingDialog({required this.order});
+
+  @override
+  State<_RatingDialog> createState() => _RatingDialogState();
+}
+
+class _RatingDialogState extends State<_RatingDialog> {
+  final Map<String, int> _ratings = {};
+  final Map<String, TextEditingController> _commentControllers = {};
+
+  @override
+  void initState() {
+    super.initState();
+    // Initialize ratings and controllers for each item
+    for (var item in widget.order.items) {
+      _ratings[item.id] = item.rating ?? 0;
+      _commentControllers[item.id] = TextEditingController(text: item.review ?? '');
+    }
+  }
+
+  @override
+  void dispose() {
+    for (var controller in _commentControllers.values) {
+      controller.dispose();
+    }
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      title: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [AppColors.primary, AppColors.primary.withOpacity(0.8)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.2),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.star, color: Colors.white, size: 20),
+            ),
+            const SizedBox(width: 12),
+            const Expanded(
+              child: Text(
+                'Rate Your Order',
+                style: TextStyle(fontSize: 16, color: Colors.white, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ),
+      ),
+      titlePadding: EdgeInsets.zero,
+      contentPadding: const EdgeInsets.all(20),
+      content: SizedBox(
+        width: double.maxFinite,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: AppColors.primary.withOpacity(0.3)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.receipt, size: 14, color: AppColors.primary),
+                    const SizedBox(width: 6),
+                    Text(
+                      'Order #${widget.order.id}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.primary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              // Rate each item separately
+              ...widget.order.items.map((item) => _buildItemRating(item)),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: Text(
+            'Cancel',
+            style: TextStyle(color: AppColors.darkText.withOpacity(0.6)),
+          ),
+        ),
+        Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [AppColors.primary, AppColors.primary.withOpacity(0.8)],
+            ),
+            borderRadius: BorderRadius.circular(8),
+            boxShadow: [
+              BoxShadow(
+                color: AppColors.primary.withOpacity(0.3),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: ElevatedButton(
+            onPressed: () => _submitRatings(context),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.transparent,
+              shadowColor: Colors.transparent,
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.check_circle, color: Colors.white, size: 18),
+                SizedBox(width: 6),
+                Text('Submit Ratings', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildItemRating(OrderItem item) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.primary.withOpacity(0.2)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(Icons.restaurant, size: 16, color: AppColors.primary),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  item.title,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.darkText,
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          // Star rating
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: AppColors.background,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Wrap(
+              spacing: 6,
+              children: List.generate(5, (index) {
+                final isSelected = index < (_ratings[item.id] ?? 0);
+                return GestureDetector(
+                  onTap: () {
+                    setState(() {
+                      _ratings[item.id] = index + 1;
+                    });
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      color: isSelected 
+                          ? Colors.amber.withOpacity(0.2) 
+                          : Colors.transparent,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Icon(
+                      isSelected ? Icons.star : Icons.star_border,
+                      color: Colors.amber,
+                      size: 28,
+                    ),
+                  ),
+                );
+              }),
+            ),
+          ),
+          const SizedBox(height: 12),
+          // Comment field
+          TextField(
+            controller: _commentControllers[item.id],
+            decoration: InputDecoration(
+              hintText: 'Share your thoughts... (optional)',
+              hintStyle: TextStyle(fontSize: 12, color: AppColors.darkText.withOpacity(0.4)),
+              prefixIcon: Icon(Icons.comment, size: 18, color: AppColors.primary.withOpacity(0.6)),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: BorderSide(color: AppColors.lightGray.withOpacity(0.3)),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: BorderSide(color: AppColors.lightGray.withOpacity(0.3)),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: const BorderSide(color: AppColors.primary, width: 2),
+              ),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              isDense: true,
+              filled: true,
+              fillColor: AppColors.background,
+            ),
+            maxLines: 3,
+            style: const TextStyle(fontSize: 13),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _submitRatings(BuildContext context) {
+    final provider = Provider.of<OrderProvider>(context, listen: false);
+    
+    // Update each item's rating and review
+    for (var item in widget.order.items) {
+      final rating = _ratings[item.id] ?? 0;
+      final review = _commentControllers[item.id]?.text.trim() ?? '';
+      
+      if (rating > 0) {
+        provider.rateOrderItem(widget.order.id, item.id, rating, review);
+      }
+    }
+
+    Navigator.pop(context);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Container(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: const Row(
+            children: [
+              Icon(Icons.check_circle, color: Colors.white),
+              SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'Thank you for your feedback!',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                    ),
+                    SizedBox(height: 2),
+                    Text(
+                      'Your ratings help us improve',
+                      style: TextStyle(fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        backgroundColor: AppColors.success,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        margin: const EdgeInsets.all(16),
+        duration: const Duration(seconds: 3),
+      ),
+    );
   }
 }
 

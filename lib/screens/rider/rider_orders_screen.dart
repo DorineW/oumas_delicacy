@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../constants/colors.dart';
-import '../../models/delivery_order.dart';
-import '../../providers/rider_provider.dart';
+import '../../models/order.dart'; // CHANGED: Use Order model instead of DeliveryOrder
+import '../../providers/order_provider.dart'; // CHANGED: Use OrderProvider instead of RiderProvider
+import '../../services/auth_service.dart';
 
 class RiderOrdersScreen extends StatefulWidget {
   const RiderOrdersScreen({super.key});
@@ -27,76 +28,96 @@ class _RiderOrdersScreenState extends State<RiderOrdersScreen> with SingleTicker
     super.dispose();
   }
 
-  List<DeliveryOrder> _getFilteredOrders(List<DeliveryOrder> orders) {
+  // CHANGED: Update to work with Order model
+  List<Order> _getFilteredOrders(List<Order> orders) {
     if (_searchQuery.isEmpty) return orders;
     
     return orders.where((order) {
       return order.id.toLowerCase().contains(_searchQuery.toLowerCase()) ||
           order.customerName.toLowerCase().contains(_searchQuery.toLowerCase()) ||
-          order.deliveryAddress.toLowerCase().contains(_searchQuery.toLowerCase()) ||
-          order.items.any((item) => item.name.toLowerCase().contains(_searchQuery.toLowerCase()));
+          (order.deliveryAddress?.toLowerCase().contains(_searchQuery.toLowerCase()) ?? false) ||
+          order.items.any((item) => item.title.toLowerCase().contains(_searchQuery.toLowerCase()));
     }).toList();
   }
 
-  Widget _buildStatsHeader(RiderProvider provider) {
-    final orders = provider.orders;
+  // CHANGED: Use OrderProvider
+  Widget _buildStatsHeader(OrderProvider provider, String riderId) {
+    final orders = provider.ordersForRider(riderId);
     final assignedCount = orders.where((o) => o.status == OrderStatus.assigned).length;
     final pickedUpCount = orders.where((o) => o.status == OrderStatus.pickedUp).length;
     final onRouteCount = orders.where((o) => o.status == OrderStatus.onRoute).length;
-    final todayCount = provider.todayOrders.length;
+    final todayOrders = orders.where((o) {
+      final now = DateTime.now();
+      return o.date.year == now.year && o.date.month == now.month && o.date.day == now.day;
+    }).length;
 
+    // FIXED: Make responsive and prevent overflow
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(12), // Reduced padding
       decoration: BoxDecoration(
         color: AppColors.primary.withOpacity(0.05),
         border: Border(
           bottom: BorderSide(color: AppColors.primary.withOpacity(0.1)),
         ),
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
-        children: [
-          _buildStatItem('Total', orders.length.toString(), Icons.receipt, AppColors.primary),
-          _buildStatItem('Assigned', assignedCount.toString(), Icons.assignment, Colors.orange),
-          _buildStatItem('Active', (pickedUpCount + onRouteCount).toString(), Icons.directions_bike, Colors.blue),
-          _buildStatItem('Today', todayCount.toString(), Icons.today, Colors.purple),
-        ],
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: [
+            _buildStatItem('Total', orders.length.toString(), Icons.receipt, AppColors.primary),
+            const SizedBox(width: 8), // Reduced spacing
+            _buildStatItem('Assigned', assignedCount.toString(), Icons.assignment, Colors.orange),
+            const SizedBox(width: 8),
+            _buildStatItem('Active', (pickedUpCount + onRouteCount).toString(), Icons.directions_bike, Colors.blue),
+            const SizedBox(width: 8),
+            _buildStatItem('Today', todayOrders.toString(), Icons.today, Colors.purple),
+          ],
+        ),
       ),
     );
   }
 
   Widget _buildStatItem(String label, String value, IconData icon, Color color) {
-    return Column(
-      children: [
-        Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: color.withOpacity(0.1),
-            shape: BoxShape.circle,
+    return Container(
+      constraints: const BoxConstraints(minWidth: 70), // ADDED: Minimum width
+      child: Column(
+        mainAxisSize: MainAxisSize.min, // ADDED: Minimize size
+        children: [
+          Container(
+            padding: const EdgeInsets.all(6), // Reduced padding
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.1),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, size: 18, color: color), // Reduced icon size
           ),
-          child: Icon(icon, size: 20, color: color),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          value,
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
-            color: color,
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 14, // Reduced font size
+              fontWeight: FontWeight.bold,
+              color: color,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
-        ),
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 12,
-            color: AppColors.darkText.withOpacity(0.6),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 10, // Reduced font size
+              color: AppColors.darkText.withOpacity(0.6),
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
-  Widget _buildOrderList(List<DeliveryOrder> orders) {
+  Widget _buildOrderList(List<Order> orders) {
     final filteredOrders = _getFilteredOrders(orders);
     
     if (filteredOrders.isEmpty) {
@@ -144,8 +165,20 @@ class _RiderOrdersScreenState extends State<RiderOrdersScreen> with SingleTicker
 
   @override
   Widget build(BuildContext context) {
-    final provider = Provider.of<RiderProvider>(context);
+    // CHANGED: Use OrderProvider
+    final provider = Provider.of<OrderProvider>(context);
+    final auth = Provider.of<AuthService>(context, listen: false);
+    final riderId = auth.currentUser?.id ?? 'rider_1';
     
+    // FIXED: Use correct methods for filtering
+    final allOrders = provider.ordersForRider(riderId);
+    final activeOrders = provider.activeOrdersForRider(riderId);
+    final completedOrders = provider.completedOrdersForRider(riderId);
+    final todayOrders = allOrders.where((o) {
+      final now = DateTime.now();
+      return o.date.year == now.year && o.date.month == now.month && o.date.day == now.day;
+    }).toList();
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Delivery Orders'),
@@ -163,6 +196,7 @@ class _RiderOrdersScreenState extends State<RiderOrdersScreen> with SingleTicker
           labelColor: AppColors.white,
           unselectedLabelColor: AppColors.white.withOpacity(0.7),
           indicatorColor: AppColors.white,
+          isScrollable: true,
           tabs: const [
             Tab(text: 'All'),
             Tab(text: 'Active'),
@@ -173,21 +207,23 @@ class _RiderOrdersScreenState extends State<RiderOrdersScreen> with SingleTicker
       ),
       body: Column(
         children: [
-          _buildStatsHeader(provider),
+          _buildStatsHeader(provider, riderId),
           const SizedBox(height: 8),
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             child: TextField(
               decoration: InputDecoration(
-                hintText: 'Search orders, customers, addresses...',
-                prefixIcon: const Icon(Icons.search),
+                hintText: 'Search orders...',
+                hintStyle: const TextStyle(fontSize: 14),
+                prefixIcon: const Icon(Icons.search, size: 20),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
                   borderSide: BorderSide.none,
                 ),
                 filled: true,
                 fillColor: Colors.white,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                isDense: true,
               ),
               onChanged: (value) {
                 setState(() {
@@ -200,10 +236,10 @@ class _RiderOrdersScreenState extends State<RiderOrdersScreen> with SingleTicker
             child: TabBarView(
               controller: _tabController,
               children: [
-                _buildOrderList(provider.orders),
-                _buildOrderList(provider.activeOrders),
-                _buildOrderList(provider.completedOrders),
-                _buildOrderList(provider.todayOrders),
+                _buildOrderList(allOrders),
+                _buildOrderList(activeOrders),
+                _buildOrderList(completedOrders),
+                _buildOrderList(todayOrders),
               ],
             ),
           ),
@@ -213,13 +249,18 @@ class _RiderOrdersScreenState extends State<RiderOrdersScreen> with SingleTicker
   }
 }
 
+// CHANGED: Use Order model
 class _RiderOrderCard extends StatelessWidget {
-  final DeliveryOrder order;
+  final Order order;
 
   const _RiderOrderCard({required this.order});
 
   Color _getStatusColor(OrderStatus status) {
     switch (status) {
+      case OrderStatus.pending:
+      case OrderStatus.confirmed:
+      case OrderStatus.inProcess:
+        return Colors.orange;
       case OrderStatus.assigned:
         return Colors.orange;
       case OrderStatus.pickedUp:
@@ -228,11 +269,19 @@ class _RiderOrderCard extends StatelessWidget {
         return Colors.purple;
       case OrderStatus.delivered:
         return AppColors.success;
+      case OrderStatus.cancelled:
+        return Colors.red;
     }
   }
 
   String _getStatusText(OrderStatus status) {
     switch (status) {
+      case OrderStatus.pending:
+        return 'Pending';
+      case OrderStatus.confirmed:
+        return 'Confirmed';
+      case OrderStatus.inProcess:
+        return 'In Process';
       case OrderStatus.assigned:
         return 'Assigned';
       case OrderStatus.pickedUp:
@@ -241,6 +290,8 @@ class _RiderOrderCard extends StatelessWidget {
         return 'On Route';
       case OrderStatus.delivered:
         return 'Delivered';
+      case OrderStatus.cancelled:
+        return 'Cancelled';
     }
   }
 
@@ -258,7 +309,7 @@ class _RiderOrderCard extends StatelessWidget {
     }
   }
 
-  void _openOrderDetails(BuildContext context, DeliveryOrder order) {
+  void _openOrderDetails(BuildContext context, Order order) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -269,7 +320,8 @@ class _RiderOrderCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final provider = Provider.of<RiderProvider>(context, listen: false);
+    // CHANGED: Use OrderProvider
+    final provider = Provider.of<OrderProvider>(context, listen: false);
 
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
@@ -319,36 +371,38 @@ class _RiderOrderCard extends StatelessWidget {
               ),
               const SizedBox(height: 4),
               Text(
-                _formatDate(order.orderTime),
+                _formatDate(order.date),
                 style: TextStyle(
                   color: AppColors.darkText.withOpacity(0.6),
                   fontSize: 12,
                 ),
               ),
               const SizedBox(height: 8),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Icon(
-                    Icons.location_on,
-                    size: 16,
-                    color: AppColors.darkText.withOpacity(0.6),
-                  ),
-                  const SizedBox(width: 4),
-                  Expanded(
-                    child: Text(
-                      order.deliveryAddress,
-                      style: TextStyle(
-                        color: AppColors.darkText.withOpacity(0.8),
-                        fontSize: 14,
+              if (order.deliveryAddress != null) ...[
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(
+                      Icons.location_on,
+                      size: 16,
+                      color: AppColors.darkText.withOpacity(0.6),
+                    ),
+                    const SizedBox(width: 4),
+                    Expanded(
+                      child: Text(
+                        order.deliveryAddress!,
+                        style: TextStyle(
+                          color: AppColors.darkText.withOpacity(0.8),
+                          fontSize: 14,
+                        ),
                       ),
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
+                  ],
+                ),
+                const SizedBox(height: 8),
+              ],
               Text(
-                order.items.map((item) => '${item.name} x${item.quantity}').join(', '),
+                order.items.map((item) => '${item.title} x${item.quantity}').join(', '),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
@@ -360,7 +414,7 @@ class _RiderOrderCard extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    'KES ${order.amount.toStringAsFixed(0)}',
+                    'KES ${order.totalAmount}',
                     style: const TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 16,
@@ -421,8 +475,9 @@ class _RiderOrderCard extends StatelessWidget {
     );
   }
 
-  void _updateOrderStatus(BuildContext context, DeliveryOrder order, OrderStatus newStatus, RiderProvider provider) {
-    provider.updateOrderStatus(order.id, newStatus);
+  // CHANGED: Use OrderProvider
+  void _updateOrderStatus(BuildContext context, Order order, OrderStatus newStatus, OrderProvider provider) {
+    provider.updateStatus(order.id, newStatus);
     
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -431,15 +486,22 @@ class _RiderOrderCard extends StatelessWidget {
       ),
     );
   }
+
+  // ...existing methods (Color _getStatusColor, String _getStatusText, String _formatDate, void _openOrderDetails)...
 }
 
+// CHANGED: Use Order model
 class _RiderOrderDetailsSheet extends StatelessWidget {
-  final DeliveryOrder order;
+  final Order order;
 
   const _RiderOrderDetailsSheet({required this.order});
 
   Color _getStatusColor(OrderStatus status) {
     switch (status) {
+      case OrderStatus.pending:
+      case OrderStatus.confirmed:
+      case OrderStatus.inProcess:
+        return Colors.orange;
       case OrderStatus.assigned:
         return Colors.orange;
       case OrderStatus.pickedUp:
@@ -448,11 +510,19 @@ class _RiderOrderDetailsSheet extends StatelessWidget {
         return Colors.purple;
       case OrderStatus.delivered:
         return AppColors.success;
+      case OrderStatus.cancelled:
+        return Colors.red;
     }
   }
 
   String _getStatusText(OrderStatus status) {
     switch (status) {
+      case OrderStatus.pending:
+        return 'Pending';
+      case OrderStatus.confirmed:
+        return 'Confirmed';
+      case OrderStatus.inProcess:
+        return 'In Process';
       case OrderStatus.assigned:
         return 'Assigned';
       case OrderStatus.pickedUp:
@@ -461,6 +531,8 @@ class _RiderOrderDetailsSheet extends StatelessWidget {
         return 'On Route';
       case OrderStatus.delivered:
         return 'Delivered';
+      case OrderStatus.cancelled:
+        return 'Cancelled';
     }
   }
 
@@ -503,7 +575,8 @@ class _RiderOrderDetailsSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final provider = Provider.of<RiderProvider>(context, listen: false);
+    // CHANGED: Use OrderProvider
+    final provider = Provider.of<OrderProvider>(context, listen: false);
 
     return Container(
       margin: const EdgeInsets.all(16),
@@ -554,17 +627,18 @@ class _RiderOrderDetailsSheet extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 8),
-            Text(
-              'Address: ${order.deliveryAddress}',
-              style: TextStyle(
-                color: AppColors.darkText.withOpacity(0.7),
-                fontSize: 14,
+            if (order.deliveryAddress != null)
+              Text(
+                'Address: ${order.deliveryAddress}',
+                style: TextStyle(
+                  color: AppColors.darkText.withOpacity(0.7),
+                  fontSize: 14,
+                ),
               ),
-            ),
             const SizedBox(height: 8),
-            _buildDetailRow('Order Time', _formatDate(order.orderTime)),
+            _buildDetailRow('Order Time', _formatDate(order.date)),
             _buildDetailRow('Items', '${order.items.length}'),
-            _buildDetailRow('Total Amount', 'KES ${order.amount.toStringAsFixed(0)}'),
+            _buildDetailRow('Total Amount', 'KES ${order.totalAmount}'),
             const SizedBox(height: 16),
             Text(
               'Items Details',
@@ -583,7 +657,7 @@ class _RiderOrderDetailsSheet extends StatelessWidget {
                   children: [
                     Expanded(
                       child: Text(
-                        '${item.name} x${item.quantity}',
+                        '${item.title} x${item.quantity}',
                         style: TextStyle(
                           color: AppColors.darkText.withOpacity(0.8),
                           fontSize: 14,
@@ -591,7 +665,7 @@ class _RiderOrderDetailsSheet extends StatelessWidget {
                       ),
                     ),
                     Text(
-                      'KES ${item.price.toStringAsFixed(0)}',
+                      'KES ${item.price * item.quantity}',
                       style: TextStyle(
                         color: AppColors.darkText.withOpacity(0.8),
                         fontSize: 14,
@@ -639,8 +713,9 @@ class _RiderOrderDetailsSheet extends StatelessWidget {
     );
   }
 
-  void _updateOrderStatus(BuildContext context, DeliveryOrder order, OrderStatus newStatus, RiderProvider provider) {
-    provider.updateOrderStatus(order.id, newStatus);
+  // CHANGED: Use OrderProvider
+  void _updateOrderStatus(BuildContext context, Order order, OrderStatus newStatus, OrderProvider provider) {
+    provider.updateStatus(order.id, newStatus);
     
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(

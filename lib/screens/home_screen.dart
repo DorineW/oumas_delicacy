@@ -3,7 +3,6 @@
 // ------------------------------------------------------------
 // ignore_for_file: unused_import, deprecated_member_use
 
-import 'dart:ui';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -185,7 +184,6 @@ class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin 
 
     return Scaffold(
       backgroundColor: AppColors.background,
-      // UPDATED APP BAR TO MATCH RIDER APP
       appBar: AppBar(
         title: const Text("Ouma's Delicacy"),
         backgroundColor: AppColors.primary,
@@ -207,7 +205,6 @@ class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin 
           ),
         ],
       ),
-      // UPDATED DRAWER TO MATCH RIDER APP STYLING
       drawer: Drawer(
         child: SafeArea(
           child: Container(
@@ -262,128 +259,145 @@ class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin 
           ),
         ),
       ),
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          return Column(
-            children: [
-              // UPDATED SEARCH BAR TO MATCH RIDER APP STYLING
-              Padding(
-                padding: EdgeInsets.fromLTRB(16, isLandscape ? 8 : 12, 16, 8),
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: AppColors.white,
-                    borderRadius: BorderRadius.circular(12),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(.1),
-                        blurRadius: 8,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: TextField(
-                    controller: _searchCtrl,
-                    onChanged: (v) => setState(() => _search = v),
-                    decoration: const InputDecoration(
-                      hintText: 'Search meals…',
-                      prefixIcon: Icon(Icons.search, color: AppColors.lightGray),
-                      border: InputBorder.none,
-                      contentPadding: EdgeInsets.symmetric(vertical: 14, horizontal: 16),
-                    ),
-                  ),
-                ),
-              ),
-              // UPDATED CAROUSEL SECTION
-              Builder(builder: (context) {
-                final now = DateTime.now().hour;
-                final closed = now < 7 || now >= 21;
-
-                if (closed) {
-                  return _closedCard();
-                } else {
-                  return Column(children: [
-                    Carousel(
-                      height: isLandscape ? 120 : 150,
-                      interval: const Duration(seconds: 4),
-                      children: meals.take(4).map((m) => _carouselCard(context, m)).toList(),
-                    ),
-                    SizedBox(height: isLandscape ? 8 : 12),
-                  ]);
-                }
-              }),
-              // UPDATED CATEGORY TABS TO MATCH RIDER APP
-              Container(
-                color: AppColors.white,
-                child: TabBar(
-                  controller: _tabController,
-                  isScrollable: true,
-                  indicatorColor: AppColors.primary,
-                  labelColor: AppColors.primary,
-                  unselectedLabelColor: AppColors.darkText,
-                  indicatorWeight: 3,
-                  labelStyle: const TextStyle(fontWeight: FontWeight.bold),
-                  unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.normal),
-                  tabs: cats.map((c) => Tab(text: c)).toList(),
-                  onTap: (i) => setState(() => _tabIndex = i),
-                ),
-              ),
-              // UPDATED GRID WITH BOTTOM PADDING
-              Expanded(
-                child: TabBarView(
-                  controller: _tabController,
-                  children: cats.asMap().entries.map((e) {
-                    final list = e.key == 0 ? filtered : filtered.where((m) => m['category'] == cats[e.key]).toList();
-                    if (list.isEmpty) {
-                      return Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.fastfood,
-                              size: 80,
-                              color: AppColors.darkText.withOpacity(0.3),
-                            ),
-                            const SizedBox(height: 16),
-                            Text(
-                              'No Meals Found',
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                                color: AppColors.darkText.withOpacity(0.5),
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              _search.isEmpty 
-                                ? 'No meals in this category'
-                                : 'Try adjusting your search',
-                              style: TextStyle(
-                                color: AppColors.darkText.withOpacity(0.4),
-                              ),
-                            ),
-                          ],
+      // FIXED: Wrap in SafeArea and use LayoutBuilder pattern like dashboard_screen
+      body: SafeArea(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            return Column(
+              children: [
+                // Search bar - fixed height
+                Padding(
+                  padding: EdgeInsets.fromLTRB(16, isLandscape ? 8 : 12, 16, 8),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: AppColors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(.1),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
                         ),
-                      );
-                    }
-                    return GridView.builder(
-                      controller: _controller(e.key),
-                      physics: const AlwaysScrollableScrollPhysics(),
-                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
-                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: ResponsiveHelper.getGridCrossAxisCount(context),
-                        childAspectRatio: ResponsiveHelper.getGridChildAspectRatio(context),
-                        crossAxisSpacing: 12,
-                        mainAxisSpacing: 12,
+                      ],
+                    ),
+                    child: TextField(
+                      controller: _searchCtrl,
+                      onChanged: (v) => setState(() => _search = v),
+                      decoration: const InputDecoration(
+                        hintText: 'Search meals…',
+                        prefixIcon: Icon(Icons.search, color: AppColors.lightGray),
+                        border: InputBorder.none,
+                        contentPadding: EdgeInsets.symmetric(vertical: 14, horizontal: 16),
                       ),
-                      itemCount: list.length,
-                      itemBuilder: (_, i) => _RiderStyleMealCard(meal: list[i]),
-                    );
-                  }).toList(),
+                    ),
+                  ),
                 ),
-              ),
-            ],
-          );
-        },
+                // Carousel - fixed height
+                Builder(builder: (context) {
+                  final now = DateTime.now().hour;
+                  final closed = now < 7 || now >= 21;
+
+                  if (closed) {
+                    return _closedCard();
+                  } else {
+                    return Column(children: [
+                      Carousel(
+                        height: isLandscape ? 120 : 150,
+                        interval: const Duration(seconds: 4),
+                        children: meals.take(4).map((m) => _carouselCard(context, m)).toList(),
+                      ),
+                      SizedBox(height: isLandscape ? 8 : 12),
+                    ]);
+                  }
+                }),
+                // Category tabs - fixed height
+                Container(
+                  color: AppColors.white,
+                  child: TabBar(
+                    controller: _tabController,
+                    isScrollable: true,
+                    indicatorColor: AppColors.primary,
+                    labelColor: AppColors.primary,
+                    unselectedLabelColor: AppColors.darkText,
+                    indicatorWeight: 3,
+                    labelStyle: const TextStyle(fontWeight: FontWeight.bold),
+                    unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.normal),
+                    tabs: cats.map((c) => Tab(text: c)).toList(),
+                    onTap: (i) => setState(() => _tabIndex = i),
+                  ),
+                ),
+                // FIXED: Grid section with proper constraints
+                Expanded(
+                  child: TabBarView(
+                    controller: _tabController,
+                    children: cats.asMap().entries.map((e) {
+                      final list = e.key == 0 ? filtered : filtered.where((m) => m['category'] == cats[e.key]).toList();
+                      if (list.isEmpty) {
+                        return Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.fastfood,
+                                size: 80,
+                                color: AppColors.darkText.withOpacity(0.3),
+                              ),
+                              const SizedBox(height: 16),
+                              Text(
+                                'No Meals Found',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                  color: AppColors.darkText.withOpacity(0.5),
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                _search.isEmpty 
+                                  ? 'No meals in this category'
+                                  : 'Try adjusting your search',
+                                style: TextStyle(
+                                  color: AppColors.darkText.withOpacity(0.4),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      }
+                      // FIXED: Add LayoutBuilder + SingleChildScrollView pattern
+                      return LayoutBuilder(
+                        builder: (context, gridConstraints) {
+                          return SingleChildScrollView(
+                            controller: _controller(e.key),
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            padding: EdgeInsets.fromLTRB(16, isLandscape ? 8 : 16, 16, 16),
+                            child: ConstrainedBox(
+                              constraints: BoxConstraints(
+                                minHeight: gridConstraints.maxHeight,
+                              ),
+                              child: GridView.builder(
+                                shrinkWrap: true, // ADDED: Allow grid to size itself
+                                physics: const NeverScrollableScrollPhysics(), // ADDED: Disable grid scroll
+                                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                                  crossAxisCount: ResponsiveHelper.getGridCrossAxisCount(context),
+                                  childAspectRatio: ResponsiveHelper.getGridChildAspectRatio(context),
+                                  crossAxisSpacing: 12,
+                                  mainAxisSpacing: 12,
+                                ),
+                                itemCount: list.length,
+                                itemBuilder: (_, i) => _RiderStyleMealCard(meal: list[i]),
+                              ),
+                            ),
+                          );
+                        },
+                      );
+                    }).toList(),
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
       ),
     );
   }
@@ -681,7 +695,7 @@ class _FlyingWidgetState extends State<_FlyingWidget>
 }
 
 /* ----------------------------------------------------------
-   UPDATED MEAL CARD WITH RIDER APP STYLING
+   FIXED MEAL CARD WITH PROPER CONSTRAINTS
 ----------------------------------------------------------- */
 class _RiderStyleMealCard extends StatefulWidget {
   final Map<String, dynamic> meal;
@@ -712,21 +726,46 @@ class _RiderStyleMealCardState extends State<_RiderStyleMealCard>
   Future<void> _addToCart() async {
     if (_qty <= 0) return;
 
+    // ADDED: Check availability before adding to cart
+    final isAvailable = widget.meal['isAvailable'] ?? true;
+    if (!isAvailable) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.error, color: Colors.white),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text('${widget.meal['title']} is currently out of stock'),
+              ),
+            ],
+          ),
+          backgroundColor: Colors.red,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          margin: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
     HapticFeedback.lightImpact();
 
-    // FIXED: Get the GlobalKey from HomeScreen
     final homeScreenState = context.findAncestorStateOfType<_HomeScreenState>();
     if (homeScreenState == null) {
       debugPrint('❌ Could not find HomeScreen state');
       return;
     }
 
+    // FIXED: Store quantity before resetting
+    final addedQuantity = _qty;
+
     final cart = context.read<CartProvider>();
     cart.addItem(CartItem(
       id: '${widget.meal['title']}_${DateTime.now().millisecondsSinceEpoch}',
       mealTitle: widget.meal['title'],
       price: (widget.meal['price'] as num).toInt(),
-      quantity: _qty,
+      quantity: addedQuantity, // Use stored quantity
       mealImage: widget.meal['image'] ?? '',
     ));
 
@@ -740,12 +779,14 @@ class _RiderStyleMealCardState extends State<_RiderStyleMealCard>
       ),
     );
     
-    // FIXED: Pass GlobalKey instead of ValueKey
+    // FIXED: Reset quantity BEFORE starting animation
+    setState(() => _qty = 0);
+    
     _flyToCart(context, homeScreenState._cartIconKey, flyWidget, () {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('$_qty × ${widget.meal['title']} added to cart'),
+          content: Text('$addedQuantity × ${widget.meal['title']} added to cart'), // Use stored quantity
           backgroundColor: AppColors.primary,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           margin: const EdgeInsets.fromLTRB(16, 0, 16, 24),
@@ -754,170 +795,222 @@ class _RiderStyleMealCardState extends State<_RiderStyleMealCard>
         ),
       );
     });
-
-    setState(() => _qty = 0);
   }
 
   @override
   Widget build(BuildContext context) {
     final m = widget.meal;
     final isLandscape = ResponsiveHelper.isLandscape(context);
+    final isAvailable = m['isAvailable'] ?? true; // ADDED: Check availability
     
     return Card(
       elevation: 3,
       margin: EdgeInsets.zero,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // Image - FIXED: Use Flexible with proper sizing
-          Flexible(
-            flex: isLandscape ? 4 : 5,
-            child: Container(
-              width: double.infinity,
-              decoration: BoxDecoration(
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-                image: DecorationImage(
-                  image: AssetImage(m['image'] ?? ''),
-                  fit: BoxFit.cover,
-                  onError: (_, __) => const AssetImage(''),
-                ),
-              ),
-            ),
-          ),
-          // Content - FIXED: Better space distribution
-          Flexible(
-            flex: isLandscape ? 4 : 3,
-            child: Padding(
-              padding: EdgeInsets.all(isLandscape ? 8 : 12),
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  final availableHeight = constraints.maxHeight;
-                  
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
+      // ADDED: Grey out unavailable items
+      color: isAvailable ? null : Colors.grey.shade300,
+      child: Container(
+        constraints: BoxConstraints(
+          minHeight: isLandscape ? 120 : 180,
+        ),
+        child: Stack(
+          children: [
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // Image section with AspectRatio
+                AspectRatio(
+                  aspectRatio: isLandscape ? 1.8 : 1.2,
+                  child: Stack(
                     children: [
-                      // Title - FIXED: Constrained height
                       Container(
-                        height: math.min(availableHeight * 0.3, 36),
-                        child: Text(
-                          m['title'],
-                          style: TextStyle(
-                            fontSize: isLandscape ? 12 : 14,
-                            fontWeight: FontWeight.bold,
-                            color: AppColors.darkText,
-                          ),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      // Price - FIXED: Single line
-                      Text(
-                        'Ksh ${m['price']}',
-                        style: TextStyle(
-                          fontSize: isLandscape ? 12 : 14,
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.primary,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const Spacer(),
-                      // Quantity and Cart - FIXED: Compact layout
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        children: [
-                          // Quantity selector - FIXED: Smaller in landscape
-                          Flexible(
-                            child: Container(
-                              decoration: BoxDecoration(
-                                color: AppColors.primary.withOpacity(0.1),
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  SizedBox(
-                                    width: isLandscape ? 24 : 28,
-                                    height: isLandscape ? 24 : 28,
-                                    child: IconButton(
-                                      padding: EdgeInsets.zero,
-                                      iconSize: isLandscape ? 14 : 16,
-                                      onPressed: () => setState(() => _qty = math.max(0, _qty - 1)),
-                                      icon: const Icon(Icons.remove, color: AppColors.primary),
-                                    ),
+                        decoration: BoxDecoration(
+                          borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+                          image: DecorationImage(
+                            image: AssetImage(m['image'] ?? ''),
+                            fit: BoxFit.cover,
+                            onError: (_, __) => const AssetImage(''),
+                            // ADDED: Grey out image if unavailable
+                            colorFilter: isAvailable 
+                                ? null 
+                                : ColorFilter.mode(
+                                    Colors.grey.withOpacity(0.5),
+                                    BlendMode.saturation,
                                   ),
-                                  SizedBox(
-                                    width: isLandscape ? 16 : 20,
-                                    child: Center(
-                                      child: Text(
-                                        '$_qty',
-                                        style: TextStyle(
-                                          fontSize: isLandscape ? 11 : 12,
-                                          fontWeight: FontWeight.bold,
-                                          color: AppColors.primary,
+                          ),
+                        ),
+                      ),
+                      // ADDED: Unavailable overlay
+                      if (!isAvailable)
+                        Container(
+                          decoration: const BoxDecoration(
+                            borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
+                            color: Colors.black54,
+                          ),
+                          child: const Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.block, color: Colors.white, size: 32),
+                                SizedBox(height: 4),
+                                Text(
+                                  'OUT OF STOCK',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                // Content section with SingleChildScrollView
+                Flexible(
+                  flex: isLandscape ? 4 : 3,
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      return SingleChildScrollView(
+                        physics: const ClampingScrollPhysics(),
+                        padding: EdgeInsets.all(isLandscape ? 8 : 12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            // Title
+                            Text(
+                              m['title'],
+                              style: TextStyle(
+                                fontSize: isLandscape ? 12 : 14,
+                                fontWeight: FontWeight.bold,
+                                color: isAvailable ? AppColors.darkText : Colors.grey,
+                                decoration: isAvailable ? null : TextDecoration.lineThrough,
+                              ),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 4),
+                            // Price
+                            Text(
+                              'Ksh ${m['price']}',
+                              style: TextStyle(
+                                fontSize: isLandscape ? 12 : 14,
+                                fontWeight: FontWeight.bold,
+                                color: isAvailable ? AppColors.primary : Colors.grey,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            // UPDATED: Disable quantity selector if unavailable
+                            SizedBox(
+                              width: constraints.maxWidth - 24,
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Flexible(
+                                    flex: 4,
+                                    child: Opacity(
+                                      opacity: isAvailable ? 1.0 : 0.5,
+                                      child: Container(
+                                        height: isLandscape ? 28 : 32,
+                                        decoration: BoxDecoration(
+                                          color: AppColors.primary.withOpacity(0.1),
+                                          borderRadius: BorderRadius.circular(6),
+                                        ),
+                                        child: Row(
+                                          children: [
+                                            Flexible(
+                                              child: _qtyButton(
+                                                Icons.remove, 
+                                                isAvailable 
+                                                    ? () => setState(() => _qty = math.max(0, _qty - 1))
+                                                    : () {},
+                                              ),
+                                            ),
+                                            Flexible(
+                                              child: Center(
+                                                child: Text(
+                                                  '$_qty',
+                                                  style: TextStyle(
+                                                    fontSize: isLandscape ? 11 : 12,
+                                                    fontWeight: FontWeight.bold,
+                                                    color: AppColors.primary,
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                            Flexible(
+                                              child: _qtyButton(
+                                                Icons.add, 
+                                                isAvailable 
+                                                    ? () => setState(() => _qty++)
+                                                    : () {},
+                                              ),
+                                            ),
+                                          ],
                                         ),
                                       ),
                                     ),
                                   ),
-                                  SizedBox(
-                                    width: isLandscape ? 24 : 28,
-                                    height: isLandscape ? 24 : 28,
-                                    child: IconButton(
-                                      padding: EdgeInsets.zero,
-                                      iconSize: isLandscape ? 14 : 16,
-                                      onPressed: () => setState(() => _qty++),
-                                      icon: const Icon(Icons.add, color: AppColors.primary),
+                                  const SizedBox(width: 8),
+                                  Flexible(
+                                    flex: 5,
+                                    child: SizedBox(
+                                      height: isLandscape ? 28 : 32,
+                                      child: ElevatedButton(
+                                        // UPDATED: Disable button if unavailable
+                                        onPressed: (isAvailable && _qty > 0) ? _addToCart : null,
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: (isAvailable && _qty > 0) 
+                                              ? AppColors.primary 
+                                              : AppColors.lightGray,
+                                          padding: EdgeInsets.zero,
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(6),
+                                          ),
+                                        ),
+                                        child: Icon(
+                                          Icons.shopping_cart,
+                                          color: Colors.white,
+                                          size: isLandscape ? 14 : 16,
+                                        ),
+                                      ),
                                     ),
                                   ),
                                 ],
                               ),
                             ),
-                          ),
-                          const SizedBox(width: 8),
-                          // Add to cart button - FIXED: Flexible sizing
-                          Flexible(
-                            child: SizedBox(
-                              width: isLandscape ? 70 : 80,
-                              height: isLandscape ? 28 : 32,
-                              child: ScaleTransition(
-                                scale: Tween<double>(begin: 1, end: 1.4)
-                                    .animate(CurvedAnimation(parent: _ctrl, curve: Curves.elasticOut)),
-                                child: ElevatedButton(
-                                  onPressed: _qty > 0 ? _addToCart : null,
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: _qty > 0 ? AppColors.primary : AppColors.lightGray,
-                                    padding: EdgeInsets.zero,
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-                                  ),
-                                  child: Icon(
-                                    Icons.shopping_cart,
-                                    color: Colors.white,
-                                    size: isLandscape ? 14 : 16,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  );
-                },
-              ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
             ),
-          ),
-        ],
+          ],
+        ),
       ),
+    );
+  }
+
+  // Helper method for quantity buttons - REMOVED size constraints
+  Widget _qtyButton(IconData icon, VoidCallback onTap) {
+    final isLandscape = ResponsiveHelper.isLandscape(context);
+    return IconButton(
+      padding: EdgeInsets.zero,
+      iconSize: isLandscape ? 14 : 16,
+      onPressed: onTap,
+      icon: Icon(icon, color: AppColors.primary),
     );
   }
 }
 
-/// Simple animated dot used in the carousel background.
-/// Keeps the file-local implementation to resolve the undefined symbol.
+/* ----------------------------------------------------------
+   SIMPLE ANIMATED DOT FOR CAROUSEL
+----------------------------------------------------------- */
 class AnimatedDot extends StatefulWidget {
   final int index;
   const AnimatedDot({super.key, required this.index});

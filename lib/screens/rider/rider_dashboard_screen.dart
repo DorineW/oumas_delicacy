@@ -5,8 +5,8 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../constants/colors.dart';
 import '../../services/auth_service.dart';
-import '../../models/delivery_order.dart';
-import '../../providers/rider_provider.dart';
+import '../../models/order.dart';
+import '../../providers/order_provider.dart';
 import 'rider_orders_screen.dart';
 import 'rider_profile_screen.dart';
 import 'rider_earnings_screen.dart';
@@ -26,15 +26,9 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen> {
   @override
   void initState() {
     super.initState();
-    // Seed demo data
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      Provider.of<RiderProvider>(context, listen: false).seedDemoData();
-    });
-
-    // Simulate new orders arriving
-    _ordersUpdateTimer = Timer.periodic(const Duration(seconds: 30), (timer) {
-      _simulateNewOrder();
-    });
+    // REMOVED: seedDemoData() call - no longer needed with new flow
+    
+    // REMOVED: Fake order generation - admin assigns orders now
   }
 
   @override
@@ -43,40 +37,61 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen> {
     super.dispose();
   }
 
-  void _simulateNewOrder() {
-    final provider = Provider.of<RiderProvider>(context, listen: false);
-    if (provider.activeOrders.length < 3) {
-      final newOrder = DeliveryOrder(
-        id: 'ORD-${DateTime.now().millisecondsSinceEpoch}',
-        customerName: 'New Customer',
-        customerPhone: '+254700000000',
-        customerAddress: 'New Address',
-        deliveryAddress: 'New Delivery Location',
-        amount: 850.00,
-        orderTime: DateTime.now(),
-        status: OrderStatus.assigned,
-        items: [
-          OrderItem('UGALI NYAMA', 1, 210.0),
-          OrderItem('CHAPATI', 3, 60.0),
-        ],
-        specialInstructions: 'New order',
-        paymentMethod: 'M-Pesa',
-        distance: 2.8,
-        estimatedTime: 18,
+  Widget _buildActiveOrders() {
+    final provider = Provider.of<OrderProvider>(context);
+    final auth = Provider.of<AuthService>(context, listen: false);
+    final riderId = auth.currentUser?.id ?? 'rider_1'; // Get current rider ID
+    
+    // CHANGED: Use activeOrdersForRider instead of ordersForRider
+    final activeOrders = provider.activeOrdersForRider(riderId);
+    final isLandscape = ResponsiveHelper.isLandscape(context);
+
+    if (activeOrders.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.delivery_dining, size: 80, color: AppColors.primary.withOpacity(0.3)),
+            const SizedBox(height: 16),
+            Text('No Active Deliveries', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.darkText.withOpacity(0.5))),
+            const SizedBox(height: 8),
+            Text('Orders assigned to you will appear here', style: TextStyle(color: AppColors.darkText.withOpacity(0.4)), textAlign: TextAlign.center),
+          ],
+        ),
       );
-      provider.addOrder(newOrder);
     }
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: EdgeInsets.all(isLandscape ? 12 : 16),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: constraints.maxHeight),
+            child: Column(
+              children: activeOrders.map((order) => _OrderCard(
+                order: order,
+                onCallCustomer: () => _callCustomer(order.deliveryPhone ?? order.customerName),
+                onOpenMaps: () => _openMaps(order.deliveryAddress ?? ''),
+                onUpdateStatus: (newStatus) => _updateOrderStatus(order.id, newStatus),
+              )).toList(),
+            ),
+          ),
+        );
+      },
+    );
   }
 
   void _updateOrderStatus(String orderId, OrderStatus newStatus) {
-    final provider = Provider.of<RiderProvider>(context, listen: false);
-    provider.updateOrderStatus(orderId, newStatus);
+    final provider = Provider.of<OrderProvider>(context, listen: false);
+    provider.updateStatus(orderId, newStatus);
     
-    if (newStatus == OrderStatus.delivered) {
-      Timer(const Duration(seconds: 2), () {
-        provider.removeOrder(orderId);
-      });
-    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Order #$orderId status updated'),
+        backgroundColor: AppColors.success,
+      ),
+    );
   }
 
   void _callCustomer(String phoneNumber) async {
@@ -93,66 +108,21 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen> {
     }
   }
 
-  Widget _buildActiveOrders() {
-    final provider = Provider.of<RiderProvider>(context);
-    final activeOrders = provider.activeOrders;
-    final isLandscape = ResponsiveHelper.isLandscape(context);
-
-    if (activeOrders.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.delivery_dining,
-              size: 80,
-              color: AppColors.primary.withOpacity(0.3),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'No Active Deliveries',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: AppColors.darkText.withOpacity(0.5),
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'New orders will appear here automatically',
-              style: TextStyle(
-                color: AppColors.darkText.withOpacity(0.4),
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      );
-    }
-
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        return SingleChildScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: EdgeInsets.all(isLandscape ? 12 : 16),
-          child: ConstrainedBox(
-            constraints: BoxConstraints(minHeight: constraints.maxHeight),
-            child: Column(
-              children: activeOrders.map((order) => _OrderCard(
-                order: order,
-                onCallCustomer: () => _callCustomer(order.customerPhone),
-                onOpenMaps: () => _openMaps(order.deliveryAddress),
-                onUpdateStatus: (newStatus) => _updateOrderStatus(order.id, newStatus),
-              )).toList(),
-            ),
-          ),
-        );
-      },
-    );
-  }
-
   Widget _buildStatsCard() {
-    final provider = Provider.of<RiderProvider>(context);
+    final provider = Provider.of<OrderProvider>(context);
+    final auth = Provider.of<AuthService>(context, listen: false);
+    final riderId = auth.currentUser?.id ?? 'rider_1';
+    
+    // FIXED: Use ordersForRider to get ALL orders, then filter
+    final allRiderOrders = provider.ordersForRider(riderId);
+    final deliveredToday = allRiderOrders.where((o) => 
+      o.status == OrderStatus.delivered &&
+      o.date.day == DateTime.now().day
+    ).length;
+    final earningsToday = allRiderOrders.where((o) => 
+      o.status == OrderStatus.delivered &&
+      o.date.day == DateTime.now().day
+    ).fold<double>(0, (sum, o) => sum + 150.0); // Flat 150 per delivery
     
     return Container(
       margin: const EdgeInsets.all(16),
@@ -191,14 +161,14 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  '${provider.totalDeliveriesToday} Deliveries',
+                  '$deliveredToday Deliveries',
                   style: TextStyle(
                     fontSize: 14,
                     color: AppColors.white.withOpacity(0.9),
                   ),
                 ),
                 Text(
-                  'Ksh ${provider.todayEarnings.toStringAsFixed(0)} Earnings',
+                  'Ksh ${earningsToday.toStringAsFixed(0)} Earnings',
                   style: TextStyle(
                     fontSize: 14,
                     color: AppColors.white.withOpacity(0.9),
@@ -226,7 +196,10 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final provider = Provider.of<RiderProvider>(context);
+    final provider = Provider.of<OrderProvider>(context);
+    final auth = Provider.of<AuthService>(context, listen: false);
+    final riderId = auth.currentUser?.id ?? 'rider_1';
+    final activeOrders = provider.activeOrdersForRider(riderId); // FIXED: Use activeOrdersForRider
     
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -274,7 +247,7 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen> {
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(
-                    '${provider.activeOrders.length}',
+                    '${activeOrders.length}', // FIXED: Show active orders count
                     style: const TextStyle(color: AppColors.white, fontSize: 12, fontWeight: FontWeight.bold),
                   ),
                 ),
@@ -336,7 +309,7 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen> {
 }
 
 class _OrderCard extends StatelessWidget {
-  final DeliveryOrder order;
+  final Order order;
   final VoidCallback onCallCustomer;
   final VoidCallback onOpenMaps;
   final Function(OrderStatus) onUpdateStatus;
@@ -348,65 +321,30 @@ class _OrderCard extends StatelessWidget {
     required this.onUpdateStatus,
   });
 
-  Color _getStatusColor(OrderStatus status) {
-    switch (status) {
-      case OrderStatus.assigned:
-        return Colors.orange;
-      case OrderStatus.pickedUp:
-        return Colors.blue;
-      case OrderStatus.onRoute:
-        return Colors.purple;
-      case OrderStatus.delivered:
-        return AppColors.success;
-    }
-  }
-
-  String _getStatusText(OrderStatus status) {
-    switch (status) {
-      case OrderStatus.assigned:
-        return 'Assigned';
-      case OrderStatus.pickedUp:
-        return 'Picked Up';
-      case OrderStatus.onRoute:
-        return 'On Route';
-      case OrderStatus.delivered:
-        return 'Delivered';
-    }
-  }
-
   Widget _buildActionButton(OrderStatus status) {
     switch (status) {
       case OrderStatus.assigned:
         return ElevatedButton.icon(
           icon: const Icon(Icons.restaurant, size: 18),
           label: const Text('Pick Up Order'),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.blue,
-            foregroundColor: AppColors.white,
-          ),
+          style: ElevatedButton.styleFrom(backgroundColor: Colors.blue, foregroundColor: AppColors.white),
           onPressed: () => onUpdateStatus(OrderStatus.pickedUp),
         );
       case OrderStatus.pickedUp:
         return ElevatedButton.icon(
           icon: const Icon(Icons.directions_bike, size: 18),
           label: const Text('Start Delivery'),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.purple,
-            foregroundColor: AppColors.white,
-          ),
+          style: ElevatedButton.styleFrom(backgroundColor: Colors.purple, foregroundColor: AppColors.white),
           onPressed: () => onUpdateStatus(OrderStatus.onRoute),
         );
       case OrderStatus.onRoute:
         return ElevatedButton.icon(
           icon: const Icon(Icons.check_circle, size: 18),
           label: const Text('Mark Delivered'),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: AppColors.success,
-            foregroundColor: AppColors.white,
-          ),
+          style: ElevatedButton.styleFrom(backgroundColor: AppColors.success, foregroundColor: AppColors.white),
           onPressed: () => onUpdateStatus(OrderStatus.delivered),
         );
-      case OrderStatus.delivered:
+      default:
         return const SizedBox.shrink();
     }
   }
@@ -421,17 +359,11 @@ class _OrderCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Order ID and status
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  order.id,
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.darkText,
-                  ),
-                ),
+                Text(order.id, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                   decoration: BoxDecoration(
@@ -439,135 +371,80 @@ class _OrderCard extends StatelessWidget {
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(color: _getStatusColor(order.status)),
                   ),
-                  child: Text(
-                    _getStatusText(order.status),
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                      color: _getStatusColor(order.status),
-                    ),
-                  ),
+                  child: Text(_getStatusText(order.status), style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: _getStatusColor(order.status))),
                 ),
               ],
             ),
             const SizedBox(height: 12),
+            
+            // Customer info
             Row(
               children: [
                 Icon(Icons.person, size: 16, color: AppColors.darkText.withOpacity(0.6)),
                 const SizedBox(width: 8),
-                Text(
-                  order.customerName,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w500,
-                    color: AppColors.darkText,
-                  ),
-                ),
+                Text(order.customerName, style: TextStyle(fontWeight: FontWeight.w500)),
                 const Spacer(),
-                IconButton(
-                  icon: Icon(Icons.phone, size: 18, color: AppColors.primary),
-                  onPressed: onCallCustomer,
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
-                ),
+                IconButton(icon: Icon(Icons.phone, size: 18, color: AppColors.primary), onPressed: onCallCustomer, padding: EdgeInsets.zero, constraints: const BoxConstraints()),
               ],
             ),
             const SizedBox(height: 8),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Icon(Icons.location_on, size: 16, color: AppColors.darkText.withOpacity(0.6)),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        order.deliveryAddress,
-                        style: TextStyle(
-                          color: AppColors.darkText,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Row(
-                        children: [
-                          Icon(Icons.schedule, size: 14, color: AppColors.darkText.withOpacity(0.5)),
-                          const SizedBox(width: 4),
-                          Text(
-                            '${order.estimatedTime} min • ${order.distance} km',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: AppColors.darkText.withOpacity(0.6),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                IconButton(
-                  icon: Icon(Icons.directions, size: 18, color: AppColors.primary),
-                  onPressed: onOpenMaps,
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'Order Items:',
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                color: AppColors.darkText,
-                fontSize: 14,
+            
+            // Delivery address
+            if (order.deliveryAddress != null) ...[
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.location_on, size: 16, color: AppColors.darkText.withOpacity(0.6)),
+                  const SizedBox(width: 8),
+                  Expanded(child: Text(order.deliveryAddress!, style: TextStyle(color: AppColors.darkText))),
+                  IconButton(icon: Icon(Icons.directions, size: 18, color: AppColors.primary), onPressed: onOpenMaps, padding: EdgeInsets.zero, constraints: const BoxConstraints()),
+                ],
               ),
-            ),
+              const SizedBox(height: 12),
+            ],
+            
+            // Order items
+            Text('Order Items:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
             const SizedBox(height: 4),
             ...order.items.map((item) => Padding(
               padding: const EdgeInsets.symmetric(vertical: 2),
-              child: Text(
-                '• ${item.quantity}x ${item.name} - Ksh ${(item.price * item.quantity).toStringAsFixed(0)}',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: AppColors.darkText.withOpacity(0.8),
-                ),
-              ),
+              child: Text('• ${item.quantity}x ${item.title} - Ksh ${(item.price * item.quantity).toStringAsFixed(0)}', style: TextStyle(fontSize: 12, color: AppColors.darkText.withOpacity(0.8))),
             )),
             const SizedBox(height: 8),
-            if (order.specialInstructions.isNotEmpty) ...[
-              Text(
-                'Instructions: ${order.specialInstructions}',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontStyle: FontStyle.italic,
-                  color: AppColors.darkText.withOpacity(0.7),
-                ),
-              ),
-              const SizedBox(height: 8),
-            ],
+            
+            // Total
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  'Payment: ${order.paymentMethod}',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: AppColors.darkText.withOpacity(0.7),
-                  ),
-                ),
-                Text(
-                  'Total: Ksh ${order.amount.toStringAsFixed(0)}',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.darkText,
-                  ),
-                ),
+                Text('Total: Ksh ${order.totalAmount.toStringAsFixed(0)}', style: TextStyle(fontWeight: FontWeight.bold)),
               ],
             ),
             const SizedBox(height: 12),
+            
             _buildActionButton(order.status),
           ],
         ),
       ),
     );
+  }
+
+  Color _getStatusColor(OrderStatus status) {
+    switch (status) {
+      case OrderStatus.assigned: return Colors.orange;
+      case OrderStatus.pickedUp: return Colors.blue;
+      case OrderStatus.onRoute: return Colors.purple;
+      case OrderStatus.delivered: return AppColors.success;
+      default: return AppColors.darkText;
+    }
+  }
+
+  String _getStatusText(OrderStatus status) {
+    switch (status) {
+      case OrderStatus.assigned: return 'Assigned';
+      case OrderStatus.pickedUp: return 'Picked Up';
+      case OrderStatus.onRoute: return 'On Route';
+      case OrderStatus.delivered: return 'Delivered';
+      default: return status.toString().split('.').last;
+    }
   }
 }

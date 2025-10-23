@@ -320,6 +320,7 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
             
             const SizedBox(height: 16),
             
+            // FIXED: Direct navigation without popping first
             TextButton(
               onPressed: () {
                 Navigator.pushReplacement(

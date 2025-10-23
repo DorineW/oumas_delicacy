@@ -8,6 +8,7 @@ import '../../providers/order_provider.dart';
 
 class ManageOrdersScreen extends StatefulWidget {
   final String? highlightOrderId;
+
   const ManageOrdersScreen({super.key, this.highlightOrderId});
 
   @override
@@ -189,6 +190,7 @@ class _ManageOrdersScreenState extends State<ManageOrdersScreen>
     final orders = provider.orders;
     final pendingCount = orders.where((o) => o.status == OrderStatus.pending).length;
     final todayCount = orders.where((o) => _isToday(o.date)).length;
+    // FIXED: Only count delivered orders for revenue
     final totalRevenue = orders.where((o) => o.status == OrderStatus.delivered)
         .fold<double>(0, (sum, order) => sum + order.totalAmount.toDouble());
 
@@ -206,7 +208,8 @@ class _ManageOrdersScreenState extends State<ManageOrdersScreen>
           _buildStatItem('Total', orders.length.toString(), Icons.receipt, AppColors.primary),
           _buildStatItem('Pending', pendingCount.toString(), Icons.pending_actions, Colors.orange),
           _buildStatItem('Today', todayCount.toString(), Icons.today, Colors.blue),
-          _buildStatItem('Revenue', 'Ksh ${totalRevenue.toStringAsFixed(0)}', Icons.attach_money, AppColors.success),
+          // FIXED: Changed label from 'Revenue' to 'Delivered'
+          _buildStatItem('Delivered', 'Ksh ${totalRevenue.toStringAsFixed(0)}', Icons.check_circle, AppColors.success),
         ],
       ),
     );
@@ -424,60 +427,150 @@ class _AdminOrderCardState extends State<AdminOrderCard>
 
   @override
   Widget build(BuildContext context) {
-    final provider = Provider.of<OrderProvider>(context, listen: false);
-
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8.0),
-      child: ScaleTransition(
-        scale: Tween<double>(begin: widget.highlighted ? 1.04 : 1.0, end: 1.0)
-            .animate(CurvedAnimation(
-                parent: _controller, curve: Curves.easeInOut)),
-        child: FadeTransition(
-          opacity: widget.highlighted ? _opacity : AlwaysStoppedAnimation(1.0),
-          child: Card(
-            elevation: widget.highlighted ? 6 : 2,
-            shape: RoundedRectangleBorder(
-              side: widget.highlighted
-                  ? BorderSide(color: AppColors.accent, width: 2)
-                  : BorderSide.none,
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: ListTile(
-              contentPadding:
-                  const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-              leading: CircleAvatar(
-                backgroundColor: widget.highlighted
-                    ? AppColors.primary
-                    : AppColors.accent,
-                child: Text(widget.order.customerName[0]),
-              ),
-              title: Text(widget.order.id,
-                  style: TextStyle(
-                    fontWeight: widget.highlighted
-                        ? FontWeight.bold
-                        : FontWeight.w600,
-                    color: AppColors.darkText,
-                  )),
-              subtitle: Column(
+      child: FadeTransition(
+        opacity: _opacity,
+        child: Card(
+          elevation: widget.highlighted ? 4 : 2,
+          shape: RoundedRectangleBorder(
+            side: widget.highlighted
+                ? BorderSide(color: AppColors.accent, width: 2)
+                : BorderSide.none,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: InkWell(
+            onTap: () => _showOrderDetailsDialog(context),
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const SizedBox(height: 6),
-                  Text(
-                    widget.order.items.map((e) => e.title).join(', '),
-                    style: TextStyle(
-                        color: AppColors.darkText.withAlpha((0.8 * 255).round())),
+                  Row(
+                    children: [
+                      CircleAvatar(
+                        backgroundColor: _getStatusColor(widget.order.status),
+                        radius: 20,
+                        child: Text(
+                          widget.order.customerName[0],
+                          style: const TextStyle(color: Colors.white),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // UPDATED: Show Order ID first, then customer name below
+                            Text(
+                              widget.order.id,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 14,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            // UPDATED: Customer name with icon
+                            Row(
+                              children: [
+                                Icon(
+                                  Icons.person,
+                                  size: 12,
+                                  color: AppColors.darkText.withOpacity(0.6),
+                                ),
+                                const SizedBox(width: 4),
+                                Expanded(
+                                  child: Text(
+                                    widget.order.customerName,
+                                    style: TextStyle(
+                                      color: AppColors.darkText.withOpacity(0.7),
+                                      fontSize: 13,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: _getStatusColor(widget.order.status).withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: _getStatusColor(widget.order.status)),
+                        ),
+                        child: Text(
+                          _getStatusText(widget.order.status),
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                            color: _getStatusColor(widget.order.status),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 6),
-                  Text(
-                    '${widget.order.date.hour.toString().padLeft(2, '0')}:${widget.order.date.minute.toString().padLeft(2, '0')} • Ksh ${widget.order.totalAmount}',
-                    style: TextStyle(color: AppColors.lightGray),
+                  const SizedBox(height: 8),
+                  // UPDATED: Items list with better styling
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.restaurant_menu,
+                        size: 12,
+                        color: AppColors.darkText.withOpacity(0.5),
+                      ),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          widget.order.items.map((e) => '${e.title} x${e.quantity}').join(', '),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: AppColors.darkText.withOpacity(0.6),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      // UPDATED: Show delivery type with icon
+                      Row(
+                        children: [
+                          Icon(
+                            widget.order.deliveryType == DeliveryType.delivery 
+                                ? Icons.delivery_dining 
+                                : Icons.shopping_bag,
+                            size: 12,
+                            color: AppColors.darkText.withOpacity(0.5),
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            '${widget.order.deliveryType.toString().split('.').last} • ${widget.order.date.hour.toString().padLeft(2, '0')}:${widget.order.date.minute.toString().padLeft(2, '0')}',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: AppColors.darkText.withOpacity(0.5),
+                            ),
+                          ),
+                        ],
+                      ),
+                      Text(
+                        'Ksh ${widget.order.totalAmount}',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                          color: AppColors.primary,
+                        ),
+                      ),
+                    ],
                   ),
                 ],
-              ),
-              trailing: IconButton(
-                icon: const Icon(Icons.open_in_new),
-                onPressed: () =>
-                    _openDetails(context, widget.order, provider),
               ),
             ),
           ),
@@ -486,47 +579,181 @@ class _AdminOrderCardState extends State<AdminOrderCard>
     );
   }
 
-  void _openDetails(BuildContext context, Order order, OrderProvider provider) {
+  void _showOrderDetailsDialog(BuildContext context) {
     showDialog(
       context: context,
-      builder: (_) => AlertDialog(
-        title: Text('Order ${order.id}'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Customer: ${order.customerName}'),
-            const SizedBox(height: 8),
-            Text('Items: ${order.items.map((e) => '${e.title} x${e.quantity}').join(', ')}'),
-            const SizedBox(height: 8),
-            Text('Amount: Ksh ${order.totalAmount}'),
-            const SizedBox(height: 8),
-            Text('Status: ${order.status.toString().split('.').last}'),
-          ],
+      builder: (context) => AlertDialog(
+        title: Text('Order ${widget.order.id}'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildDetailRow('Customer', widget.order.customerName),
+              _buildDetailRow('Date', '${widget.order.date.day}/${widget.order.date.month}/${widget.order.date.year} ${widget.order.date.hour}:${widget.order.date.minute}'),
+              _buildDetailRow('Status', _getStatusText(widget.order.status)),
+              _buildDetailRow('Delivery Type', widget.order.deliveryType.toString().split('.').last),
+              const Divider(),
+              const Text('Items:', style: TextStyle(fontWeight: FontWeight.bold)),
+              ...widget.order.items.map((item) => 
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Text('${item.title} x${item.quantity} - Ksh ${item.price}'),
+                ),
+              ),
+              const Divider(),
+              _buildDetailRow('Total', 'Ksh ${widget.order.totalAmount}', isBold: true),
+              if (widget.order.deliveryType == DeliveryType.delivery) ...[
+                const Divider(),
+                if (widget.order.deliveryAddress != null)
+                  _buildDetailRow('Address', widget.order.deliveryAddress!),
+                if (widget.order.deliveryPhone != null)
+                  _buildDetailRow('Phone', widget.order.deliveryPhone!),
+                if (widget.order.riderId != null)
+                  _buildDetailRow('Rider', widget.order.riderName ?? 'Unknown'),
+              ],
+            ],
+          ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Close')),
-          if (order.status != OrderStatus.delivered &&
-              order.status != OrderStatus.cancelled)
+          // FIXED: Show Confirm button for pending orders
+          if (widget.order.status == OrderStatus.pending)
             TextButton(
               onPressed: () {
-                provider.updateStatus(order.id, OrderStatus.delivered);
-                Navigator.of(context).pop();
+                Provider.of<OrderProvider>(context, listen: false)
+                    .updateStatus(widget.order.id, OrderStatus.confirmed);
+                Navigator.pop(context);
+              },
+              child: const Text('Confirm'),
+            ),
+          
+          // FIXED: Show Assign Rider for confirmed delivery orders
+          if (widget.order.status == OrderStatus.confirmed && 
+              widget.order.deliveryType == DeliveryType.delivery)
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+                _assignRiderDialog(context, widget.order);
+              },
+              child: const Text('Assign Rider'),
+            ),
+          
+          // FIXED: Show Mark Delivered for pickup orders that are confirmed
+          if (widget.order.status == OrderStatus.confirmed &&
+              widget.order.deliveryType == DeliveryType.pickup)
+            TextButton(
+              onPressed: () {
+                Provider.of<OrderProvider>(context, listen: false)
+                    .updateStatus(widget.order.id, OrderStatus.delivered);
+                Navigator.pop(context);
               },
               child: const Text('Mark Delivered'),
             ),
-          if (order.status != OrderStatus.cancelled)
+          
+          // Show Mark Delivered for delivery orders in progress
+          if (widget.order.status == OrderStatus.assigned ||
+              widget.order.status == OrderStatus.pickedUp ||
+              widget.order.status == OrderStatus.onRoute)
             TextButton(
               onPressed: () {
-                provider.cancelOrder(order.id);
-                Navigator.of(context).pop();
+                Provider.of<OrderProvider>(context, listen: false)
+                    .updateStatus(widget.order.id, OrderStatus.delivered);
+                Navigator.pop(context);
               },
-              child: const Text('Cancel Order',
-                  style: TextStyle(color: Colors.red)),
+              child: const Text('Mark Delivered'),
             ),
+          
+          // FIXED: Show Cancel for any order that's not already cancelled or delivered
+          if (widget.order.status != OrderStatus.cancelled &&
+              widget.order.status != OrderStatus.delivered)
+            TextButton(
+              onPressed: () {
+                Provider.of<OrderProvider>(context, listen: false)
+                    .updateStatus(widget.order.id, OrderStatus.cancelled);
+                Navigator.pop(context);
+              },
+              style: TextButton.styleFrom(foregroundColor: Colors.red),
+              child: const Text('Cancel'),
+            ),
+          
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
         ],
       ),
     );
+  }
+
+  Widget _buildDetailRow(String label, String value, {bool isBold = false}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 100,
+            child: Text(
+              '$label:',
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: TextStyle(
+                fontWeight: isBold ? FontWeight.bold : FontWeight.normal,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ADDED: Show assign rider dialog
+  Future<void> _assignRiderDialog(BuildContext context, Order order) async {
+    final riders = [
+      {'id': 'rider_1', 'name': 'John Rider'},
+      {'id': 'rider_2', 'name': 'Mary Delivery'},
+      {'id': 'rider_3', 'name': 'Bob Transport'},
+    ];
+
+    final selected = await showDialog<Map<String, String>>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Assign Rider'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ...riders.map((rider) => ListTile(
+              leading: const Icon(Icons.person),
+              title: Text(rider['name']!),
+              onTap: () => Navigator.pop(context, rider),
+            )),
+            const Divider(),
+            ListTile(
+              leading: const Icon(Icons.home_work),
+              title: const Text('In-House Delivery'),
+              subtitle: const Text('Admin will handle delivery'),
+              onTap: () => Navigator.pop(context, {'id': 'admin', 'name': 'In-House'}),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (selected != null && mounted) {
+      final provider = Provider.of<OrderProvider>(context, listen: false);
+      provider.assignToRider(order.id, selected['id']!, selected['name']!);
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Order assigned to ${selected['name']}'),
+          backgroundColor: AppColors.success,
+        ),
+      );
+    }
   }
 }
 
@@ -560,6 +787,12 @@ Color _getStatusColor(OrderStatus status) {
       return Colors.orange;
     case OrderStatus.confirmed:
       return Colors.blue;
+    case OrderStatus.assigned: // ADDED
+      return Colors.purple;
+    case OrderStatus.pickedUp: // ADDED
+      return Colors.teal;
+    case OrderStatus.onRoute: // ADDED
+      return Colors.indigo;
     case OrderStatus.inProcess:
       return Colors.purple;
     case OrderStatus.delivered:

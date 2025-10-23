@@ -287,6 +287,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
+    
     return PopScope(
       canPop: true,
       child: Scaffold(
@@ -294,7 +296,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         appBar: AppBar(
           title: const Text('Edit Profile'),
           backgroundColor: AppColors.primary,
-          elevation: 0,
+          elevation: 4,
           iconTheme: const IconThemeData(color: AppColors.white),
           titleTextStyle: const TextStyle(
             color: AppColors.white,
@@ -303,191 +305,425 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           ),
         ),
         body: SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            children: [
-              const SizedBox(height: 8),
-              Stack(
-                alignment: Alignment.bottomRight,
-                children: [
-                  CircleAvatar(
-                    radius: 50,
-                    backgroundImage: _profileImageFile != null
-                        ? FileImage(_profileImageFile!) as ImageProvider
-                        : const AssetImage('assets/images/profile.jpg'),
-                  ),
-                  PopupMenuButton<int>(
-                    onSelected: (v) {
-                      if (v == 0) _pickImage(ImageSource.camera);
-                      if (v == 1) _pickImage(ImageSource.gallery);
-                      if (v == 2) {
-                        setState(() => _profileImageFile = null);
-                      }
-                    },
-                    itemBuilder: (_) => const [
-                      PopupMenuItem(value: 0, child: Text('Camera')),
-                      PopupMenuItem(value: 1, child: Text('Gallery')),
-                      PopupMenuItem(value: 2, child: Text('Remove')),
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: EdgeInsets.all(isLandscape ? 12 : 16),
+          child: Form(  // MOVED: Form widget here
+            key: _formKey,
+            child: Column(
+              children: [
+                SizedBox(height: isLandscape ? 12 : 16),
+                // UPDATED: Modern profile image section
+                Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    Container(
+                      width: isLandscape ? 100 : 120,
+                      height: isLandscape ? 100 : 120,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            AppColors.primary.withOpacity(0.3),
+                            AppColors.primary.withOpacity(0.1),
+                          ],
+                        ),
+                      ),
+                    ),
+                    CircleAvatar(
+                      radius: isLandscape ? 45 : 55,
+                      backgroundColor: Colors.white,
+                      child: CircleAvatar(
+                        radius: isLandscape ? 42 : 52,
+                        backgroundImage: _profileImageFile != null
+                            ? FileImage(_profileImageFile!) as ImageProvider
+                            : const AssetImage('assets/images/profile.jpg'),
+                      ),
+                    ),
+                    Positioned(
+                      bottom: 0,
+                      right: isLandscape ? 10 : 15,
+                      child: Material(
+                        elevation: 4,
+                        shape: const CircleBorder(),
+                        child: PopupMenuButton<int>(
+                          onSelected: (v) {
+                            if (v == 0) _pickImage(ImageSource.camera);
+                            if (v == 1) _pickImage(ImageSource.gallery);
+                            if (v == 2) setState(() => _profileImageFile = null);
+                          },
+                          itemBuilder: (_) => const [
+                            PopupMenuItem(value: 0, child: Row(children: [Icon(Icons.camera_alt), SizedBox(width: 8), Text('Camera')])),
+                            PopupMenuItem(value: 1, child: Row(children: [Icon(Icons.photo_library), SizedBox(width: 8), Text('Gallery')])),
+                            PopupMenuItem(value: 2, child: Row(children: [Icon(Icons.delete), SizedBox(width: 8), Text('Remove')])),
+                          ],
+                          child: Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: const BoxDecoration(
+                              color: AppColors.primary,
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(Icons.edit, size: 18, color: AppColors.white),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                SizedBox(height: isLandscape ? 20 : 24),
+
+                // UPDATED: Section header
+                _buildSectionHeader('Personal Information', Icons.person),
+                SizedBox(height: isLandscape ? 8 : 12),
+                
+                // UPDATED: Modern text fields
+                _buildModernTextField(
+                  controller: _nameController,
+                  label: 'Full Name',
+                  icon: Icons.person_outline,
+                  validator: (v) => (v == null || v.trim().isEmpty) ? 'Name required' : null,
+                ),
+                SizedBox(height: isLandscape ? 10 : 12),
+                
+                _buildModernTextField(
+                  controller: _emailCont,
+                  label: 'Email',
+                  icon: Icons.email_outlined,
+                  keyboardType: TextInputType.emailAddress,
+                  validator: _validateEmail,
+                ),
+                SizedBox(height: isLandscape ? 10 : 12),
+                
+                _buildModernTextField(
+                  controller: _phoneCont,
+                  label: 'Phone Number',
+                  icon: Icons.phone_outlined,
+                  keyboardType: TextInputType.phone,
+                  validator: _validatePhone,
+                ),
+                SizedBox(height: isLandscape ? 16 : 20),
+
+                // UPDATED: Notifications toggle
+                Container(
+                  decoration: BoxDecoration(
+                    color: AppColors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.05),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
                     ],
-                    icon: const CircleAvatar(
-                      radius: 18,
-                      backgroundColor: Colors.white70,
-                      child: Icon(Icons.edit, size: 18),
+                  ),
+                  child: ListTile(
+                    leading: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: AppColors.primary.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(Icons.notifications_outlined, color: AppColors.primary, size: 20),
+                    ),
+                    title: const Text('Notifications', style: TextStyle(fontWeight: FontWeight.w600)),
+                    subtitle: Text('Receive order updates', style: TextStyle(fontSize: 12, color: AppColors.darkText.withOpacity(0.6))),
+                    trailing: Switch(
+                      value: _notificationsEnabled,
+                      onChanged: (v) => setState(() => _notificationsEnabled = v),
+                      activeColor: AppColors.primary,
                     ),
                   ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: _nameController,
-                decoration: const InputDecoration(
-                  labelText: 'Full Name',
-                  border: OutlineInputBorder(),
                 ),
-                validator: (v) => (v == null || v.trim().isEmpty) ? 'Name required' : null,
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _emailCont,
-                decoration: const InputDecoration(
-                  labelText: 'Email',
-                  border: OutlineInputBorder(),
-                ),
-                validator: _validateEmail,
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _phoneCont,
-                keyboardType: TextInputType.phone,
-                decoration: const InputDecoration(
-                  labelText: 'Phone Number',
-                  border: OutlineInputBorder(),
-                ),
-                validator: _validatePhone,
-              ),
-              const SizedBox(height: 12),
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                title: const Text('Notifications'),
-                trailing: Switch(
-                  value: _notificationsEnabled,
-                  onChanged: (v) => setState(() => _notificationsEnabled = v),
-                  activeThumbColor: AppColors.primary,
-                ),
-              ),
-              const Divider(),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text('Delivery Addresses', style: TextStyle(fontWeight: FontWeight.bold)),
-                  TextButton.icon(
-                    onPressed: _addAddressDialog,
-                    icon: const Icon(Icons.add),
-                    label: const Text('Add'),
-                  )
-                ],
-              ),
-              ..._addresses.asMap().entries.map((e) {
-                final idx = e.key;
-                final addr = e.value;
-                final isDefault = _defaultAddressIndex == idx;
-                return Card(
-                  child: ListTile(
-                    title: Text(addr),
-                    leading: isDefault ? const Icon(Icons.home) : null,
-                    trailing: PopupMenuButton<String>(
-                      onSelected: (choice) {
-                        if (choice == 'set_default') {
-                          setState(() => _defaultAddressIndex = idx);
-                        } else if (choice == 'remove') {
-                          _removeAddress(idx);
-                        } else if (choice == 'edit') {
-                          _editAddressDialog(idx);
-                        }
-                      },
-                      itemBuilder: (_) => const [
-                        PopupMenuItem(value: 'set_default', child: Text('Set Default')),
-                        PopupMenuItem(value: 'edit', child: Text('Edit')),
-                        PopupMenuItem(value: 'remove', child: Text('Remove')),
+                SizedBox(height: isLandscape ? 16 : 20),
+
+                // UPDATED: Addresses section
+                _buildSectionHeader('Delivery Addresses', Icons.location_on, onAdd: _addAddressDialog),
+                SizedBox(height: isLandscape ? 8 : 12),
+                
+                if (_addresses.isEmpty)
+                  Container(
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      color: AppColors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppColors.lightGray.withOpacity(0.3)),
+                    ),
+                    child: Column(
+                      children: [
+                        Icon(Icons.location_off, size: 48, color: AppColors.darkText.withOpacity(0.3)),
+                        const SizedBox(height: 8),
+                        Text('No addresses yet', style: TextStyle(color: AppColors.darkText.withOpacity(0.5))),
+                        const SizedBox(height: 4),
+                        Text('Add one for faster checkout', style: TextStyle(fontSize: 12, color: AppColors.darkText.withOpacity(0.4))),
                       ],
                     ),
-                  ),
-                );
-              }),
-              if (_addresses.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 8),
-                  child: Text('No addresses yet. Add one for faster checkout.'),
-                ),
-              const Divider(),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text('Payment Method', style: TextStyle(fontWeight: FontWeight.bold)),
-                  TextButton.icon(
-                    onPressed: _addPaymentDialog,
-                    icon: const Icon(Icons.add_card),
-                    label: const Text('Add'),
                   )
-                ],
-              ),
-              Card(
-                child: ListTile(
-                  title: Text(_paymentMethod != null
-                      ? '${_paymentMethod!['brand']} • ${_maskCard(_paymentMethod!['last4']!)}'
-                      : 'No payment method'),
-                  trailing: _paymentMethod != null
-                      ? IconButton(
-                          onPressed: () {
-                            setState(() => _paymentMethod = null);
-                          },
-                          icon: const Icon(Icons.delete),
-                        )
-                      : null,
+                else
+                  ..._addresses.asMap().entries.map((e) => _buildAddressCard(e.key, e.value)),
+                
+                SizedBox(height: isLandscape ? 16 : 20),
+
+                // UPDATED: Payment section
+                _buildSectionHeader('Payment Method', Icons.credit_card, onAdd: _addPaymentDialog),
+                SizedBox(height: isLandscape ? 8 : 12),
+                
+                _buildPaymentCard(),
+                SizedBox(height: isLandscape ? 16 : 20),
+
+                // UPDATED: Change password button
+                OutlinedButton.icon(
+                  onPressed: _changePasswordDialog,
+                  icon: const Icon(Icons.lock_outline),
+                  label: const Text('Change Password'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.primary,
+                    side: const BorderSide(color: AppColors.primary),
+                    minimumSize: const Size(double.infinity, 48),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
                 ),
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: _changePasswordDialog,
-                      child: const Text('Change Password'),
+                SizedBox(height: isLandscape ? 20 : 24),
+
+                // UPDATED: Save button with gradient
+                Container(
+                  width: double.infinity,
+                  height: 54,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [AppColors.primary, AppColors.primary.withOpacity(0.8)],
                     ),
-                  )
-                ],
-              ),
-              const SizedBox(height: 24),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: _isSaving ? null : _saveProfile,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primary,
-                    minimumSize: const Size(double.infinity, 50),
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppColors.primary.withOpacity(0.3),
+                        blurRadius: 8,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
                   ),
-                  child: _isSaving
-                      ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                      : const Text('Save Changes'),
+                  child: ElevatedButton(
+                    onPressed: _isSaving ? null : _saveProfile,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.transparent,
+                      shadowColor: Colors.transparent,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    child: _isSaving
+                        ? const SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(AppColors.white),
+                            ),
+                          )
+                        : const Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.check_circle_outline, color: AppColors.white),
+                              SizedBox(width: 8),
+                              Text('Save Changes', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.white)),
+                            ],
+                          ),
+                  ),
                 ),
-              ),
-              const SizedBox(height: 24),
-            ],
+                SizedBox(height: isLandscape ? 20 : 24),
+              ],
+            ),
           ),
         ),
       ),
     );
   }
 
+  // NEW: Modern section header
+  Widget _buildSectionHeader(String title, IconData icon, {VoidCallback? onAdd}) {
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(6),
+          decoration: BoxDecoration(
+            color: AppColors.primary.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(icon, size: 18, color: AppColors.primary),
+        ),
+        const SizedBox(width: 8),
+        Text(
+          title,
+          style: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: AppColors.darkText,
+          ),
+        ),
+        const Spacer(),
+        if (onAdd != null)
+          IconButton(
+            onPressed: onAdd,
+            icon: const Icon(Icons.add_circle, color: AppColors.primary),
+            tooltip: 'Add',
+          ),
+      ],
+    );
+  }
+
+  // NEW: Modern text field
+  Widget _buildModernTextField({
+    required TextEditingController controller,
+    required String label,
+    required IconData icon,
+    TextInputType? keyboardType,
+    String? Function(String?)? validator,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: TextFormField(
+        controller: controller,
+        keyboardType: keyboardType,
+        validator: validator,
+        decoration: InputDecoration(
+          labelText: label,
+          prefixIcon: Icon(icon, color: AppColors.primary),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide.none,
+          ),
+          filled: true,
+          fillColor: AppColors.white,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        ),
+      ),
+    );
+  }
+
+  // NEW: Modern address card
+  Widget _buildAddressCard(int idx, String addr) {
+    final isDefault = _defaultAddressIndex == idx;
+    
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: AppColors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isDefault ? AppColors.primary : AppColors.lightGray.withOpacity(0.3),
+          width: isDefault ? 2 : 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: ListTile(
+        leading: Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: (isDefault ? AppColors.primary : AppColors.lightGray).withOpacity(0.1),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(
+            isDefault ? Icons.home : Icons.location_on_outlined,
+            color: isDefault ? AppColors.primary : AppColors.darkText,
+            size: 20,
+          ),
+        ),
+        title: Text(
+          addr,
+          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+        ),
+        subtitle: isDefault ? const Text('Default', style: TextStyle(fontSize: 12, color: AppColors.primary)) : null,
+        trailing: PopupMenuButton<String>(
+          onSelected: (choice) {
+            if (choice == 'set_default') {
+              setState(() => _defaultAddressIndex = idx);
+            } else if (choice == 'remove') {
+              _removeAddress(idx);
+            } else if (choice == 'edit') {
+              _editAddressDialog(idx);
+            }
+          },
+          itemBuilder: (_) => [
+            const PopupMenuItem(value: 'set_default', child: Row(children: [Icon(Icons.check_circle), SizedBox(width: 8), Text('Set Default')])),
+            const PopupMenuItem(value: 'edit', child: Row(children: [Icon(Icons.edit), SizedBox(width: 8), Text('Edit')])),
+            const PopupMenuItem(value: 'remove', child: Row(children: [Icon(Icons.delete), SizedBox(width: 8), Text('Remove')])),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // NEW: Modern payment card
+  Widget _buildPaymentCard() {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.lightGray.withOpacity(0.3)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: ListTile(
+        leading: Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: AppColors.primary.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: const Icon(Icons.credit_card, color: AppColors.primary, size: 20),
+        ),
+        title: Text(
+          _paymentMethod != null
+              ? '${_paymentMethod!['brand']} • ${_maskCard(_paymentMethod!['last4']!)}'
+              : 'No payment method',
+          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+        ),
+        subtitle: _paymentMethod != null ? const Text('Primary card', style: TextStyle(fontSize: 12)) : null,
+        trailing: _paymentMethod != null
+            ? IconButton(
+                onPressed: () {
+                  setState(() => _paymentMethod = null);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Payment method removed')),
+                  );
+                },
+                icon: const Icon(Icons.delete_outline, color: Colors.red),
+              )
+            : null,
+      ),
+    );
+  }
+
+  // ...existing helper methods (_validateEmail, _validatePhone, etc.)...
+
   Future<void> _editAddressDialog(int idx) async {
     final controller = TextEditingController(text: _addresses[idx]);
     await showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Edit Address'),
+        title: const Text('Edit Delivery Address'),
         content: TextField(
           controller: controller,
-          decoration: const InputDecoration(hintText: 'Address'),
+          decoration: const InputDecoration(hintText: 'e.g. 12 Baker St, Nairobi'),
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
@@ -496,7 +732,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             onPressed: () {
               final val = controller.text.trim();
               if (val.isEmpty) return;
-              setState(() => _addresses[idx] = val);
+              setState(() {
+                _addresses[idx] = val;
+              });
               Navigator.pop(ctx);
             },
             child: const Text('Save'),

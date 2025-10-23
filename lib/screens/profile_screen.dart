@@ -1,13 +1,61 @@
 //lib/screens/profile_screen.dart
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../constants/colors.dart';
+import '../utils/responsive_helper.dart'; // ADDED
 import 'order_history_screen.dart';
 import 'edit_profile_screen.dart';
 import 'payment_methods_screen.dart';
 import 'notifications_screen.dart';
+import '../providers/notification_provider.dart';
+import '../services/auth_service.dart'; // ADDED
 
-class ProfileScreen extends StatelessWidget {
+class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
+
+  @override
+  State<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends State<ProfileScreen> {
+  String _userName = 'Dorin N.';
+  String _userEmail = 'dorin@example.com';
+  File? _profileImage;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadProfile();
+  }
+
+  // ADDED: Load saved profile data
+  Future<void> _loadProfile() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _userName = prefs.getString('name') ?? 'Dorin N.';
+      _userEmail = prefs.getString('email') ?? 'dorin@example.com';
+      
+      final profilePath = prefs.getString('profileImagePath');
+      if (profilePath != null && profilePath.isNotEmpty) {
+        final f = File(profilePath);
+        if (f.existsSync()) {
+          _profileImage = f;
+        }
+      }
+    });
+  }
+
+  // ADDED: Refresh profile when returning from edit screen
+  Future<void> _navigateToEditProfile() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const EditProfileScreen()),
+    );
+    // Reload profile after returning
+    _loadProfile();
+  }
 
   void _showLogoutDialog(BuildContext context) {
     showDialog(
@@ -39,7 +87,9 @@ class ProfileScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
+    final isLandscape = ResponsiveHelper.isLandscape(context);
+    final auth = Provider.of<AuthService>(context, listen: false); // ADDED
+    final userId = auth.currentUser?.id ?? 'guest'; // ADDED
     
     return PopScope(
       canPop: false,
@@ -63,20 +113,101 @@ class ProfileScreen extends StatelessWidget {
                 child: Column(
                   children: [
                     SizedBox(height: isLandscape ? 20 : 30),
-                    CircleAvatar(radius: isLandscape ? 40 : 50, backgroundImage: const AssetImage('assets/images/profile.jpg')),
+                    // UPDATED: Show saved profile image or default
+                    CircleAvatar(
+                      radius: isLandscape ? 40 : 50,
+                      backgroundImage: _profileImage != null
+                          ? FileImage(_profileImage!) as ImageProvider
+                          : const AssetImage('assets/images/profile.jpg'),
+                    ),
                     SizedBox(height: isLandscape ? 12 : 16),
-                    Text("Dorin N.", style: TextStyle(fontSize: isLandscape ? 20 : 22, fontWeight: FontWeight.bold)),
-                    Text("dorin@example.com", style: TextStyle(fontSize: isLandscape ? 14 : 16, color: Colors.grey)),
+                    // UPDATED: Show saved name
+                    Text(
+                      _userName,
+                      style: TextStyle(
+                        fontSize: isLandscape ? 20 : 22,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    // UPDATED: Show saved email
+                    Text(
+                      _userEmail,
+                      style: TextStyle(
+                        fontSize: isLandscape ? 14 : 16,
+                        color: Colors.grey,
+                      ),
+                    ),
                     SizedBox(height: isLandscape ? 20 : 30),
                     Padding(
                       padding: const EdgeInsets.only(bottom: 100),
                       child: Column(
                         children: [
-                          _ProfileOption(icon: Icons.edit, title: "Edit Profile", onTap: () { Navigator.push(context, MaterialPageRoute(builder: (context) => const EditProfileScreen())); }),
-                          _ProfileOption(icon: Icons.history, title: "Order History", onTap: () { Navigator.push(context, MaterialPageRoute(builder: (context) => const OrderHistoryScreen())); }),
-                          _ProfileOption(icon: Icons.payment, title: "Payment Methods", onTap: () { Navigator.push(context, MaterialPageRoute(builder: (context) => const PaymentMethodsScreen())); }),
-                          _ProfileOption(icon: Icons.notifications, title: "Notifications", onTap: () { Navigator.push(context, MaterialPageRoute(builder: (context) => const NotificationsScreen())); }),
-                          _ProfileOption(icon: Icons.logout, title: "Logout", isDestructive: true, onTap: () => _showLogoutDialog(context)),
+                          // UPDATED: Use new navigation method
+                          _ProfileOption(
+                            icon: Icons.edit,
+                            title: "Edit Profile",
+                            onTap: _navigateToEditProfile,
+                          ),
+                          _ProfileOption(
+                            icon: Icons.history,
+                            title: "Order History",
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(builder: (context) => const OrderHistoryScreen()),
+                              );
+                            },
+                          ),
+                          _ProfileOption(
+                            icon: Icons.payment,
+                            title: "Payment Methods",
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(builder: (context) => const PaymentMethodsScreen()),
+                              );
+                            },
+                          ),
+                          // UPDATED: Notifications with badge
+                          Consumer<NotificationProvider>(
+                            builder: (context, notifProvider, child) {
+                              final unreadCount = notifProvider.unreadCountForUser(userId);
+                              
+                              return _ProfileOption(
+                                icon: Icons.notifications,
+                                title: "Notifications",
+                                trailing: unreadCount > 0
+                                    ? Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: Colors.red,
+                                          borderRadius: BorderRadius.circular(12),
+                                        ),
+                                        child: Text(
+                                          unreadCount > 99 ? '99+' : '$unreadCount',
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      )
+                                    : null,
+                                onTap: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(builder: (context) => const NotificationsScreen()),
+                                  );
+                                },
+                              );
+                            },
+                          ),
+                          _ProfileOption(
+                            icon: Icons.logout,
+                            title: "Logout",
+                            isDestructive: true,
+                            onTap: () => _showLogoutDialog(context),
+                          ),
                         ],
                       ),
                     ),
@@ -96,12 +227,14 @@ class _ProfileOption extends StatelessWidget {
   final String title;
   final bool isDestructive;
   final VoidCallback? onTap;
+  final Widget? trailing; // ADDED
 
   const _ProfileOption({
     required this.icon,
     required this.title,
     this.isDestructive = false,
     this.onTap,
+    this.trailing, // ADDED
   });
 
   @override
@@ -115,7 +248,7 @@ class _ProfileOption extends StatelessWidget {
           color: isDestructive ? Colors.red : AppColors.darkText,
         ),
       ),
-      trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+      trailing: trailing ?? const Icon(Icons.arrow_forward_ios, size: 16), // UPDATED
       onTap: onTap,
     );
   }

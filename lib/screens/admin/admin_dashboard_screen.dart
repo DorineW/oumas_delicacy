@@ -28,24 +28,18 @@ class AdminDashboardScreen extends StatefulWidget {
 }
 
 class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
-  final List<Order> _incomingOrders = [];
   Timer? _fakeOrderTimer;
   int _fakeOrderCounter = 1;
   final Random _random = Random();
 
-  // Example sales data for chart
-  final List<ChartPoint> _dayChartData = const [
-    ChartPoint('6 AM', 4500),
-    ChartPoint('9 AM', 8200),
-    ChartPoint('12 PM', 15600),
-    ChartPoint('3 PM', 9800),
-    ChartPoint('6 PM', 12300),
-    ChartPoint('9 PM', 7500),
-  ];
+  // ADDED: State for chart visibility and time filter
+  bool _showChart = false;
+  String _selectedTimeFilter = '6H';
 
   @override
   void initState() {
     super.initState();
+    // UPDATED: Use OrderProvider instead of local list
     _fakeOrderTimer = Timer.periodic(const Duration(seconds: 15), (_) {
       _addFakeOrder();
     });
@@ -57,45 +51,59 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     super.dispose();
   }
 
+  // UPDATED: Add fake orders to OrderProvider
   void _addFakeOrder() {
+    final provider = Provider.of<OrderProvider>(context, listen: false);
     final count = 1 + _random.nextInt(3);
     final chosen = List.generate(count, (_) => menuItems[_random.nextInt(menuItems.length)]);
 
     final amount = chosen.fold<double>(0, (s, it) => s + it.price);
     final now = DateTime.now();
 
-    setState(() {
-      _incomingOrders.insert(
-        0,
-        Order(
-          id: 'ORD-${1000 + _fakeOrderCounter}',
-          customerId: 'cust_$_fakeOrderCounter',
-          customerName: 'Customer $_fakeOrderCounter',
-          date: now,
-          items: chosen.map((e) => OrderItem(
-            id: 'item_${_random.nextInt(100)}',
-            title: e.name,
-            quantity: 1 + _random.nextInt(3),
-            price: e.price.toInt(),
-          )).toList(),
-          totalAmount: amount.toInt(),
-          status: OrderStatus.pending,
-          deliveryType: _random.nextBool() ? DeliveryType.delivery : DeliveryType.pickup,
-        ),
-      );
-      _fakeOrderCounter++;
-    });
+    final newOrder = Order(
+      id: 'ORD-${1000 + _fakeOrderCounter}',
+      customerId: 'cust_$_fakeOrderCounter',
+      customerName: 'Customer $_fakeOrderCounter',
+      date: now,
+      items: chosen.map((e) => OrderItem(
+        id: 'item_${_random.nextInt(100)}',
+        title: e.name,
+        quantity: 1 + _random.nextInt(3),
+        price: e.price.toInt(),
+      )).toList(),
+      totalAmount: amount.toInt(),
+      status: OrderStatus.pending, // IMPORTANT: Start as pending
+      deliveryType: _random.nextBool() ? DeliveryType.delivery : DeliveryType.pickup,
+    );
+
+    provider.addOrder(newOrder);
+    _fakeOrderCounter++;
+    
+    // ADDED: Automatically mark some orders as delivered for testing chart
+    if (_fakeOrderCounter % 3 == 0) {
+      // Every 3rd order, mark a random pending order as delivered
+      final pendingOrders = provider.orders.where((o) => o.status == OrderStatus.pending).toList();
+      if (pendingOrders.isNotEmpty) {
+        final orderToDeliver = pendingOrders[_random.nextInt(pendingOrders.length)];
+        provider.updateStatus(orderToDeliver.id, OrderStatus.delivered);
+      }
+    }
   }
 
-  void _markOrderHandled(int index, OrderProvider provider) {
-    final order = _incomingOrders[index];
-    provider.updateStatus(order.id, OrderStatus.confirmed);
-    setState(() {
-      _incomingOrders.removeAt(index);
-    });
+  // UPDATED: Mark order as confirmed in OrderProvider
+  void _markOrderHandled(String orderId, OrderProvider provider) {
+    provider.updateStatus(orderId, OrderStatus.confirmed);
   }
 
+  // UPDATED: Get pending orders from OrderProvider
+  List<Order> _getPendingOrders(OrderProvider provider) {
+    return provider.orders.where((o) => o.status == OrderStatus.pending).toList();
+  }
+
+  // UPDATED: Use OrderProvider for notifications
   void _openOrdersModal(BuildContext context, OrderProvider provider) {
+    final pendingOrders = _getPendingOrders(provider);
+    
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -126,13 +134,13 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
-                      'Incoming Orders (${_incomingOrders.length})',
+                      'Pending Orders (${pendingOrders.length})',
                       style: const TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
-                    if (_incomingOrders.isNotEmpty)
+                    if (pendingOrders.isNotEmpty)
                       TextButton(
                         onPressed: () {
                           Navigator.of(context).pop();
@@ -148,7 +156,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               ),
               const SizedBox(height: 16),
               Expanded(
-                child: _incomingOrders.isEmpty
+                child: pendingOrders.isEmpty
                     ? Center(
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
@@ -160,7 +168,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                             ),
                             const SizedBox(height: 16),
                             Text(
-                              'No New Orders',
+                              'No Pending Orders',
                               style: TextStyle(
                                 fontSize: 16,
                                 color: AppColors.darkText.withOpacity(0.5),
@@ -171,12 +179,12 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                       )
                     : ListView.builder(
                         padding: const EdgeInsets.symmetric(horizontal: 16),
-                        itemCount: _incomingOrders.length,
+                        itemCount: pendingOrders.length,
                         itemBuilder: (_, index) {
-                          final order = _incomingOrders[index];
+                          final order = pendingOrders[index];
                           return _NotificationOrderCard(
                             order: order,
-                            onMarkHandled: () => _markOrderHandled(index, provider),
+                            onMarkHandled: () => _markOrderHandled(order.id, provider),
                             onViewOrder: () {
                               Navigator.of(context).pop();
                               Navigator.push(
@@ -205,160 +213,99 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     Navigator.of(context).push(MaterialPageRoute(builder: (_) => destination));
   }
 
-  // Replace _buildDayChart() method with this enhanced line chart
-  Widget _buildDayChart() {
-    final maxY = (_dayChartData.map((e) => e.value).reduce(max)) * 1.3;
-    final minY = 0.0;
-
-    return Container(
-      height: 240,
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 16),
-      child: LineChart(
-        LineChartData(
-          gridData: FlGridData(
-            show: true,
-            drawVerticalLine: false,
-            horizontalInterval: maxY / 4,
-            getDrawingHorizontalLine: (value) {
-              return FlLine(
-                color: AppColors.darkText.withOpacity(0.1),
-                strokeWidth: 1,
-              );
-            },
-          ),
-          titlesData: FlTitlesData(
-            show: true,
-            rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-            topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-            bottomTitles: AxisTitles(
-              sideTitles: SideTitles(
-                showTitles: true,
-                reservedSize: 32,
-                interval: 1,
-                getTitlesWidget: (value, meta) {
-                  final idx = value.toInt();
-                  if (idx < 0 || idx >= _dayChartData.length) return const SizedBox();
-                  return Padding(
-                    padding: const EdgeInsets.only(top: 8.0),
-                    child: Text(
-                      _dayChartData[idx].label,
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w500,
-                        color: AppColors.darkText.withOpacity(0.6),
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
-            leftTitles: AxisTitles(
-              sideTitles: SideTitles(
-                showTitles: true,
-                interval: maxY / 4,
-                reservedSize: 42,
-                getTitlesWidget: (value, meta) {
-                  final amount = value >= 1000 
-                    ? 'K${(value / 1000).toStringAsFixed(0)}'
-                    : value.toInt().toString();
-                  return Text(
-                    amount,
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w500,
-                      color: AppColors.darkText.withOpacity(0.6),
-                    ),
-                  );
-                },
-              ),
-            ),
-          ),
-          borderData: FlBorderData(
-            show: true,
-            border: Border.all(
-              color: AppColors.darkText.withOpacity(0.2),
-              width: 1,
-            ),
-          ),
-          minX: 0,
-          maxX: _dayChartData.length.toDouble() - 1,
-          minY: minY,
-          maxY: maxY,
-          lineBarsData: [
-            LineChartBarData(
-              spots: _dayChartData.asMap().entries.map((entry) {
-                return FlSpot(entry.key.toDouble(), entry.value.value);
-              }).toList(),
-              isCurved: true,
-              curveSmoothness: 0.3,
-              gradient: LinearGradient(
-                colors: [
-                  AppColors.primary.withOpacity(0.8),
-                  AppColors.primary.withOpacity(0.4),
-                ],
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-              ),
-              barWidth: 4,
-              isStrokeCapRound: true,
-              dotData: const FlDotData(
-                show: true,
-              ),
-              belowBarData: BarAreaData(
-                show: true,
-                gradient: LinearGradient(
-                  colors: [
-                    AppColors.primary.withOpacity(0.3),
-                    AppColors.primary.withOpacity(0.05),
-                  ],
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                ),
-              ),
-            ),
-          ],
-          lineTouchData: LineTouchData(
-            touchTooltipData: LineTouchTooltipData(
-              // FIXED: Use getTooltipColor instead of tooltipBgColor
-              getTooltipColor: (touchedSpot) => AppColors.primary.withOpacity(0.9),
-              tooltipPadding: const EdgeInsets.all(8),
-              getTooltipItems: (touchedSpots) {
-                return touchedSpots.map((touchedSpot) {
-                  final value = touchedSpot.y;
-                  final label = _dayChartData[touchedSpot.x.toInt()].label;
-                  return LineTooltipItem(
-                    '$label\n',
-                    const TextStyle(
-                      color: AppColors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 12,
-                    ),
-                    children: [
-                      TextSpan(
-                        text: 'Ksh ${value.toStringAsFixed(0)}',
-                        style: TextStyle(
-                          color: AppColors.white.withOpacity(0.9),
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  );
-                }).toList();
-              },
-            ),
-            handleBuiltInTouches: true,
-          ),
-        ),
-      ),
-    );
+  // UPDATED: Make chart data based on delivered orders only
+  List<ChartPoint> get _filteredChartData {
+    final provider = Provider.of<OrderProvider>(context, listen: false);
+    final deliveredOrders = provider.orders.where((o) => o.status == OrderStatus.delivered).toList();
+    
+    switch (_selectedTimeFilter) {
+      case '12H':
+        return _generateChartData(deliveredOrders, 12, (date) {
+          final hour = date.hour;
+          if (hour % 2 == 0) return '${hour.toString().padLeft(2, '0')}:00';
+          return null;
+        });
+      case '1D':
+        return _generateChartData(deliveredOrders, 7, (date) {
+          const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+          return days[date.weekday - 1];
+        });
+      case '1W':
+        return _generateChartData(deliveredOrders, 4, (date) {
+          final weekNumber = ((date.day - 1) ~/ 7) + 1;
+          return 'W$weekNumber';
+        });
+      case '1M':
+        return _generateChartData(deliveredOrders, 6, (date) {
+          const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+          return months[date.month - 1];
+        });
+      case '6H':
+      default:
+        return _generateChartData(deliveredOrders, 6, (date) {
+          final hour = date.hour;
+          final period = hour < 12 ? 'AM' : 'PM';
+          final displayHour = hour % 12 == 0 ? 12 : hour % 12;
+          return '$displayHour $period';
+        });
+    }
   }
 
-  // Add mini stats header for chart
-  Widget _buildChartHeader() {
-    final totalRevenue = _dayChartData.fold<double>(0, (sum, point) => sum + point.value);
-    final peakHour = _dayChartData.reduce((a, b) => a.value > b.value ? a : b);
+  // ADDED: Generate chart data from actual delivered orders
+  List<ChartPoint> _generateChartData(
+    List<Order> deliveredOrders,
+    int dataPoints,
+    String? Function(DateTime) labelGenerator,
+  ) {
+    final now = DateTime.now();
+    final Map<String, double> dataMap = {};
     
+    // Initialize all time slots with 0
+    for (int i = dataPoints - 1; i >= 0; i--) {
+      DateTime timePoint;
+      switch (_selectedTimeFilter) {
+        case '12H':
+          timePoint = now.subtract(Duration(hours: i * 2));
+          break;
+        case '1D':
+          timePoint = now.subtract(Duration(days: i));
+          break;
+        case '1W':
+          timePoint = now.subtract(Duration(days: i * 7));
+          break;
+        case '1M':
+          timePoint = DateTime(now.year, now.month - i, 1);
+          break;
+        case '6H':
+        default:
+          timePoint = now.subtract(Duration(hours: i));
+      }
+      
+      final label = labelGenerator(timePoint);
+      if (label != null) {
+        dataMap[label] = 0;
+      }
+    }
+
+    // Aggregate delivered orders into time slots
+    for (final order in deliveredOrders) {
+      final label = labelGenerator(order.date);
+      if (label != null && dataMap.containsKey(label)) {
+        dataMap[label] = (dataMap[label] ?? 0) + order.totalAmount.toDouble();
+      }
+    }
+
+    return dataMap.entries.map((e) => ChartPoint(e.key, e.value)).toList();
+  }
+
+  // UPDATED: Chart header with actual delivered data
+  Widget _buildChartHeader() {
+    final data = _filteredChartData;
+    final totalRevenue = data.fold<double>(0, (sum, point) => sum + point.value);
+    final peakHour = data.isNotEmpty
+        ? data.reduce((a, b) => a.value > b.value ? a : b)
+        : const ChartPoint('N/A', 0);
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
       decoration: BoxDecoration(
@@ -371,15 +318,15 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
-        children: [
-          _buildMiniStat('TOTAL', 'Ksh ${totalRevenue.toStringAsFixed(0)}'),
+        children: <Widget>[
+          _buildMiniStat('DELIVERED', 'Ksh ${totalRevenue.toStringAsFixed(0)}'),
           Container(
             width: 1,
             height: 30,
             color: AppColors.darkText.withOpacity(0.2),
             margin: const EdgeInsets.symmetric(horizontal: 16),
           ),
-          _buildMiniStat('PEAK', peakHour.label),
+          _buildMiniStat('PEAK TIME', peakHour.label),
           Container(
             width: 1,
             height: 30,
@@ -443,14 +390,20 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           ),
         ),
         onSelected: (bool selected) {
-          // Handle time filter change
+          // FIXED: Handle time filter change
+          if (selected) {
+            setState(() {
+              _selectedTimeFilter = label;
+            });
+          }
         },
       ),
     );
   }
 
   Widget _buildChartSection() {
-    return Container(
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 300),
       width: double.infinity,
       margin: const EdgeInsets.all(16),
       padding: const EdgeInsets.all(16),
@@ -490,7 +443,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                     Icon(Icons.trending_up, size: 14, color: AppColors.primary),
                     const SizedBox(width: 4),
                     Text(
-                      "Today",
+                      _selectedTimeFilter,
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
@@ -511,11 +464,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             scrollDirection: Axis.horizontal,
             child: Row(
               children: [
-                _buildTimeChip('6H', true),
-                _buildTimeChip('12H', false),
-                _buildTimeChip('1D', false),
-                _buildTimeChip('1W', false),
-                _buildTimeChip('1M', false),
+                _buildTimeChip('6H', _selectedTimeFilter == '6H'),
+                _buildTimeChip('12H', _selectedTimeFilter == '12H'),
+                _buildTimeChip('1D', _selectedTimeFilter == '1D'),
+                _buildTimeChip('1W', _selectedTimeFilter == '1W'),
+                _buildTimeChip('1M', _selectedTimeFilter == '1M'),
               ],
             ),
           ),
@@ -524,18 +477,222 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     );
   }
 
+  // ADDED: Build day chart method
+  Widget _buildDayChart() {
+    final data = _filteredChartData;
+    final hasData = data.any((point) => point.value > 0);
+    final maxY = data.isEmpty ? 1000.0 : max(1000.0, (data.map((e) => e.value).reduce(max)) * 1.3);
+    final minY = 0.0;
+    final horizontalInterval = max(1.0, maxY / 4); // FIXED: Ensure interval is never zero
+
+    return Container(
+      height: 240,
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 16),
+      child: Stack(
+        children: [
+          LineChart(
+            LineChartData(
+              gridData: FlGridData(
+                show: true,
+                drawVerticalLine: false,
+                horizontalInterval: horizontalInterval,
+                getDrawingHorizontalLine: (value) {
+                  return FlLine(
+                    color: AppColors.darkText.withOpacity(0.1),
+                    strokeWidth: 1,
+                  );
+                },
+              ),
+              titlesData: FlTitlesData(
+                show: true,
+                rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                bottomTitles: AxisTitles(
+                  sideTitles: SideTitles(
+                    showTitles: true,
+                    reservedSize: 32,
+                    interval: 1,
+                    getTitlesWidget: (value, meta) {
+                      final idx = value.toInt();
+                      if (idx < 0 || idx >= data.length) return const SizedBox();
+                      return Padding(
+                        padding: const EdgeInsets.only(top: 8.0),
+                        child: Text(
+                          data[idx].label,
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w500,
+                            color: AppColors.darkText.withOpacity(0.6),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+                leftTitles: AxisTitles(
+                  sideTitles: SideTitles(
+                    showTitles: true,
+                    interval: horizontalInterval,
+                    reservedSize: 42,
+                    getTitlesWidget: (value, meta) {
+                      final amount = value >= 1000 
+                        ? 'K${(value / 1000).toStringAsFixed(0)}'
+                        : value.toInt().toString();
+                      return Text(
+                        amount,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500,
+                          color: AppColors.darkText.withOpacity(0.6),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ),
+              borderData: FlBorderData(
+                show: true,
+                border: Border.all(
+                  color: AppColors.darkText.withOpacity(0.2),
+                  width: 1,
+                ),
+              ),
+              minX: 0,
+              maxX: data.isEmpty ? 5 : data.length.toDouble() - 1,
+              minY: minY,
+              maxY: maxY,
+              lineBarsData: hasData
+                ? [
+                    LineChartBarData(
+                      spots: data.asMap().entries.map((entry) {
+                        return FlSpot(entry.key.toDouble(), entry.value.value);
+                      }).toList(),
+                      isCurved: true,
+                      curveSmoothness: 0.3,
+                      gradient: LinearGradient(
+                        colors: [
+                          AppColors.primary.withOpacity(0.8),
+                          AppColors.primary.withOpacity(0.4),
+                        ],
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                      ),
+                      barWidth: 4,
+                      isStrokeCapRound: true,
+                      dotData: const FlDotData(show: true),
+                      belowBarData: BarAreaData(
+                        show: true,
+                        gradient: LinearGradient(
+                          colors: [
+                            AppColors.primary.withOpacity(0.3),
+                            AppColors.primary.withOpacity(0.05),
+                          ],
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                        ),
+                      ),
+                    ),
+                  ]
+                : [],
+              lineTouchData: LineTouchData(
+                touchTooltipData: LineTouchTooltipData(
+                  getTooltipColor: (touchedSpot) => AppColors.primary.withOpacity(0.9),
+                  tooltipPadding: const EdgeInsets.all(8),
+                  getTooltipItems: (touchedSpots) {
+                    return touchedSpots.map((touchedSpot) {
+                      if (touchedSpot.x.toInt() >= data.length) return null;
+                      final value = touchedSpot.y;
+                      final label = data[touchedSpot.x.toInt()].label;
+                      return LineTooltipItem(
+                        '$label\n',
+                        const TextStyle(
+                          color: AppColors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                        ),
+                        children: [
+                          TextSpan(
+                            text: 'Ksh ${value.toStringAsFixed(0)}',
+                            style: TextStyle(
+                              color: AppColors.white.withOpacity(0.9),
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      );
+                    }).toList();
+                  },
+                ),
+                handleBuiltInTouches: true,
+                enabled: hasData,
+              ),
+            ),
+          ),
+          // ADDED: Show message when no data available
+          if (!hasData)
+            Center(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                decoration: BoxDecoration(
+                  color: AppColors.white.withOpacity(0.95),
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.darkText.withOpacity(0.1),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.analytics_outlined,
+                      size: 48,
+                      color: AppColors.primary.withOpacity(0.3),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      'No Data Available',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.darkText,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'No delivered orders for $_selectedTimeFilter',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppColors.darkText.withOpacity(0.6),
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  // UPDATED: Stats card with delivered revenue
   Widget _buildStatsCard(OrderProvider provider) {
     final now = DateTime.now();
     final todayOrders = provider.orders.where((o) =>
       o.date.year == now.year && o.date.month == now.month && o.date.day == now.day).toList();
 
+    // FIXED: Only count delivered orders for revenue
     final todayRevenue = todayOrders
         .where((o) => o.status == OrderStatus.delivered)
         .fold<double>(0, (sum, o) => sum + o.totalAmount);
 
     final pendingOrders = provider.orders.where((o) => o.status == OrderStatus.pending).length;
-
-    final menuProvider = Provider.of<MenuProvider>(context, listen: false);
+    final deliveredToday = todayOrders.where((o) => o.status == OrderStatus.delivered).length;
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -571,19 +728,30 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                 ),
                 const SizedBox(height: 10),
                 _buildStatRow('Total Orders', '${todayOrders.length}'),
-                _buildStatRow('Revenue', 'Ksh ${todayRevenue.toStringAsFixed(0)}'),
+                _buildStatRow('Delivered Revenue', 'Ksh ${todayRevenue.toStringAsFixed(0)}'),
+                _buildStatRow('Delivered Today', '$deliveredToday'),
                 _buildStatRow('Pending', '$pendingOrders'),
-                _buildStatRow('Menu Items', '${menuProvider.menuItems.length}'),
               ],
             ),
           ),
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: AppColors.white.withOpacity(0.2),
-              shape: BoxShape.circle,
+          GestureDetector(
+            onTap: () {
+              setState(() {
+                _showChart = !_showChart;
+              });
+            },
+            child: Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: AppColors.white.withOpacity(0.2),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                _showChart ? Icons.visibility_off : Icons.bar_chart,
+                color: AppColors.white,
+                size: 24,
+              ),
             ),
-            child: const Icon(Icons.bar_chart, color: AppColors.white, size: 24),
           ),
         ],
       ),
@@ -614,41 +782,157 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     );
   }
 
+  // UPDATED: Build recent activity from real orders
   Widget _buildRecentActivity() {
-    final recentActivities = [
-      _ActivityItem('New order received', 'ORD-1001', Icons.shopping_cart, Colors.green),
-      _ActivityItem('Inventory low', 'Ugali Flour', Icons.warning, Colors.orange),
-      _ActivityItem('Payment processed', 'Ksh 2,300', Icons.payment, Colors.blue),
-      _ActivityItem('New user registered', 'Customer', Icons.person_add, Colors.purple),
-    ];
+    final provider = Provider.of<OrderProvider>(context);
+    
+    // Get recent orders (last 5) sorted by date
+    final recentOrders = provider.orders.toList()
+      ..sort((a, b) => b.date.compareTo(a.date));
+    final displayOrders = recentOrders.take(5).toList();
+
+    if (displayOrders.isEmpty) {
+      return Card(
+        elevation: 3,
+        child: Padding(
+          padding: const EdgeInsets.all(40),
+          child: Center(
+            child: Column(
+              children: [
+                Icon(
+                  Icons.history,
+                  size: 48,
+                  color: AppColors.darkText.withOpacity(0.3),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'No Recent Activity',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: AppColors.darkText.withOpacity(0.5),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
 
     return Card(
       elevation: 3,
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
-          children: recentActivities.map((activity) => 
-            ListTile(
+          children: displayOrders.map((order) {
+            final timeDiff = DateTime.now().difference(order.date);
+            final timeAgo = _formatTimeAgo(timeDiff);
+            
+            return ListTile(
               leading: Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: activity.color.withOpacity(0.1),
+                  color: _getActivityColor(order.status).withOpacity(0.1),
                   shape: BoxShape.circle,
                 ),
-                child: Icon(activity.icon, size: 20, color: activity.color),
+                child: Icon(
+                  _getActivityIcon(order.status),
+                  size: 20,
+                  color: _getActivityColor(order.status),
+                ),
               ),
-              title: Text(activity.title, style: const TextStyle(fontSize: 14)),
-              subtitle: Text(activity.subtitle, style: const TextStyle(fontSize: 12)),
+              title: Text(
+                _getActivityTitle(order),
+                style: const TextStyle(fontSize: 14),
+              ),
+              subtitle: Text(
+                '${order.customerName} • ${order.items.length} items',
+                style: const TextStyle(fontSize: 12),
+              ),
               trailing: Text(
-                '2 min ago',
-                style: TextStyle(fontSize: 12, color: AppColors.darkText.withOpacity(0.6)),
+                timeAgo,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: AppColors.darkText.withOpacity(0.6),
+                ),
               ),
               contentPadding: EdgeInsets.zero,
-            )
-          ).toList(),
+            );
+          }).toList(),
         ),
       ),
     );
+  }
+
+  // ADDED: Helper methods for activity display
+  String _formatTimeAgo(Duration diff) {
+    if (diff.inSeconds < 60) return '${diff.inSeconds}s ago';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    if (diff.inHours < 24) return '${diff.inHours}h ago';
+    return '${diff.inDays}d ago';
+  }
+
+  Color _getActivityColor(OrderStatus status) {
+    switch (status) {
+      case OrderStatus.pending:
+        return Colors.orange;
+      case OrderStatus.confirmed:
+        return Colors.blue;
+      case OrderStatus.assigned:
+        return Colors.purple;
+      case OrderStatus.pickedUp:
+        return Colors.teal;
+      case OrderStatus.onRoute:
+        return Colors.indigo;
+      case OrderStatus.inProcess:
+        return Colors.purple;
+      case OrderStatus.delivered:
+        return AppColors.success;
+      case OrderStatus.cancelled:
+        return Colors.red;
+    }
+  }
+
+  IconData _getActivityIcon(OrderStatus status) {
+    switch (status) {
+      case OrderStatus.pending:
+        return Icons.shopping_cart;
+      case OrderStatus.confirmed:
+        return Icons.check_circle;
+      case OrderStatus.assigned:
+        return Icons.delivery_dining;
+      case OrderStatus.pickedUp:
+        return Icons.shopping_bag;
+      case OrderStatus.onRoute:
+        return Icons.directions_bike;
+      case OrderStatus.inProcess:
+        return Icons.restaurant;
+      case OrderStatus.delivered:
+        return Icons.done_all;
+      case OrderStatus.cancelled:
+        return Icons.cancel;
+    }
+  }
+
+  String _getActivityTitle(Order order) {
+    switch (order.status) {
+      case OrderStatus.pending:
+        return 'New order received';
+      case OrderStatus.confirmed:
+        return 'Order confirmed';
+      case OrderStatus.assigned:
+        return 'Order assigned to rider';
+      case OrderStatus.pickedUp:
+        return 'Order picked up';
+      case OrderStatus.onRoute:
+        return 'Order on the way';
+      case OrderStatus.inProcess:
+        return 'Order in process';
+      case OrderStatus.delivered:
+        return 'Order delivered';
+      case OrderStatus.cancelled:
+        return 'Order cancelled';
+    }
   }
 
   Widget _buildBody() {
@@ -660,8 +944,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         children: [
           _buildStatsCard(provider),
           
-          // New enhanced chart section
-          _buildChartSection(),
+          // UPDATED: Conditionally show chart section
+          if (_showChart) _buildChartSection(),
 
           // Quick Actions Section
           Padding(
@@ -766,6 +1050,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   @override
   Widget build(BuildContext context) {
     final orderProvider = Provider.of<OrderProvider>(context);
+    final pendingOrders = _getPendingOrders(orderProvider);
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -787,11 +1072,12 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               children: [
                 IconButton(
                   icon: const Icon(Icons.notifications),
-                  tooltip: 'Incoming Orders',
+                  tooltip: 'Pending Orders',
                   color: AppColors.white,
                   onPressed: () => _openOrdersModal(context, orderProvider),
                 ),
-                if (_incomingOrders.isNotEmpty)
+                // UPDATED: Show count from OrderProvider
+                if (pendingOrders.isNotEmpty)
                   Positioned(
                     right: 6,
                     top: 8,
@@ -804,7 +1090,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                       constraints: const BoxConstraints(minWidth: 20, minHeight: 20),
                       child: Center(
                         child: Text(
-                          '${_incomingOrders.length}',
+                          '${pendingOrders.length}',
                           style: const TextStyle(
                             color: Colors.white, 
                             fontSize: 12,
@@ -1021,6 +1307,12 @@ class _NotificationOrderCard extends StatelessWidget {
         return Colors.orange;
       case OrderStatus.confirmed:
         return Colors.blue;
+      case OrderStatus.assigned: // ADDED
+        return Colors.purple;
+      case OrderStatus.pickedUp: // ADDED
+        return Colors.teal;
+      case OrderStatus.onRoute: // ADDED
+        return Colors.indigo;
       case OrderStatus.inProcess:
         return Colors.purple;
       case OrderStatus.delivered:
@@ -1154,14 +1446,6 @@ class _NotificationOrderCard extends StatelessWidget {
   }
 }
 
-class _ActivityItem {
-  final String title;
-  final String subtitle;
-  final IconData icon;
-  final Color color;
-
-  _ActivityItem(this.title, this.subtitle, this.icon, this.color);
-}
 
 /// Models
 class ChartPoint {
@@ -1187,6 +1471,7 @@ final List<MenuItem> menuItems = [
   MenuItem('SAMOSA', 20),
   MenuItem('SODA 500ml', 70),
 ];
+
 final List<MenuItem> drinkItems = [
   MenuItem('SODA 500ml', 70),
   MenuItem('WATER 500ml', 50),

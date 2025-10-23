@@ -440,36 +440,6 @@ class _AdminMenuManagementScreenState extends State<AdminMenuManagementScreen> {
     }
   }
 
-  Future<void> _showImageSourceDialog() async {
-    await showModalBottomSheet(
-      context: context,
-      builder: (BuildContext context) {
-        return SafeArea(
-          child: Wrap(
-            children: [
-              ListTile(
-                leading: Icon(Icons.photo_library, color: AppColors.primary),
-                title: const Text('Choose from Gallery'),
-                onTap: () {
-                  Navigator.of(context).pop();
-                  _pickImageFromGallery();
-                },
-              ),
-              ListTile(
-                leading: Icon(Icons.photo_camera, color: AppColors.primary),
-                title: const Text('Take a Photo'),
-                onTap: () {
-                  Navigator.of(context).pop();
-                  _pickImageFromCamera();
-                },
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
   Widget _buildImageContent() {
     if (_selectedImageBytes != null) {
       return Image.memory(
@@ -499,19 +469,35 @@ class _AdminMenuManagementScreenState extends State<AdminMenuManagementScreen> {
   }
 
   Widget _buildPlaceholder() {
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Icon(Icons.camera_alt, size: 40, color: AppColors.primary.withOpacity(0.5)),
-        const SizedBox(height: 8),
-        Text(
-          'Tap to add image',
-          style: TextStyle(
-            color: AppColors.primary,
-            fontWeight: FontWeight.w500,
+    return Container(
+      color: AppColors.lightGray.withOpacity(0.3),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.add_photo_alternate,
+            size: 48,
+            color: AppColors.primary.withOpacity(0.5),
           ),
-        ),
-      ],
+          const SizedBox(height: 12),
+          Text(
+            'Add Menu Photo',
+            style: TextStyle(
+              color: AppColors.primary,
+              fontWeight: FontWeight.w600,
+              fontSize: 14,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Tap edit button below',
+            style: TextStyle(
+              color: AppColors.primary.withOpacity(0.6),
+              fontSize: 12,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -553,7 +539,7 @@ class _AdminMenuManagementScreenState extends State<AdminMenuManagementScreen> {
                 value: category,
                 child: Text(category, overflow: TextOverflow.ellipsis),
               );
-            }).toList(),
+            }),
             // add new category (short label to avoid overflow)
             const DropdownMenuItem(
               value: 'add_new',
@@ -758,19 +744,39 @@ class _AdminMenuManagementScreenState extends State<AdminMenuManagementScreen> {
           const SizedBox(height: 8),
           Expanded(
             child: Padding(
-              padding: const EdgeInsets.all(16.0),
+              padding: const EdgeInsets.all(12.0), // REDUCED: from 16
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    'Menu Items (${menuItems.length})',
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.darkText,
-                    ),
+                  Row(
+                    children: [
+                      Text(
+                        'Menu Items',
+                        style: const TextStyle(
+                          fontSize: 16, // REDUCED: from 18
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.darkText,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: AppColors.primary,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          '${menuItems.length}',
+                          style: const TextStyle(
+                            color: AppColors.white,
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 12), // REDUCED: from 16
                   Expanded(
                     child: menuItems.isEmpty
                         ? Center(
@@ -805,59 +811,224 @@ class _AdminMenuManagementScreenState extends State<AdminMenuManagementScreen> {
                             itemCount: menuItems.length,
                             itemBuilder: (context, index) {
                               final item = menuItems[index];
+                              final isAvailable = item['isAvailable'] ?? true;
+                              
                               return Card(
                                 margin: const EdgeInsets.only(bottom: 12),
                                 elevation: 2,
                                 shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(10),
+                                  borderRadius: BorderRadius.circular(12),
                                 ),
-                                child: ListTile(
-                                  contentPadding: const EdgeInsets.symmetric(
-                                      vertical: 8, horizontal: 16),
-                                  leading: _buildMenuItemImage(item['image']),
-                                  title: Text(
-                                    item['title'] ?? '',
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      color: AppColors.darkText,
-                                    ),
-                                  ),
-                                  subtitle: Column(
+                                color: isAvailable ? null : Colors.grey.shade200,
+                                child: Padding(
+                                  padding: const EdgeInsets.all(12), // REDUCED: from 16
+                                  child: Row(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        'Ksh ${item['price']} • ${item['category'] ?? ''}',
-                                        style: TextStyle(
-                                          color: AppColors.darkText.withOpacity(0.7),
-                                        ),
-                                      ),
-                                      const SizedBox(height: 2),
-                                      Row(
+                                      // Image section - COMPACT
+                                      Stack(
                                         children: [
-                                          const Icon(Icons.star,
-                                              size: 16, color: Colors.amber),
-                                          const SizedBox(width: 4),
-                                          Text(
-                                            '${item['rating'] ?? _defaultRating}',
-                                            style: TextStyle(
-                                              color: AppColors.darkText.withOpacity(0.6),
+                                          ClipRRect(
+                                            borderRadius: BorderRadius.circular(8),
+                                            child: SizedBox(
+                                              width: 70, // REDUCED: from default ListTile size
+                                              height: 70,
+                                              child: _buildMenuItemImage(item['image']),
                                             ),
                                           ),
+                                          if (!isAvailable)
+                                            Positioned.fill(
+                                              child: Container(
+                                                decoration: BoxDecoration(
+                                                  color: Colors.black54,
+                                                  borderRadius: BorderRadius.circular(8),
+                                                ),
+                                                child: const Center(
+                                                  child: Icon(
+                                                    Icons.block,
+                                                    color: Colors.white,
+                                                    size: 28,
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
                                         ],
                                       ),
-                                    ],
-                                  ),
-                                  trailing: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      IconButton(
-                                        icon: const Icon(Icons.edit, color: AppColors.primary),
-                                        onPressed: () => _editItem(index, item),
-                                      ),
-                                      IconButton(
-                                        icon: const Icon(Icons.delete, color: Colors.red),
-                                        onPressed: () => _showDeleteConfirmation(index, context),
+                                      const SizedBox(width: 12),
+                                      
+                                      // Content section - EXPANDED
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            // Title row with availability badge
+                                            Row(
+                                              children: [
+                                                Expanded(
+                                                  child: Text(
+                                                    item['title'] ?? '',
+                                                    style: TextStyle(
+                                                      fontWeight: FontWeight.bold,
+                                                      fontSize: 14, // REDUCED
+                                                      color: isAvailable 
+                                                          ? AppColors.darkText 
+                                                          : Colors.grey,
+                                                      decoration: isAvailable 
+                                                          ? null 
+                                                          : TextDecoration.lineThrough,
+                                                    ),
+                                                    maxLines: 1,
+                                                    overflow: TextOverflow.ellipsis,
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 4),
+                                                Container(
+                                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                  decoration: BoxDecoration(
+                                                    color: isAvailable 
+                                                        ? AppColors.success.withOpacity(0.1) 
+                                                        : Colors.red.withOpacity(0.1),
+                                                    borderRadius: BorderRadius.circular(10),
+                                                    border: Border.all(
+                                                      color: isAvailable 
+                                                          ? AppColors.success 
+                                                          : Colors.red,
+                                                    ),
+                                                  ),
+                                                  child: Text(
+                                                    isAvailable ? 'Available' : 'Out',
+                                                    style: TextStyle(
+                                                      fontSize: 9,
+                                                      fontWeight: FontWeight.bold,
+                                                      color: isAvailable 
+                                                          ? AppColors.success 
+                                                          : Colors.red,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                            const SizedBox(height: 4),
+                                            
+                                            // Price and category row
+                                            Row(
+                                              children: [
+                                                Icon(Icons.sell, size: 12, color: AppColors.primary),
+                                                const SizedBox(width: 4),
+                                                Text(
+                                                  'Ksh ${item['price']}',
+                                                  style: TextStyle(
+                                                    fontSize: 13,
+                                                    fontWeight: FontWeight.w600,
+                                                    color: AppColors.primary,
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 8),
+                                                Icon(Icons.category, size: 12, color: AppColors.darkText.withOpacity(0.6)),
+                                                const SizedBox(width: 4),
+                                                Expanded(
+                                                  child: Text(
+                                                    item['category'] ?? '',
+                                                    style: TextStyle(
+                                                      fontSize: 12,
+                                                      color: isAvailable
+                                                          ? AppColors.darkText.withOpacity(0.7)
+                                                          : Colors.grey,
+                                                    ),
+                                                    maxLines: 1,
+                                                    overflow: TextOverflow.ellipsis,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                            const SizedBox(height: 4),
+                                            
+                                            // Rating row
+                                            Row(
+                                              children: [
+                                                const Icon(Icons.star, size: 14, color: Colors.amber),
+                                                const SizedBox(width: 4),
+                                                Text(
+                                                  '${item['rating'] ?? _defaultRating}',
+                                                  style: TextStyle(
+                                                    fontSize: 12,
+                                                    color: AppColors.darkText.withOpacity(0.6),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                            const SizedBox(height: 8),
+                                            
+                                            // Action buttons row - COMPACT
+                                            Row(
+                                              mainAxisAlignment: MainAxisAlignment.end,
+                                              children: [
+                                                // Availability switch
+                                                Transform.scale(
+                                                  scale: 0.7,
+                                                  child: Switch(
+                                                    value: isAvailable,
+                                                    onChanged: (value) {
+                                                      menuProvider.toggleAvailability(index);
+                                                      ScaffoldMessenger.of(context).showSnackBar(
+                                                        SnackBar(
+                                                          content: Text(
+                                                            value 
+                                                                ? '"${item['title']}" is now available' 
+                                                                : '"${item['title']}" marked as out of stock',
+                                                          ),
+                                                          backgroundColor: value ? AppColors.success : Colors.red,
+                                                          behavior: SnackBarBehavior.floating,
+                                                          margin: const EdgeInsets.all(16),
+                                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                                        ),
+                                                      );
+                                                    },
+                                                    activeColor: AppColors.success,
+                                                  ),
+                                                ),
+                                                
+                                                // Edit button
+                                                Container(
+                                                  margin: const EdgeInsets.only(left: 4),
+                                                  decoration: BoxDecoration(
+                                                    color: AppColors.primary.withOpacity(0.1),
+                                                    borderRadius: BorderRadius.circular(6),
+                                                  ),
+                                                  child: IconButton(
+                                                    icon: const Icon(Icons.edit, size: 16),
+                                                    color: AppColors.primary,
+                                                    padding: const EdgeInsets.all(6),
+                                                    constraints: const BoxConstraints(
+                                                      minWidth: 32,
+                                                      minHeight: 32,
+                                                    ),
+                                                    onPressed: () => _editItem(index, item),
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 4),
+                                                
+                                                // Delete button
+                                                Container(
+                                                  decoration: BoxDecoration(
+                                                    color: Colors.red.withOpacity(0.1),
+                                                    borderRadius: BorderRadius.circular(6),
+                                                  ),
+                                                  child: IconButton(
+                                                    icon: const Icon(Icons.delete, size: 16),
+                                                    color: Colors.red,
+                                                    padding: const EdgeInsets.all(6),
+                                                    constraints: const BoxConstraints(
+                                                      minWidth: 32,
+                                                      minHeight: 32,
+                                                    ),
+                                                    onPressed: () => _showDeleteConfirmation(index, context),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ],
+                                        ),
                                       ),
                                     ],
                                   ),
@@ -900,26 +1071,118 @@ class _AdminMenuManagementScreenState extends State<AdminMenuManagementScreen> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      GestureDetector(
-                        onTap: () {
-                          _showImageSourceDialog();
-                          setDialogState(() {});
-                        },
-                        child: Container(
-                          height: 150,
-                          width: double.infinity,
-                          decoration: BoxDecoration(
-                            color: AppColors.lightGray,
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: AppColors.primary.withOpacity(0.3)),
+                      // UPDATED: Modern image picker with square shape (matches edit profile)
+                      Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          // Background gradient (square version)
+                          Container(
+                            width: 180,
+                            height: 180,
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(16),
+                              gradient: LinearGradient(
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                                colors: [
+                                  AppColors.primary.withOpacity(0.3),
+                                  AppColors.primary.withOpacity(0.1),
+                                ],
+                              ),
+                            ),
                           ),
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(8),
-                            child: _buildImageContent(),
+                          // Image container
+                          Container(
+                            width: 170,
+                            height: 170,
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: AppColors.primary.withOpacity(0.2),
+                                width: 2,
+                              ),
+                            ),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(10),
+                              child: _buildImageContent(),
+                            ),
                           ),
-                        ),
+                          // Edit button (bottom right corner) - UPDATED: matches edit profile
+                          Positioned(
+                            bottom: 5,
+                            right: 5,
+                            child: Material(
+                              elevation: 4,
+                              shape: const CircleBorder(),
+                              child: PopupMenuButton<int>(
+                                onSelected: (v) {
+                                  if (v == 0) {
+                                    _pickImageFromCamera();
+                                    setDialogState(() {});
+                                  }
+                                  if (v == 1) {
+                                    _pickImageFromGallery();
+                                    setDialogState(() {});
+                                  }
+                                  if (v == 2) {
+                                    setState(() {
+                                      _selectedImageBytes = null;
+                                      _editingImageString = null;
+                                    });
+                                    setDialogState(() {});
+                                  }
+                                },
+                                itemBuilder: (_) => const [
+                                  PopupMenuItem(
+                                    value: 0,
+                                    child: Row(
+                                      children: [
+                                        Icon(Icons.camera_alt),
+                                        SizedBox(width: 8),
+                                        Text('Camera'),
+                                      ],
+                                    ),
+                                  ),
+                                  PopupMenuItem(
+                                    value: 1,
+                                    child: Row(
+                                      children: [
+                                        Icon(Icons.photo_library),
+                                        SizedBox(width: 8),
+                                        Text('Gallery'),
+                                      ],
+                                    ),
+                                  ),
+                                  PopupMenuItem(
+                                    value: 2,
+                                    child: Row(
+                                      children: [
+                                        Icon(Icons.delete),
+                                        SizedBox(width: 8),
+                                        Text('Remove'),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                                child: Container(
+                                  padding: const EdgeInsets.all(10),
+                                  decoration: const BoxDecoration(
+                                    color: AppColors.primary,
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(
+                                    Icons.edit,
+                                    size: 20,
+                                    color: AppColors.white,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 20),
                       TextFormField(
                         controller: _titleController,
                         decoration: InputDecoration(
@@ -935,7 +1198,6 @@ class _AdminMenuManagementScreenState extends State<AdminMenuManagementScreen> {
                         },
                       ),
                       const SizedBox(height: 16),
-                      // Replace $ icon with "KSh" text to avoid confusion
                       TextFormField(
                         controller: _priceController,
                         decoration: InputDecoration(

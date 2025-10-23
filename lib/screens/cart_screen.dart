@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import '../models/cart_item.dart';
 import '../constants/colors.dart';
 import '../providers/cart_provider.dart';
+import '../providers/menu_provider.dart'; // ADDED: Import menu provider
 import 'checkout_screen.dart';
 
 class CartScreen extends StatelessWidget {
@@ -15,8 +16,66 @@ class CartScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cartProvider = Provider.of<CartProvider>(context);
-    final items = cartProvider.items;
+    final cart = context.watch<CartProvider>();
+    final menuProvider = context.watch<MenuProvider>();
+    final items = cart.items;
+
+    // FIXED: Check for unavailable items properly
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      // Ensure the BuildContext is still valid before mutating providers / showing UI
+      if (!context.mounted) return;
+
+      final unavailableItems = <CartItem>[];
+      
+      for (final item in items) {
+        if (!menuProvider.isItemAvailable(item.mealTitle)) {
+          unavailableItems.add(item);
+        }
+      }
+
+      if (unavailableItems.isNotEmpty) {
+        // Remove unavailable items
+        for (final item in unavailableItems) {
+          cart.removeItem(item.id);
+        }
+
+        // Show notification
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Row(
+                  children: [
+                    Icon(Icons.warning, color: Colors.white),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Items removed from cart',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                ...unavailableItems.map((item) => Padding(
+                  padding: const EdgeInsets.only(left: 32, top: 2),
+                  child: Text(
+                    '• ${item.mealTitle} (out of stock)',
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                )),
+              ],
+            ),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 5),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+        );
+      }
+    });
 
     final subtotal = _subtotal(items);
     const int deliveryFee = 150;
@@ -24,7 +83,6 @@ class CartScreen extends StatelessWidget {
     
     final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
 
-    // UPDATED: Match dashboard_screen.dart PopScope pattern
     return PopScope(
       canPop: false,
       onPopInvoked: (didPop) {
@@ -55,7 +113,7 @@ class CartScreen extends StatelessWidget {
                             ),
                             TextButton(
                               onPressed: () {
-                                cartProvider.clearCart();
+                                cart.clearCart();
                                 Navigator.pop(ctx);
                               },
                               style: TextButton.styleFrom(foregroundColor: Colors.red),
@@ -73,138 +131,146 @@ class CartScreen extends StatelessWidget {
                 ]
               : null,
         ),
+        // FIXED: Wrap in SafeArea and use LayoutBuilder pattern
         body: items.isEmpty
             ? _buildEmptyState()
-            : LayoutBuilder(
-                builder: (context, constraints) {
-                  return SingleChildScrollView(
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    padding: EdgeInsets.fromLTRB(16, isLandscape ? 12 : 16, 16, 180),
-                    child: ConstrainedBox(
-                      constraints: BoxConstraints(minHeight: constraints.maxHeight - 180),
-                      child: Column(
-                        children: [
-                          // Summary Card
-                          Container(
-                            margin: EdgeInsets.only(bottom: isLandscape ? 12 : 16),
-                            padding: EdgeInsets.all(isLandscape ? 14 : 16),
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                                colors: [
-                                  AppColors.primary,
-                                  AppColors.primary.withOpacity(0.8),
+            : SafeArea(
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    return SingleChildScrollView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: EdgeInsets.fromLTRB(16, isLandscape ? 12 : 16, 16, 16),
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(
+                          minHeight: constraints.maxHeight - 16,
+                        ),
+                        child: Column(
+                          children: [
+                            // Summary Card
+                            Container(
+                              margin: EdgeInsets.only(bottom: isLandscape ? 12 : 16),
+                              padding: EdgeInsets.all(isLandscape ? 14 : 16),
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                  colors: [
+                                    AppColors.primary,
+                                    AppColors.primary.withOpacity(0.8),
+                                  ],
+                                ),
+                                borderRadius: BorderRadius.circular(16),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: AppColors.primary.withOpacity(0.3),
+                                    blurRadius: 10,
+                                    offset: const Offset(0, 4),
+                                  ),
                                 ],
                               ),
-                              borderRadius: BorderRadius.circular(16),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: AppColors.primary.withOpacity(0.3),
-                                  blurRadius: 10,
-                                  offset: const Offset(0, 4),
-                                ),
-                              ],
-                            ),
-                            child: Column(
-                              children: [
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    const Text(
-                                      'Cart Summary',
-                                      style: TextStyle(
-                                        color: AppColors.white,
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                      decoration: BoxDecoration(
-                                        color: AppColors.white.withOpacity(0.2),
-                                        borderRadius: BorderRadius.circular(20),
-                                      ),
-                                      child: Text(
-                                        '${items.length} ${items.length == 1 ? 'item' : 'items'}',
-                                        style: const TextStyle(
+                              child: Column(
+                                children: [
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      const Text(
+                                        'Cart Summary',
+                                        style: TextStyle(
                                           color: AppColors.white,
-                                          fontSize: 12,
+                                          fontSize: 18,
                                           fontWeight: FontWeight.bold,
                                         ),
                                       ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 16),
-                                _buildSummaryRow('Subtotal', 'Ksh $subtotal'),
-                                const SizedBox(height: 8),
-                                _buildSummaryRow('Delivery Fee', 'Ksh $deliveryFee'),
-                                const Divider(color: AppColors.white, height: 24, thickness: 0.5),
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    const Text(
-                                      'Total',
-                                      style: TextStyle(
-                                        color: AppColors.white,
-                                        fontSize: 20,
-                                        fontWeight: FontWeight.bold,
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                        decoration: BoxDecoration(
+                                          color: AppColors.white.withOpacity(0.2),
+                                          borderRadius: BorderRadius.circular(20),
+                                        ),
+                                        child: Text(
+                                          '${items.length} ${items.length == 1 ? 'item' : 'items'}',
+                                          style: const TextStyle(
+                                            color: AppColors.white,
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
                                       ),
-                                    ),
-                                    Text(
-                                      'Ksh $grandTotal',
-                                      style: const TextStyle(
-                                        color: AppColors.white,
-                                        fontSize: 24,
-                                        fontWeight: FontWeight.bold,
+                                    ],
+                                  ),
+                                  const SizedBox(height: 16),
+                                  _buildSummaryRow('Subtotal', 'Ksh $subtotal'),
+                                  const SizedBox(height: 8),
+                                  _buildSummaryRow('Delivery Fee', 'Ksh $deliveryFee'),
+                                  const Divider(color: AppColors.white, height: 24, thickness: 0.5),
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      const Text(
+                                        'Total',
+                                        style: TextStyle(
+                                          color: AppColors.white,
+                                          fontSize: 20,
+                                          fontWeight: FontWeight.bold,
+                                        ),
                                       ),
+                                      Text(
+                                        'Ksh $grandTotal',
+                                        style: const TextStyle(
+                                          color: AppColors.white,
+                                          fontSize: 24,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+
+                            // Items Title
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 0),
+                              child: Row(
+                                children: [
+                                  Text(
+                                    'Items in Cart',
+                                    style: TextStyle(
+                                      fontSize: isLandscape ? 16 : 18,
+                                      fontWeight: FontWeight.bold,
+                                      color: AppColors.darkText,
                                     ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          ),
-
-                          // Items Title
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 0),
-                            child: Row(
-                              children: [
-                                Text(
-                                  'Items in Cart',
-                                  style: TextStyle(
-                                    fontSize: isLandscape ? 16 : 18,
-                                    fontWeight: FontWeight.bold,
-                                    color: AppColors.darkText,
                                   ),
-                                ),
-                                const Spacer(),
-                                Text(
-                                  '${items.length}',
-                                  style: TextStyle(
-                                    fontSize: isLandscape ? 14 : 16,
-                                    fontWeight: FontWeight.bold,
-                                    color: AppColors.primary,
+                                  const Spacer(),
+                                  Text(
+                                    '${items.length}',
+                                    style: TextStyle(
+                                      fontSize: isLandscape ? 14 : 16,
+                                      fontWeight: FontWeight.bold,
+                                      color: AppColors.primary,
+                                    ),
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
-                          ),
-                          SizedBox(height: isLandscape ? 10 : 12),
+                            SizedBox(height: isLandscape ? 10 : 12),
 
-                          // Cart Items List
-                          ...items.map((item) => _CartItemCard(
-                            item: item,
-                            onRemove: () => cartProvider.removeItem(item.id),
-                            onIncrement: () => HapticFeedback.lightImpact(),
-                            onDecrement: () => HapticFeedback.lightImpact(),
-                          )),
-                        ],
+                            // Cart Items List
+                            ...items.map((item) => _CartItemCard(
+                              item: item,
+                              onRemove: () => cart.removeItem(item.id),
+                              onIncrement: () => HapticFeedback.lightImpact(),
+                              onDecrement: () => HapticFeedback.lightImpact(),
+                            )),
+                            
+                            // ADDED: Bottom spacing for checkout button
+                            SizedBox(height: isLandscape ? 80 : 100),
+                          ],
+                        ),
                       ),
-                    ),
-                  );
-                },
+                    );
+                  },
+                ),
               ),
         bottomNavigationBar: items.isEmpty
             ? null
