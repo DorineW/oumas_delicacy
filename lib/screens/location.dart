@@ -1,4 +1,5 @@
 // lib/screens/location.dart
+import 'dart:async'; // ADDED: For Timer
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
@@ -23,6 +24,7 @@ class _LocationScreenState extends State<LocationScreen> {
   bool _isMapReady = false;
   final TextEditingController _searchController = TextEditingController(); // ADDED
   List<Map<String, dynamic>> _searchResults = []; // ADDED
+  Timer? _debounceTimer; // ADDED: Timer for debouncing search
 
   @override
   void initState() {
@@ -35,6 +37,7 @@ class _LocationScreenState extends State<LocationScreen> {
   @override
   void dispose() {
     _searchController.dispose(); // ADDED
+    _debounceTimer?.cancel(); // ADDED: Cancel debounce timer
     super.dispose();
   }
 
@@ -121,18 +124,26 @@ class _LocationScreenState extends State<LocationScreen> {
     }
   }
 
-  // ADDED: Search address and update map
-  Future<void> _searchAddress(String query) async {
-    if (query.isEmpty) {
-      setState(() => _searchResults = []);
-      return;
+  // ADDED: Search address and update map with debouncing
+  void _searchAddress(String query) {
+    if (_debounceTimer?.isActive ?? false) {
+      _debounceTimer?.cancel();
     }
-
-    final locationProvider = context.read<LocationProvider>();
-    final results = await locationProvider.searchAddress(query);
     
-    setState(() {
-      _searchResults = results;
+    _debounceTimer = Timer(const Duration(milliseconds: 500), () async {
+      if (query.isEmpty) {
+        setState(() => _searchResults = []);
+        return;
+      }
+
+      final locationProvider = context.read<LocationProvider>();
+      final results = await locationProvider.searchAddress(query);
+      
+      if (mounted) {
+        setState(() {
+          _searchResults = results;
+        });
+      }
     });
   }
 
@@ -145,13 +156,15 @@ class _LocationScreenState extends State<LocationScreen> {
     
     await locationProvider.setLocation(lat, lon);
     
-    setState(() {
-      _selectedPoint = LatLng(lat, lon);
-      _searchResults = [];
-      _searchController.clear();
-    });
-    
-    mapController.move(_selectedPoint!, 15.0);
+    if (mounted) {
+      setState(() {
+        _selectedPoint = LatLng(lat, lon);
+        _searchResults = [];
+        _searchController.clear();
+      });
+      
+      mapController.move(_selectedPoint!, 15.0);
+    }
   }
 
   Widget _buildAddressCard(LocationProvider provider) {
@@ -349,7 +362,7 @@ class _LocationScreenState extends State<LocationScreen> {
                       ),
                     ),
                     
-                    // ADDED: Search results dropdown
+                    // ADDED: Search results dropdown with max height
                     if (_searchResults.isNotEmpty)
                       Container(
                         margin: const EdgeInsets.only(top: 8),
@@ -364,6 +377,7 @@ class _LocationScreenState extends State<LocationScreen> {
                             ),
                           ],
                         ),
+                        constraints: const BoxConstraints(maxHeight: 200),
                         child: ListView.separated(
                           shrinkWrap: true,
                           itemCount: _searchResults.length,
@@ -388,10 +402,10 @@ class _LocationScreenState extends State<LocationScreen> {
               ),
             ),
 
-          // ADDED: Outside delivery zone warning
+          // ADDED: Outside delivery zone warning with dynamic positioning
           if (_isMapReady && provider.outsideDeliveryArea)
             Positioned(
-              top: _searchResults.isNotEmpty ? 200 : 80,
+              top: _searchResults.isNotEmpty ? 220 : 80,
               left: 12,
               right: 12,
               child: Container(
@@ -425,11 +439,11 @@ class _LocationScreenState extends State<LocationScreen> {
               ),
             ),
 
-          // Map
-          _isMapReady
-              ? Positioned.fill(
-                  top: 80, // ADDED: Offset for search field
-                  child: FlutterMap(
+          // Map - FIXED: Dynamic top positioning
+          Positioned.fill(
+            top: _searchResults.isNotEmpty ? 220 : 80,
+            child: _isMapReady
+                ? FlutterMap(
                     mapController: mapController,
                     options: MapOptions(
                       initialCenter: _selectedPoint ?? 
@@ -509,24 +523,24 @@ class _LocationScreenState extends State<LocationScreen> {
                           ],
                         ),
                     ],
+                  )
+                : const Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        CircularProgressIndicator(),
+                        SizedBox(height: 16),
+                        Text('Loading map...'),
+                      ],
+                    ),
                   ),
-                )
-              : const Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      CircularProgressIndicator(),
-                      SizedBox(height: 16),
-                      Text('Loading map...'),
-                    ],
-                  ),
-                ),
+          ),
           
-          // Current Location FAB
+          // Current Location FAB - FIXED: Better positioning
           if (_isMapReady)
             Positioned(
               right: 16,
-              bottom: 120,
+              bottom: 140,
               child: FloatingActionButton(
                 onPressed: _currentLocationButtonPressed,
                 backgroundColor: Colors.white,

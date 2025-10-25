@@ -18,13 +18,15 @@ class OrderProvider extends ChangeNotifier {
 
   // UPDATED: Get ALL orders for a specific rider (including completed)
   List<Order> ordersForRider(String riderId) {
-    return _orders.where((order) => order.riderId == riderId).toList();
+    return _orders.where((order) => 
+      order.riderId == riderId
+    ).toList();
   }
 
   // ADDED: Get active orders for rider (not delivered/cancelled)
   List<Order> activeOrdersForRider(String riderId) {
     return _orders.where((order) => 
-      order.riderId == riderId && 
+      order.riderId == riderId &&
       order.status != OrderStatus.delivered &&
       order.status != OrderStatus.cancelled
     ).toList();
@@ -33,7 +35,7 @@ class OrderProvider extends ChangeNotifier {
   // ADDED: Get completed orders for rider
   List<Order> completedOrdersForRider(String riderId) {
     return _orders.where((order) => 
-      order.riderId == riderId && 
+      order.riderId == riderId &&
       (order.status == OrderStatus.delivered || order.status == OrderStatus.cancelled)
     ).toList();
   }
@@ -87,44 +89,58 @@ class OrderProvider extends ChangeNotifier {
     }
   }
 
-  // UPDATED: Properly assign rider and update status
+  // FIXED: Assign rider to order and update status
   void assignToRider(String orderId, String riderId, String riderName) {
     final index = _orders.indexWhere((o) => o.id == orderId);
-    if (index != -1) {
-      final currentOrder = _orders[index];
-      
-      _orders[index] = Order(
-        id: currentOrder.id,
-        customerId: currentOrder.customerId,
-        customerName: currentOrder.customerName,
-        items: currentOrder.items,
-        totalAmount: currentOrder.totalAmount,
-        date: currentOrder.date,
-        status: OrderStatus.assigned, // FIXED: Update status to assigned
-        deliveryType: currentOrder.deliveryType,
-        deliveryAddress: currentOrder.deliveryAddress,
-        deliveryPhone: currentOrder.deliveryPhone,
-        riderId: riderId,
-        riderName: riderName,
-      );
-      
-      // FIXED: Notify listeners so changes reflect in rider app
-      notifyListeners();
-      
-      // Send notification to rider (if notification provider is available)
-      if (_notificationProvider != null && riderId != 'admin') {
-        _notificationProvider!.addNotification(
-          AppNotification(
-            id: DateTime.now().millisecondsSinceEpoch.toString(),
-            title: 'New Delivery Assignment',
-            message: 'Order $orderId has been assigned to you',
-            userId: riderId,
-            timestamp: DateTime.now(),
-            type: 'orderAssigned',
-            data: {'orderId': orderId},
-          ),
-        );
-      }
+    if (index == -1) return;
+
+    final order = _orders[index];
+    
+    // Create updated order with rider info and status
+    _orders[index] = Order(
+      id: order.id,
+      customerId: order.customerId,
+      customerName: order.customerName,
+      deliveryPhone: order.deliveryPhone,
+      date: order.date,
+      items: order.items,
+      totalAmount: order.totalAmount,
+      status: OrderStatus.assigned, // FIXED: Change status to assigned
+      deliveryType: order.deliveryType,
+      deliveryAddress: order.deliveryAddress,
+      riderId: riderId, // ADDED: Set rider ID
+      riderName: riderName, // ADDED: Set rider name
+      cancellationReason: order.cancellationReason,
+    );
+
+    notifyListeners();
+
+    // FIXED: Send notification to rider using correct parameters
+    if (_notificationProvider != null) {
+      _notificationProvider!.addNotification(AppNotification(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        userId: riderId,
+        title: 'New Delivery Assignment',
+        message: 'Order #$orderId has been assigned to you',
+        type: 'order_update', // FIXED: Use string instead of enum
+        timestamp: DateTime.now(),
+        data: {'orderId': orderId}, // FIXED: Use data parameter instead of relatedOrderId
+      ));
+    }
+
+    // FIXED: Send notification to customer using correct parameters
+    if (_notificationProvider != null) {
+      _notificationProvider!.addNotification(AppNotification(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        userId: order.customerId,
+        title: 'Rider Assigned',
+        message: riderId == 'admin' 
+            ? 'Your order is being prepared for in-house delivery'
+            : 'Rider $riderName has been assigned to your order',
+        type: 'order_update', // FIXED: Use string instead of enum
+        timestamp: DateTime.now(),
+        data: {'orderId': orderId}, // FIXED: Use data parameter instead of relatedOrderId
+      ));
     }
   }
 

@@ -10,7 +10,6 @@ import '../../providers/order_provider.dart';
 import 'rider_orders_screen.dart';
 import 'rider_profile_screen.dart';
 import 'rider_earnings_screen.dart';
-import '../../utils/responsive_helper.dart';
 
 class RiderDashboardScreen extends StatefulWidget {
   const RiderDashboardScreen({super.key});
@@ -38,45 +37,57 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen> {
   }
 
   Widget _buildActiveOrders() {
-    final provider = Provider.of<OrderProvider>(context);
     final auth = Provider.of<AuthService>(context, listen: false);
-    final riderId = auth.currentUser?.id ?? 'rider_1'; // Get current rider ID
+    final riderId = auth.currentUser?.id ?? 'rider_1'; // Use actual rider ID
     
-    // CHANGED: Use activeOrdersForRider instead of ordersForRider
-    final activeOrders = provider.activeOrdersForRider(riderId);
-    final isLandscape = ResponsiveHelper.isLandscape(context);
-
-    if (activeOrders.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.delivery_dining, size: 80, color: AppColors.primary.withOpacity(0.3)),
-            const SizedBox(height: 16),
-            Text('No Active Deliveries', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.darkText.withOpacity(0.5))),
-            const SizedBox(height: 8),
-            Text('Orders assigned to you will appear here', style: TextStyle(color: AppColors.darkText.withOpacity(0.4)), textAlign: TextAlign.center),
-          ],
-        ),
-      );
-    }
-
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        return SingleChildScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: EdgeInsets.all(isLandscape ? 12 : 16),
-          child: ConstrainedBox(
-            constraints: BoxConstraints(minHeight: constraints.maxHeight),
+    return Consumer<OrderProvider>(
+      builder: (context, orderProvider, child) {
+        // UPDATED: Get orders assigned to this specific rider
+        final myOrders = orderProvider.activeOrdersForRider(riderId);
+        
+        if (myOrders.isEmpty) {
+          return Center(
             child: Column(
-              children: activeOrders.map((order) => _OrderCard(
-                order: order,
-                onCallCustomer: () => _callCustomer(order.deliveryPhone ?? order.customerName),
-                onOpenMaps: () => _openMaps(order.deliveryAddress ?? ''),
-                onUpdateStatus: (newStatus) => _updateOrderStatus(order.id, newStatus),
-              )).toList(),
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.delivery_dining,
+                  size: 80,
+                  color: AppColors.darkText.withOpacity(0.3),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'No Active Deliveries',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.darkText.withOpacity(0.5),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Waiting for new orders...',
+                  style: TextStyle(
+                    color: AppColors.darkText.withOpacity(0.4),
+                  ),
+                ),
+              ],
             ),
-          ),
+          );
+        }
+
+        return ListView.builder(
+          padding: const EdgeInsets.all(16),
+          itemCount: myOrders.length,
+          itemBuilder: (context, index) {
+            final order = myOrders[index];
+            return _OrderCard(
+              order: order,
+              onCallCustomer: () => _callCustomer(order.deliveryPhone ?? ''),
+              onOpenMaps: () => _openMaps(order.deliveryAddress ?? ''),
+              onUpdateStatus: (status) => _updateOrderStatus(order.id, status),
+            );
+          },
         );
       },
     );
@@ -109,88 +120,85 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen> {
   }
 
   Widget _buildStatsCard() {
-    final provider = Provider.of<OrderProvider>(context);
     final auth = Provider.of<AuthService>(context, listen: false);
-    final riderId = auth.currentUser?.id ?? 'rider_1';
+    final riderId = auth.currentUser?.id ?? 'rider_1'; // Use actual rider ID
     
-    // FIXED: Use ordersForRider to get ALL orders, then filter
-    final allRiderOrders = provider.ordersForRider(riderId);
-    final deliveredToday = allRiderOrders.where((o) => 
-      o.status == OrderStatus.delivered &&
-      o.date.day == DateTime.now().day
-    ).length;
-    final earningsToday = allRiderOrders.where((o) => 
-      o.status == OrderStatus.delivered &&
-      o.date.day == DateTime.now().day
-    ).fold<double>(0, (sum, o) => sum + 150.0); // Flat 150 per delivery
-    
-    return Container(
-      margin: const EdgeInsets.all(16),
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            AppColors.primary,
-            AppColors.primary.withOpacity(0.8),
-          ],
-        ),
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.primary.withOpacity(0.3),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Today\'s Summary',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.white,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  '$deliveredToday Deliveries',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: AppColors.white.withOpacity(0.9),
-                  ),
-                ),
-                Text(
-                  'Ksh ${earningsToday.toStringAsFixed(0)} Earnings',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: AppColors.white.withOpacity(0.9),
-                  ),
-                ),
+    return Consumer<OrderProvider>(
+      builder: (context, orderProvider, child) {
+        final myOrders = orderProvider.ordersForRider(riderId);
+        final activeCount = orderProvider.activeOrdersForRider(riderId).length;
+        final completedToday = myOrders.where((o) {
+          final now = DateTime.now();
+          final isToday = o.date.year == now.year &&
+              o.date.month == now.month &&
+              o.date.day == now.day;
+          return isToday && o.status == OrderStatus.delivered;
+        }).length;
+        final totalEarnings = myOrders
+            .where((o) => o.status == OrderStatus.delivered)
+            .fold<double>(0, (sum, order) => sum + (order.totalAmount * 0.1)); // 10% commission
+
+        return Container(
+          margin: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                AppColors.primary,
+                AppColors.primary.withOpacity(0.8),
               ],
             ),
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: AppColors.primary.withOpacity(0.3),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
           ),
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: AppColors.white.withOpacity(0.2),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              Icons.directions_bike,
-              size: 30,
-              color: AppColors.white,
-            ),
+          child: Column(
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: [
+                  _buildStatItem('Active', activeCount.toString(), Icons.delivery_dining),
+                  Container(width: 1, height: 40, color: Colors.white24),
+                  _buildStatItem('Today', completedToday.toString(), Icons.check_circle),
+                  Container(width: 1, height: 40, color: Colors.white24),
+                  _buildStatItem('Earnings', 'Ksh ${totalEarnings.toStringAsFixed(0)}', Icons.attach_money),
+                ],
+              ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
+    );
+  }
+
+  Widget _buildStatItem(String label, String value, IconData icon) {
+    return Column(
+      children: [
+        Icon(icon, color: Colors.white, size: 28),
+        const SizedBox(height: 8),
+        Text(
+          value,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        Text(
+          label,
+          style: TextStyle(
+            color: Colors.white.withOpacity(0.8),
+            fontSize: 12,
+          ),
+        ),
+      ],
     );
   }
 

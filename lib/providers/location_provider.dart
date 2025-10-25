@@ -75,7 +75,7 @@ class LocationProvider with ChangeNotifier {
       _latitude = defaultLatitude;
       _longitude = defaultLongitude;
       _deliveryAddress = 'Madaraka, Nairobi, Kenya';;
-      _isLoading = false; // ADDED: Set loading false on error notifyListeners();
+      _isLoading = false; // ADDED: Set loading false on error
       notifyListeners();
     }
     // REMOVED: finally block that was calling notifyListeners() - already called in _reverseGeocode

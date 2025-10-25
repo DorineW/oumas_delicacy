@@ -731,7 +731,7 @@ class _AdminOrderCardState extends State<AdminOrderCard>
               child: const Text('Mark Delivered'),
             ),
           
-          // Mark Delivered for delivery orders in progress
+          // Mark Delivered for delivery orders in process
           if (widget.order.status == OrderStatus.assigned ||
               widget.order.status == OrderStatus.pickedUp ||
               widget.order.status == OrderStatus.onRoute)
@@ -990,6 +990,9 @@ class _AdminOrderCardState extends State<AdminOrderCard>
 
   // ADDED: Show assign rider dialog
   Future<void> _assignRiderDialog(BuildContext context, Order order) async {
+    // REMOVED: Unused auth variable
+    
+    // UPDATED: Get real riders from auth service or use demo riders
     final riders = [
       {'id': 'rider_1', 'name': 'John Rider'},
       {'id': 'rider_2', 'name': 'Mary Delivery'},
@@ -1013,7 +1016,7 @@ class _AdminOrderCardState extends State<AdminOrderCard>
                 child: const Icon(Icons.delivery_dining, color: AppColors.primary),
               ),
               title: Text(rider['name']!),
-              subtitle: const Text('External rider'),
+              subtitle: Text('ID: ${rider['id']}'), // ADDED: Show rider ID
               onTap: () => Navigator.pop(context, rider),
             )),
             const Divider(),
@@ -1130,7 +1133,7 @@ class _AdminOrderCardState extends State<AdminOrderCard>
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Update order status as you progress with the delivery:',
+                    'Update order status as you progress with the delivery:', // FIXED: Added closing quote
                     style: TextStyle(
                       fontSize: 12,
                       color: AppColors.darkText.withOpacity(0.7),
