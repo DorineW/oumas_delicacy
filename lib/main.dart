@@ -21,6 +21,8 @@ import 'providers/menu_provider.dart';
 import 'providers/order_provider.dart';
 import 'providers/rider_provider.dart';
 import 'providers/notification_provider.dart';
+import 'providers/reviews_provider.dart'; // ADDED
+import 'providers/favorites_provider.dart'; // ADDED: Import
 import 'models/notification_model.dart';
 import 'models/cart_item.dart'; // ADDED
 import 'models/order.dart'; // ADDED for DeliveryType
@@ -72,6 +74,8 @@ class MyApp extends StatelessWidget {
           },
         ),
         ChangeNotifierProvider(create: (_) => RiderProvider()),
+        ChangeNotifierProvider(create: (_) => ReviewsProvider()), // ADDED
+        ChangeNotifierProvider(create: (_) => FavoritesProvider()), // ADDED: This line
       ],
       child: MaterialApp(
         title: "Ouma's Delicacy",

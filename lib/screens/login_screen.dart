@@ -97,6 +97,21 @@ class _LoginScreenState extends State<LoginScreen>
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
+                // ADDED: Logo at the top
+                Image.asset(
+                  'assets/images/splash_logo.png',
+                  width: 120,
+                  height: 120,
+                  errorBuilder: (context, error, stackTrace) {
+                    return Icon(
+                      Icons.restaurant,
+                      size: 120,
+                      color: AppColors.primary,
+                    );
+                  },
+                ),
+                const SizedBox(height: 24),
+
                 // App Logo
                 Image.asset(
                   "assets/images/app_icon.png",

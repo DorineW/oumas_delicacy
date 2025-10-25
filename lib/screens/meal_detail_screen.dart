@@ -2,7 +2,7 @@
 // ignore_for_file: deprecated_member_use
 
 import 'dart:io';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, Uint8List;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -10,6 +10,8 @@ import 'package:provider/provider.dart';
 import '../constants/colors.dart';
 import '../models/cart_item.dart';
 import '../providers/cart_provider.dart';
+import '../providers/favorites_provider.dart';
+import '../providers/reviews_provider.dart'; // ADDED
 
 class MealDetailScreen extends StatefulWidget {
   final Map<String, dynamic> meal;
@@ -23,33 +25,41 @@ class MealDetailScreen extends StatefulWidget {
 class _MealDetailScreenState extends State<MealDetailScreen> {
   int quantity = 1;
   bool showDetails = true;
-  double averageRating = 4.5;
+  // REMOVED: dummyReviews - now using ReviewsProvider
 
-  // Dummy reviews
-  final List<Map<String, String>> dummyReviews = [
+  // Dummy similar meals
+  final List<Map<String, dynamic>> similarMeals = [
     {
-      "name": "Alice",
-      "comment": "Really tasty and fresh! The beef was perfectly cooked.",
-      "rating": "⭐⭐⭐⭐",
-      "time": "2 days ago"
+      "id": "2",
+      "title": "Ugali Nyama Choma",
+      "price": 350,
+      "category": "Main Course",
+      "rating": 4.7,
+      "image": "assets/images/ugali.jpg",
     },
     {
-      "name": "Brian",
-      "comment": "Good portion size, worth the price. Will order again!",
-      "rating": "⭐⭐⭐⭐⭐",
-      "time": "1 week ago"
+      "id": "3",
+      "title": "Pilau Beef Fry",
+      "price": 280,
+      "category": "Main Course",
+      "rating": 4.4,
+      "image": "assets/images/pilau.jpg",
     },
     {
-      "name": "Cynthia",
-      "comment": "Could use a bit more spice, but overall good flavor.",
-      "rating": "⭐⭐⭐",
-      "time": "3 days ago"
+      "id": "4",
+      "title": "Chapati Beans",
+      "price": 180,
+      "category": "Breakfast",
+      "rating": 4.6,
+      "image": "assets/images/chapati.jpg",
     },
     {
-      "name": "David",
-      "comment": "Amazing! Best burger I've had in a long time.",
-      "rating": "⭐⭐⭐⭐⭐",
-      "time": "5 days ago"
+      "id": "5",
+      "title": "Samosa",
+      "price": 50,
+      "category": "Snack",
+      "rating": 4.3,
+      "image": "assets/images/samosa.jpg",
     },
   ];
 
@@ -57,19 +67,20 @@ class _MealDetailScreenState extends State<MealDetailScreen> {
   void initState() {
     super.initState();
     // Calculate average rating from reviews
-    if (dummyReviews.isNotEmpty) {
-      averageRating = dummyReviews.fold(0.0, (sum, review) {
-        final stars = review['rating']!.replaceAll(RegExp(r'[^⭐]'), '');
-        return sum + stars.length;
-      }) / dummyReviews.length;
-    }
+    // REMOVED: Dummy reviews, now using ReviewsProvider
   }
 
   Widget _buildMealImage(dynamic imageVal) {
     if (imageVal == null) {
       return Container(
-        color: AppColors.lightGray,
-        child: const Icon(Icons.fastfood, size: 80, color: AppColors.primary),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [AppColors.primary.withOpacity(0.1), AppColors.accent.withOpacity(0.1)],
+          ),
+        ),
+        child: Icon(Icons.fastfood, size: 80, color: AppColors.primary.withOpacity(0.3)),
       );
     }
 
@@ -81,24 +92,141 @@ class _MealDetailScreenState extends State<MealDetailScreen> {
     }
 
     final imgPath = imageVal.toString();
-
     if (imgPath.startsWith('assets/')) {
-      return Image.asset(imgPath, fit: BoxFit.cover);
+      return Image.asset(imgPath, fit: BoxFit.cover, errorBuilder: (_, __, ___) => _buildFallbackImage());
     }
-
     if (imgPath.startsWith('http')) {
-      return Image.network(imgPath, fit: BoxFit.cover);
+      return Image.network(imgPath, fit: BoxFit.cover, errorBuilder: (_, __, ___) => _buildFallbackImage());
     }
 
     if (!kIsWeb) {
       try {
-        return Image.file(File(imgPath), fit: BoxFit.cover);
+        return Image.file(File(imgPath), fit: BoxFit.cover, errorBuilder: (_, __, ___) => _buildFallbackImage());
       } catch (_) {}
     }
 
+    return _buildFallbackImage();
+  }
+
+  Widget _buildFallbackImage() {
     return Container(
-      color: AppColors.lightGray,
-      child: const Icon(Icons.fastfood, size: 80, color: AppColors.primary),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [AppColors.primary.withOpacity(0.1), AppColors.accent.withOpacity(0.1)],
+        ),
+      ),
+      child: Icon(Icons.fastfood, size: 80, color: AppColors.primary.withOpacity(0.3)),
+    );
+  }
+
+  Widget _buildSimilarMealCard(Map<String, dynamic> meal, BuildContext context) {
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => MealDetailScreen(meal: meal),
+          ),
+        );
+      },
+      child: Container(
+        width: 160,
+        margin: const EdgeInsets.only(right: 12),
+        decoration: BoxDecoration(
+          color: AppColors.white,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.1),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Meal image - FIXED: Reduced height for better proportions
+            Container(
+              height: 100,
+              width: double.infinity,
+              decoration: const BoxDecoration(
+                borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+              ),
+              child: ClipRRect(
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                child: _buildMealImage(meal['image']),
+              ),
+            ),
+
+            // Content - REMOVED: Quantity controls and cart button
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.all(10),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Title
+                    Text(
+                      meal['title'],
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                        color: AppColors.darkText,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 2),
+                    // Category
+                    Text(
+                      meal['category'],
+                      style: TextStyle(
+                        color: AppColors.darkText.withOpacity(0.6),
+                        fontSize: 11,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const Spacer(),
+                    // Rating and Price row
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.star, size: 14, color: Colors.amber),
+                            const SizedBox(width: 2),
+                            Text(
+                              meal['rating'].toString(),
+                              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+                            ),
+                          ],
+                        ),
+                        Flexible(
+                          child: Text(
+                            'Ksh ${meal['price']}',
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.primary,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -106,79 +234,32 @@ class _MealDetailScreenState extends State<MealDetailScreen> {
   Widget build(BuildContext context) {
     final meal = widget.meal;
     final cartProvider = Provider.of<CartProvider>(context, listen: false);
+    final favoritesProvider = Provider.of<FavoritesProvider>(context);
+    final reviewsProvider = Provider.of<ReviewsProvider>(context); // ADDED
 
     final String title = (meal['title'] ?? 'Untitled').toString();
-    final int price = (meal['price'] ?? 0) is int
-        ? meal['price']
-        : int.tryParse(meal['price'].toString()) ?? 0;
+    final int price = (meal['price'] ?? 0) is int ? meal['price'] : int.tryParse(meal['price'].toString()) ?? 0;
     final String category = (meal['category'] ?? '').toString();
-    final double rating = (meal['rating'] ?? 4.5).toDouble();
-    final String description =
-        (meal['description'] ?? 'Delicious and freshly made.').toString();
+    final double rating = reviewsProvider.getAverageRating(title); // UPDATED: Get from provider
+    final String description = (meal['description'] ?? 'Delicious and freshly made.').toString();
+    final bool isLiked = favoritesProvider.isFavorite(title);
+    final reviews = reviewsProvider.getReviewsForMeal(title); // ADDED: Get reviews for this meal
 
     return Scaffold(
-      backgroundColor: AppColors.cardBackground,
+      backgroundColor: AppColors.background,
       body: CustomScrollView(
         slivers: [
-          // App bar with image
+          // Modern app bar with image
           SliverAppBar(
-            expandedHeight: 300.0,
+            expandedHeight: 280.0,
             pinned: true,
             backgroundColor: AppColors.primary,
             flexibleSpace: FlexibleSpaceBar(
               background: Stack(
                 fit: StackFit.expand,
                 children: [
-                  // Creative background pattern
-                  Container(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [
-                          AppColors.primary,
-                          AppColors.accent,
-                        ],
-                      ),
-                    ),
-                    child: Opacity(
-                      opacity: 0.1,
-                      child: Image.asset(
-                        'assets/images/food_pattern.png', // You can add a food pattern asset
-                        fit: BoxFit.cover,
-                        color: AppColors.white,
-                        colorBlendMode: BlendMode.modulate,
-                      ),
-                    ),
-                  ),
-                  
-                  // Meal image with creative framing
-                  Center(
-                    child: Container(
-                      width: 220,
-                      height: 220,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.3),
-                            blurRadius: 15,
-                            spreadRadius: 2,
-                            offset: const Offset(0, 5),
-                          ),
-                        ],
-                        border: Border.all(
-                          color: AppColors.white,
-                          width: 4,
-                        ),
-                      ),
-                      child: ClipOval(
-                        child: _buildMealImage(meal['image']),
-                      ),
-                    ),
-                  ),
-                  
-                  // Gradient overlay
+                  // Background image with gradient overlay
+                  _buildMealImage(meal['image']),
                   Container(
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
@@ -200,10 +281,10 @@ class _MealDetailScreenState extends State<MealDetailScreen> {
               icon: Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: AppColors.primary.withOpacity(0.8),
+                  color: Colors.black.withOpacity(0.5),
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(Icons.arrow_back, color: Colors.white),
+                child: const Icon(Icons.arrow_back, color: Colors.white, size: 20),
               ),
               onPressed: () => Navigator.pop(context),
             ),
@@ -212,12 +293,35 @@ class _MealDetailScreenState extends State<MealDetailScreen> {
                 icon: Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: AppColors.primary.withOpacity(0.8),
+                    color: Colors.black.withOpacity(0.5),
                     shape: BoxShape.circle,
                   ),
-                  child: const Icon(Icons.favorite_border, color: Colors.white),
+                  child: Icon(
+                    isLiked ? Icons.favorite : Icons.favorite_border,
+                    color: isLiked ? Colors.red : Colors.white,
+                    size: 20,
+                  ),
                 ),
-                onPressed: () {},
+                onPressed: () {
+                  // UPDATED: Use provider to toggle favorite (provider expects the meal title)
+                  favoritesProvider.toggleFavorite(title);
+                  HapticFeedback.lightImpact();
+                  
+                  // Show snackbar feedback
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        isLiked 
+                            ? '💔 Removed from favorites' 
+                            : '❤️ Added to favorites',
+                      ),
+                      backgroundColor: isLiked ? Colors.grey : Colors.red,
+                      behavior: SnackBarBehavior.floating,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      duration: const Duration(seconds: 1),
+                    ),
+                  );
+                },
               ),
             ],
           ),
@@ -225,74 +329,37 @@ class _MealDetailScreenState extends State<MealDetailScreen> {
           // Content
           SliverToBoxAdapter(
             child: Container(
-              decoration: BoxDecoration(
-                color: AppColors.cardBackground,
-                borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(30),
-                  topRight: Radius.circular(30),
-                ),
+              decoration: const BoxDecoration(
+                color: AppColors.background,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
               ),
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                padding: const EdgeInsets.all(20),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Title and price with creative design
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: AppColors.white,
-                        borderRadius: BorderRadius.circular(16),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.grey.withOpacity(0.1),
-                            blurRadius: 10,
-                            offset: const Offset(0, 5),
-                          ),
-                        ],
-                      ),
-                      child: Column(
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    // Title and price
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Expanded(
-                                child: Text(
-                                  title,
-                                  style: const TextStyle(
-                                    fontSize: 24,
-                                    fontWeight: FontWeight.bold,
-                                    color: AppColors.darkText,
-                                  ),
+                              Text(
+                                title,
+                                style: const TextStyle(
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.bold,
+                                  color: AppColors.darkText,
                                 ),
                               ),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                decoration: BoxDecoration(
-                                  color: AppColors.primary,
-                                  borderRadius: BorderRadius.circular(20),
-                                ),
-                                child: Text(
-                                  "Ksh $price",
-                                  style: const TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 12),
-                          
-                          // Category and rating
-                          Row(
-                            children: [
+                              const SizedBox(height: 8),
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                                 decoration: BoxDecoration(
                                   color: AppColors.primary.withOpacity(0.1),
-                                  borderRadius: BorderRadius.circular(16),
+                                  borderRadius: BorderRadius.circular(12),
                                 ),
                                 child: Text(
                                   category,
@@ -303,101 +370,90 @@ class _MealDetailScreenState extends State<MealDetailScreen> {
                                   ),
                                 ),
                               ),
-                              const SizedBox(width: 12),
-                              Icon(Icons.star, color: Colors.amber, size: 18),
-                              const SizedBox(width: 4),
-                              Text(
-                                rating.toStringAsFixed(1),
-                                style: const TextStyle(fontWeight: FontWeight.w600),
-                              ),
-                              const SizedBox(width: 4),
-                              Text(
-                                "(${dummyReviews.length} reviews)",
-                                style: TextStyle(
-                                  color: AppColors.darkText.withOpacity(0.6),
-                                  fontSize: 12,
-                                ),
-                              ),
                             ],
                           ),
-                        ],
-                      ),
+                        ),
+                        const SizedBox(width: 12),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Text(
+                              "Ksh $price",
+                              style: const TextStyle(
+                                fontSize: 24,
+                                fontWeight: FontWeight.bold,
+                                color: AppColors.primary,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Row(
+                              children: [
+                                const Icon(Icons.star, size: 16, color: Colors.amber),
+                                const SizedBox(width: 4),
+                                Text(
+                                  rating.toStringAsFixed(1),
+                                  style: const TextStyle(fontWeight: FontWeight.w600),
+                                ),
+                                Text(
+                                  " (${reviews.length})", // UPDATED: Use actual review count
+                                  style: TextStyle(
+                                    color: AppColors.darkText.withOpacity(0.6),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 20),
 
-                    // Tabs with creative design
+                    // Modern tab selector
                     Container(
+                      height: 48,
                       decoration: BoxDecoration(
-                        color: AppColors.white,
-                        borderRadius: BorderRadius.circular(16),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.grey.withOpacity(0.1),
-                            blurRadius: 10,
-                            offset: const Offset(0, 5),
-                          ),
-                        ],
+                        color: AppColors.cardBackground,
+                        borderRadius: BorderRadius.circular(12),
                       ),
                       child: Row(
                         children: [
                           Expanded(
-                            child: InkWell(
+                            child: GestureDetector(
                               onTap: () => setState(() => showDetails = true),
-                              borderRadius: const BorderRadius.horizontal(
-                                left: Radius.circular(16),
-                              ),
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(vertical: 16),
+                              child: AnimatedContainer(
+                                duration: const Duration(milliseconds: 300),
                                 decoration: BoxDecoration(
-                                  color: showDetails
-                                      ? AppColors.primary
-                                      : Colors.transparent,
-                                  borderRadius: const BorderRadius.horizontal(
-                                    left: Radius.circular(16),
-                                  ),
+                                  color: showDetails ? AppColors.primary : Colors.transparent,
+                                  borderRadius: BorderRadius.circular(12),
                                 ),
-                                child: Text(
-                                  "Details",
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.w600,
-                                    color: showDetails
-                                        ? Colors.white
-                                        : AppColors.darkText,
+                                child: Center(
+                                  child: Text(
+                                    "About",
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      color: showDetails ? Colors.white : AppColors.darkText,
+                                    ),
                                   ),
                                 ),
                               ),
                             ),
                           ),
-                          Container(
-                            width: 1,
-                            height: 24,
-                            color: AppColors.lightGray,
-                          ),
                           Expanded(
-                            child: InkWell(
+                            child: GestureDetector(
                               onTap: () => setState(() => showDetails = false),
-                              borderRadius: const BorderRadius.horizontal(
-                                right: Radius.circular(16),
-                              ),
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(vertical: 16),
+                              child: AnimatedContainer(
+                                duration: const Duration(milliseconds: 300),
                                 decoration: BoxDecoration(
-                                  color: !showDetails
-                                      ? AppColors.primary
-                                      : Colors.transparent,
-                                  borderRadius: const BorderRadius.horizontal(
-                                    right: Radius.circular(16),
-                                  ),
+                                  color: !showDetails ? AppColors.primary : Colors.transparent,
+                                  borderRadius: BorderRadius.circular(12),
                                 ),
-                                child: Text(
-                                  "Reviews (${dummyReviews.length})",
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.w600,
-                                    color: !showDetails
-                                        ? Colors.white
-                                        : AppColors.darkText,
+                                child: Center(
+                                  child: Text(
+                                    "Reviews",
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      color: !showDetails ? Colors.white : AppColors.darkText,
+                                    ),
                                   ),
                                 ),
                               ),
@@ -406,11 +462,11 @@ class _MealDetailScreenState extends State<MealDetailScreen> {
                         ],
                       ),
                     ),
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 24),
 
                     // Content based on tab selection
-                    if (showDetails) _buildDetailsSection(description),
-                    if (!showDetails) _buildReviewsSection(),
+                    if (showDetails) _buildAboutSection(description),
+                    if (!showDetails) _buildReviewsSection(title, reviewsProvider), // UPDATED: Pass provider
                   ],
                 ),
               ),
@@ -419,20 +475,16 @@ class _MealDetailScreenState extends State<MealDetailScreen> {
         ],
       ),
 
-      // Fixed bottom bar with creative design
+      // Modern bottom bar
       bottomNavigationBar: Container(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
         decoration: BoxDecoration(
           color: AppColors.white,
-          borderRadius: const BorderRadius.only(
-            topLeft: Radius.circular(20),
-            topRight: Radius.circular(20),
-          ),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
           boxShadow: [
             BoxShadow(
-              color: Colors.grey.withOpacity(0.3),
-              spreadRadius: 2,
-              blurRadius: 10,
+              color: Colors.black.withOpacity(0.1),
+              blurRadius: 20,
               offset: const Offset(0, -5),
             ),
           ],
@@ -440,30 +492,40 @@ class _MealDetailScreenState extends State<MealDetailScreen> {
         child: SafeArea(
           child: Row(
             children: [
-              // Quantity control
+              // Quantity selector
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
                   color: AppColors.primary.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AppColors.primary.withOpacity(0.3)),
                 ),
                 child: Row(
                   children: [
                     IconButton(
-                      icon: const Icon(Icons.remove, size: 20),
-                      color: AppColors.primary,
+                      icon: Icon(Icons.remove, size: 20, color: AppColors.primary),
                       onPressed: () {
                         if (quantity > 1) setState(() => quantity--);
+                        HapticFeedback.lightImpact();
                       },
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(minWidth: 36),
                     ),
-                    Text('$quantity',
-                        style: const TextStyle(
-                            fontWeight: FontWeight.bold, fontSize: 16)),
+                    SizedBox(
+                      width: 30,
+                      child: Text(
+                        '$quantity',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                      ),
+                    ),
                     IconButton(
-                      icon: const Icon(Icons.add, size: 20),
-                      color: AppColors.primary,
-                      onPressed: () => setState(() => quantity++),
+                      icon: Icon(Icons.add, size: 20, color: AppColors.primary),
+                      onPressed: () {
+                        setState(() => quantity++);
+                        HapticFeedback.lightImpact();
+                      },
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(minWidth: 36),
                     ),
                   ],
                 ),
@@ -472,71 +534,54 @@ class _MealDetailScreenState extends State<MealDetailScreen> {
 
               // Add to cart button
               Expanded(
-                child: ElevatedButton.icon(
-                  icon: const Icon(Icons.add_shopping_cart_outlined),
-                  label: Text(
-                    'Add • Ksh ${price * quantity}',
-                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primary,
-                    foregroundColor: AppColors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    elevation: 3,
-                  ),
+                child: ElevatedButton(
                   onPressed: () {
-                    HapticFeedback.lightImpact(); // 1. vibration
+                    HapticFeedback.lightImpact();
 
                     final cartItem = CartItem(
                       id: DateTime.now().millisecondsSinceEpoch.toString(),
                       mealTitle: title,
-                      mealImage: meal['image'],
+                      mealImage: meal['image'] is String ? meal['image'] : '',
                       price: price,
                       quantity: quantity,
                     );
 
-                    // Use dynamic invocation so compilation doesn't fail if the provider method name differs.
-                    final dynamic cp = cartProvider;
-                    var added = false;
-
+                    bool added = false;
                     try {
-                      // Try common method names used in various implementations.
-                      try {
-                        cp.addToCart(cartItem);
-                        added = true;
-                      } catch (_) {
-                        try {
-                          cp.addItem(cartItem);
-                          added = true;
-                        } catch (_) {
-                          try {
-                            cp.add(cartItem);
-                            added = true;
-                          } catch (_) {
-                            // If provider expects different signature, attempt other plausible variants (non-fatal).
-                            try {
-                              cp.addItem(cartItem.id, cartItem);
-                              added = true;
-                            } catch (_) {}
-                          }
-                        }
-                      }
-                    } catch (_) {
-                      added = false;
+                      cartProvider.addItem(cartItem);
+                      added = true;
+                    } catch (e) {
+                      debugPrint('Error adding to cart: $e');
                     }
 
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                      content: Text(added ? "$title added to cart (x$quantity)" : "Could not add $title to cart"),
-                      backgroundColor: added ? AppColors.accent : Colors.redAccent,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      margin: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-                      behavior: SnackBarBehavior.floating,
-                      duration: const Duration(seconds: 2),
-                    ));
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(added ? "✅ $title added to cart" : "❌ Could not add to cart"),
+                        backgroundColor: added ? AppColors.success : Colors.red,
+                        behavior: SnackBarBehavior.floating,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        duration: const Duration(seconds: 2),
+                      ),
+                    );
                   },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    elevation: 0,
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.add_shopping_cart, size: 20),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Add • Ksh ${price * quantity}',
+                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ],
@@ -546,224 +591,329 @@ class _MealDetailScreenState extends State<MealDetailScreen> {
     );
   }
 
-  Widget _buildDetailsSection(String description) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.withOpacity(0.1),
-            blurRadius: 10,
-            offset: const Offset(0, 5),
+  Widget _buildAboutSection(String description) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Description
+        Text(
+          description,
+          style: TextStyle(
+            fontSize: 16,
+            height: 1.6,
+            color: AppColors.darkText.withOpacity(0.8),
           ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            description,
-            style: const TextStyle(fontSize: 16, height: 1.5, color: Colors.black87),
-          ),
-          const SizedBox(height: 24),
+        ),
+        const SizedBox(height: 32),
 
-          // Ingredients section
-          const Text(
-            "What's Included",
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.darkText),
-          ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _buildIngredientChip("Beef Patty"),
-              _buildIngredientChip("Fresh Buns"),
-              _buildIngredientChip("Lettuce"),
-              _buildIngredientChip("Tomato"),
-              _buildIngredientChip("Onions"),
-              _buildIngredientChip("Special Sauce"),
-            ],
-          ),
-          const SizedBox(height: 24),
-
-          // Nutrition info
-          const Text(
-            "Nutrition Information",
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.darkText),
-          ),
-          const SizedBox(height: 12),
-          DataTable(
-            columnSpacing: 20,
-            columns: const [
-              DataColumn(label: Text("Nutrient", style: TextStyle(fontWeight: FontWeight.bold))),
-              DataColumn(label: Text("Amount", style: TextStyle(fontWeight: FontWeight.bold))),
-            ],
-            rows: const [
-              DataRow(cells: [
-                DataCell(Text("Calories")),
-                DataCell(Text("560 kcal")),
-              ]),
-              DataRow(cells: [
-                DataCell(Text("Protein")),
-                DataCell(Text("25 g")),
-              ]),
-              DataRow(cells: [
-                DataCell(Text("Carbs")),
-                DataCell(Text("45 g")),
-              ]),
-              DataRow(cells: [
-                DataCell(Text("Fat")),
-                DataCell(Text("30 g")),
-              ]),
-            ],
-          ),
-          const SizedBox(height: 24),
-
-          // Additional notes
-          const Text(
-            "Notes",
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.darkText),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            "If you have allergies or special requests, please add them when ordering.",
-            style: TextStyle(color: AppColors.darkText.withOpacity(0.8), fontSize: 14),
-          ),
-          const SizedBox(height: 20),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildIngredientChip(String text) {
-    return Chip(
-      label: Text(text),
-      backgroundColor: AppColors.primary.withOpacity(0.1),
-      labelStyle: TextStyle(color: AppColors.primary, fontWeight: FontWeight.w500),
-      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-    );
-  }
-
-  Widget _buildReviewsSection() {
-    // Calculate average rating from reviews
-    double avgRating = dummyReviews.isNotEmpty
-        ? dummyReviews.fold(0.0, (sum, review) {
-            final stars = review['rating']!.replaceAll(RegExp(r'[^⭐]'), '');
-            return sum + stars.length;
-          }) / dummyReviews.length
-        : 4.5;
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.withOpacity(0.1),
-            blurRadius: 10,
-            offset: const Offset(0, 5),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Average rating
-          Row(
-            children: [
-              Text(
-                avgRating.toStringAsFixed(1),
-                style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold),
+        // Others You Might Like
+        Row(
+          children: [
+            const Text(
+              "Others You Might Like",
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: AppColors.darkText,
               ),
-              const SizedBox(width: 12),
+            ),
+            const Spacer(),
+            Text(
+              "See all",
+              style: TextStyle(
+                color: AppColors.primary,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+
+        // Horizontal scroll of similar meals
+        SizedBox(
+          height: 200,
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            itemCount: similarMeals.length,
+            itemBuilder: (context, index) {
+              return _buildSimilarMealCard(similarMeals[index], context);
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildReviewsSection(String mealTitle, ReviewsProvider reviewsProvider) { // UPDATED: Accept provider
+    final reviews = reviewsProvider.getReviewsForMeal(mealTitle);
+    final averageRating = reviewsProvider.getAverageRating(mealTitle);
+    final distribution = reviewsProvider.getRatingDistribution(mealTitle);
+    
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Average rating summary
+        Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: AppColors.white,
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.05),
+                blurRadius: 10,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              // Average rating
               Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  StarRating(rating: avgRating, size: 20),
+                  Text(
+                    averageRating.toStringAsFixed(1),
+                    style: const TextStyle(
+                      fontSize: 36,
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.darkText,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  StarRating(rating: averageRating, size: 20),
                   const SizedBox(height: 4),
                   Text(
-                    "${dummyReviews.length} reviews",
-                    style: TextStyle(color: AppColors.darkText.withOpacity(0.6)),
+                    "${reviews.length} reviews", // UPDATED: Use actual count
+                    style: TextStyle(
+                      color: AppColors.darkText.withOpacity(0.6),
+                    ),
                   ),
                 ],
               ),
+              const SizedBox(width: 20),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildRatingBar(5, distribution[5] ?? 0.0), // UPDATED: Use actual distribution
+                    _buildRatingBar(4, distribution[4] ?? 0.0),
+                    _buildRatingBar(3, distribution[3] ?? 0.0),
+                    _buildRatingBar(2, distribution[2] ?? 0.0),
+                    _buildRatingBar(1, distribution[1] ?? 0.0),
+                  ],
+                ),
+              ),
             ],
           ),
-          const SizedBox(height: 20),
+        ),
+        const SizedBox(height: 24),
 
+        // UPDATED: Show real reviews or empty state
+        if (reviews.isEmpty)
+          Container(
+            padding: const EdgeInsets.all(40),
+            child: Center(
+              child: Column(
+                children: [
+                  Icon(
+                    Icons.rate_review_outlined,
+                    size: 60,
+                    color: AppColors.darkText.withOpacity(0.3),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'No Reviews Yet',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.darkText.withOpacity(0.5),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Be the first to review this meal!',
+                    style: TextStyle(
+                      color: AppColors.darkText.withOpacity(0.4),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          )
+        else
           // Reviews list
           ListView.separated(
             physics: const NeverScrollableScrollPhysics(),
             shrinkWrap: true,
-            itemCount: dummyReviews.length,
-            separatorBuilder: (context, index) => const Divider(height: 32),
+            itemCount: reviews.length,
+            separatorBuilder: (context, index) => const SizedBox(height: 16),
             itemBuilder: (context, index) {
-              final review = dummyReviews[index];
-              return Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: AppColors.cardBackground,
-                  borderRadius: BorderRadius.circular(12),
+              final review = reviews[index];
+              return _buildReviewCard(review, mealTitle, reviewsProvider); // UPDATED
+            },
+          ),
+      ],
+    );
+  }
+
+  Widget _buildRatingBar(int stars, double percentage) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        children: [
+          Text(
+            "$stars",
+            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+          ),
+          const SizedBox(width: 8),
+          const Icon(Icons.star, size: 16, color: Colors.amber),
+          const SizedBox(width: 8),
+          Expanded(
+            child: LinearProgressIndicator(
+              value: percentage,
+              backgroundColor: AppColors.lightGray,
+              color: AppColors.primary,
+              borderRadius: BorderRadius.circular(4),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            "${(percentage * 100).toInt()}%",
+            style: TextStyle(fontSize: 12, color: AppColors.darkText.withOpacity(0.6)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildReviewCard(Review review, String mealTitle, ReviewsProvider reviewsProvider) { // UPDATED
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              CircleAvatar(
+                radius: 20,
+                backgroundColor: review.isAnonymous ? Colors.grey : AppColors.primary, // UPDATED
+                child: Icon(
+                  review.isAnonymous ? Icons.person_off : Icons.person, // UPDATED
+                  color: Colors.white,
+                  size: 20,
                 ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
                       children: [
-                        CircleAvatar(
-                          backgroundColor: AppColors.primary,
-                          child: Text(
-                            review['name']![0],
-                            style: const TextStyle(color: Colors.white),
+                        Text(
+                          review.displayName, // UPDATED: Use displayName
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
                           ),
                         ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                review['name']!,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 16,
-                                ),
-                              ),
-                              Text(
-                                review['time']!,
-                                style: TextStyle(
-                                  color: AppColors.darkText.withOpacity(0.6),
-                                  fontSize: 12,
-                                ),
-                              ),
-                            ],
+                        if (review.isAnonymous) ...[
+                          const SizedBox(width: 6),
+                          Icon(
+                            Icons.visibility_off,
+                            size: 14,
+                            color: AppColors.darkText.withOpacity(0.5),
                           ),
-                        ),
-                        Text(review['rating']!),
+                        ],
                       ],
                     ),
-                    const SizedBox(height: 8),
                     Text(
-                      review['comment']!,
-                      style: const TextStyle(fontSize: 14, height: 1.4),
+                      _formatReviewTime(review.date), // UPDATED
+                      style: TextStyle(
+                        color: AppColors.darkText.withOpacity(0.6),
+                        fontSize: 12,
+                      ),
                     ),
                   ],
                 ),
-              );
-            },
+              ),
+              StarRating(rating: review.rating.toDouble(), size: 16), // UPDATED
+            ],
           ),
-          const SizedBox(height: 20),
+          if (review.comment.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Text(
+              review.comment,
+              style: TextStyle(
+                fontSize: 14,
+                height: 1.4,
+                color: AppColors.darkText.withOpacity(0.8),
+              ),
+            ),
+          ],
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              GestureDetector(
+                onTap: () {
+                  reviewsProvider.toggleLike(review.orderId, mealTitle); // UPDATED
+                  HapticFeedback.lightImpact();
+                },
+                child: Row(
+                  children: [
+                    Icon(
+                      review.isLiked ? Icons.favorite : Icons.favorite_border,
+                      size: 16,
+                      color: review.isLiked ? Colors.red : AppColors.darkText.withOpacity(0.6),
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      review.likes.toString(),
+                      style: TextStyle(
+                        color: AppColors.darkText.withOpacity(0.6),
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ],
       ),
     );
   }
+
+  // ADDED: Format review time
+  String _formatReviewTime(DateTime date) {
+    final now = DateTime.now();
+    final diff = now.difference(date);
+    
+    if (diff.inDays == 0) {
+      if (diff.inHours == 0) {
+        return '${diff.inMinutes} minutes ago';
+      }
+      return '${diff.inHours} hours ago';
+    }
+    if (diff.inDays == 1) return 'Yesterday';
+    if (diff.inDays < 7) return '${diff.inDays} days ago';
+    if (diff.inDays < 30) return '${(diff.inDays / 7).floor()} weeks ago';
+    return '${date.day}/${date.month}/${date.year}';
+  }
 }
 
-// Helper widget for star rating
 class StarRating extends StatelessWidget {
   final double rating;
   final double size;
@@ -776,7 +926,7 @@ class StarRating extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: List.generate(5, (index) {
         return Icon(
-          index < rating.floor() ? Icons.star : Icons.star_border,
+          index < rating ? Icons.star : Icons.star_border,
           color: Colors.amber,
           size: size,
         );

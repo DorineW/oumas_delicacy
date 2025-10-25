@@ -259,13 +259,12 @@ class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin 
           ),
         ),
       ),
-      // FIXED: Wrap in SafeArea and use LayoutBuilder pattern like dashboard_screen
       body: SafeArea(
         child: LayoutBuilder(
           builder: (context, constraints) {
             return Column(
               children: [
-                // Search bar - fixed height
+                // Search bar
                 Padding(
                   padding: EdgeInsets.fromLTRB(16, isLandscape ? 8 : 12, 16, 8),
                   child: Container(
@@ -292,7 +291,7 @@ class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin 
                     ),
                   ),
                 ),
-                // Carousel - fixed height
+                // UPDATED: Carousel with time-based meal selection
                 Builder(builder: (context) {
                   final now = DateTime.now().hour;
                   final closed = now < 7 || now >= 21;
@@ -300,17 +299,20 @@ class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin 
                   if (closed) {
                     return _closedCard();
                   } else {
+                    // ADDED: Get time-appropriate meals
+                    final carouselMeals = _getTimeBasedMeals(meals, now);
+                    
                     return Column(children: [
                       Carousel(
                         height: isLandscape ? 120 : 150,
                         interval: const Duration(seconds: 4),
-                        children: meals.take(4).map((m) => _carouselCard(context, m)).toList(),
+                        children: carouselMeals.take(4).map((m) => _carouselCard(context, m, now)).toList(),
                       ),
                       SizedBox(height: isLandscape ? 8 : 12),
                     ]);
                   }
                 }),
-                // Category tabs - fixed height
+                // Category tabs
                 Container(
                   color: AppColors.white,
                   child: TabBar(
@@ -326,7 +328,7 @@ class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin 
                     onTap: (i) => setState(() => _tabIndex = i),
                   ),
                 ),
-                // FIXED: Grid section with proper constraints
+                // Grid section
                 Expanded(
                   child: TabBarView(
                     controller: _tabController,
@@ -364,7 +366,6 @@ class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin 
                           ),
                         );
                       }
-                      // FIXED: Add LayoutBuilder + SingleChildScrollView pattern
                       return LayoutBuilder(
                         builder: (context, gridConstraints) {
                           return SingleChildScrollView(
@@ -376,8 +377,8 @@ class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin 
                                 minHeight: gridConstraints.maxHeight,
                               ),
                               child: GridView.builder(
-                                shrinkWrap: true, // ADDED: Allow grid to size itself
-                                physics: const NeverScrollableScrollPhysics(), // ADDED: Disable grid scroll
+                                shrinkWrap: true,
+                                physics: const NeverScrollableScrollPhysics(),
                                 gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                                   crossAxisCount: ResponsiveHelper.getGridCrossAxisCount(context),
                                   childAspectRatio: ResponsiveHelper.getGridChildAspectRatio(context),
@@ -402,7 +403,65 @@ class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin 
     );
   }
 
-  // UPDATED DRAWER ITEM
+  // ADDED: Get time-based meals based on meal weight
+  List<Map<String, dynamic>> _getTimeBasedMeals(List<Map<String, dynamic>> meals, int hour) {
+    // Define time periods
+    // 7-10: Breakfast (Light meals)
+    // 10-12: Brunch (Light to Medium meals)
+    // 12-16: Lunch (Medium to Heavy meals)
+    // 16-21: Dinner (Heavy meals)
+    
+    String preferredWeight;
+    
+    if (hour >= 7 && hour < 10) {
+      // Breakfast - prefer light meals
+      preferredWeight = 'Light';
+    } else if (hour >= 10 && hour < 12) {
+      // Brunch - prefer light to medium
+      preferredWeight = 'Medium';
+    } else if (hour >= 12 && hour < 16) {
+      // Lunch - prefer medium to heavy
+      preferredWeight = 'Heavy';
+    } else {
+      // Dinner - prefer heavy meals
+      preferredWeight = 'Heavy';
+    }
+    
+    // Filter meals by preferred weight
+    final preferredMeals = meals.where((m) => 
+      (m['mealWeight'] == preferredWeight) && (m['isAvailable'] ?? true)
+    ).toList();
+    
+    // If we have enough preferred meals, use them
+    if (preferredMeals.length >= 4) {
+      preferredMeals.shuffle();
+      return preferredMeals;
+    }
+    
+    // Otherwise, mix with other available meals
+    final otherMeals = meals.where((m) => 
+      (m['mealWeight'] != preferredWeight) && (m['isAvailable'] ?? true)
+    ).toList();
+    
+    final combined = [...preferredMeals, ...otherMeals];
+    combined.shuffle();
+    return combined;
+  }
+
+  // ADDED: Get meal period name
+  String _getMealPeriodName(int hour) {
+    if (hour >= 7 && hour < 10) {
+      return 'Breakfast';
+    } else if (hour >= 10 && hour < 12) {
+      return 'Brunch';
+    } else if (hour >= 12 && hour < 16) {
+      return 'Lunch';
+    } else {
+      return 'Dinner';
+    }
+  }
+
+  // UPDATED: Drawer item
   Widget _drawerItem(IconData icon, String title, VoidCallback onTap) {
     return ListTile(
       leading: Icon(icon, color: AppColors.primary),
@@ -411,8 +470,10 @@ class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin 
     );
   }
 
-  // UPDATED CAROUSEL CARD
-  Widget _carouselCard(BuildContext context, Map<String,dynamic> m) {
+  // UPDATED: Carousel card with meal period name
+  Widget _carouselCard(BuildContext context, Map<String,dynamic> m, int hour) {
+    final mealPeriod = _getMealPeriodName(hour);
+    
     return GestureDetector(
       onTap: () => Navigator.push(
         context,
@@ -449,13 +510,24 @@ class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin 
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Text(
-                          'Special Offer!',
-                          style: TextStyle(
-                            color: AppColors.white.withOpacity(0.9),
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500,
-                          ),
+                        // UPDATED: Show meal period instead of "Special Offer"
+                        Row(
+                          children: [
+                            Icon(
+                              _getMealPeriodIcon(hour),
+                              color: AppColors.white.withOpacity(0.9),
+                              size: 14,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              '$mealPeriod Special!',
+                              style: TextStyle(
+                                color: AppColors.white.withOpacity(0.9),
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
                         ),
                         const SizedBox(height: 4),
                         Text(
@@ -490,7 +562,23 @@ class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin 
     );
   }
 
+  // ADDED: Get icon for meal period
+  IconData _getMealPeriodIcon(int hour) {
+    if (hour >= 7 && hour < 10) {
+      return Icons.free_breakfast;
+    } else if (hour >= 10 && hour < 12) {
+      return Icons.brunch_dining;
+    } else if (hour >= 12 && hour < 16) {
+      return Icons.lunch_dining;
+    } else {
+      return Icons.dinner_dining;
+    }
+  }
+
+  // UPDATED: Circular plate widget
   Widget _circularPlate(BuildContext context, Map<String,dynamic> m) {
+    final imageValue = m['image'];
+    
     return Material(
       elevation: 6,
       color: AppColors.white,
@@ -501,90 +589,121 @@ class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin 
         padding: const EdgeInsets.all(8),
         decoration: const BoxDecoration(shape: BoxShape.circle),
         child: ClipOval(
-          child: Image.asset(
-            m['image'],
-            fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) => const Icon(Icons.fastfood, size: 40, color: AppColors.primary),
-          ),
+          child: _buildImage(imageValue, 40),
         ),
       ),
     );
   }
 
+  // ADDED: Helper to build image from Uint8List or String
+  Widget _buildImage(dynamic imageValue, double iconSize) {
+    if (imageValue is Uint8List) {
+      return Image.memory(
+        imageValue,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => Icon(Icons.fastfood, size: iconSize, color: AppColors.primary),
+      );
+    }
+    
+    if (imageValue is String) {
+      if (imageValue.startsWith('assets/')) {
+        return Image.asset(
+          imageValue,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => Icon(Icons.fastfood, size: iconSize, color: AppColors.primary),
+        );
+      }
+      return Image.network(
+        imageValue,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => Icon(Icons.fastfood, size: iconSize, color: AppColors.primary),
+      );
+    }
+    
+    return Icon(Icons.fastfood, size: iconSize, color: AppColors.primary);
+  }
+
+  // ADDED: Floating dots animation for carousel
   Widget _floatingDots() {
-    return SizedBox.expand(
+    return Positioned.fill(
       child: Stack(
-        children: List.generate(
-          5,
-          (i) => Positioned(
-            left: 20.0 + i * (MediaQuery.of(context).size.width * 0.15),
-            bottom: 12,
-            child: AnimatedDot(
-              key: ValueKey('dot$i'), // new key every page → forces re-animation
-              index: i,
+        children: [
+          Positioned(top: 20, left: 30, child: AnimatedDot(index: 0)),
+          Positioned(top: 60, right: 40, child: AnimatedDot(index: 1)),
+          Positioned(bottom: 40, left: 50, child: AnimatedDot(index: 2)),
+          Positioned(bottom: 70, right: 60, child: AnimatedDot(index: 3)),
+        ],
+      ),
+    );
+  }
+
+  // ADDED: Closed card for when restaurant is closed
+  Widget _closedCard() {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Colors.orange.shade700,
+            Colors.orange.shade500,
+          ],
+        ),
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.orange.withOpacity(0.3),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.2),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.schedule,
+              color: Colors.white,
+              size: 32,
             ),
           ),
-        ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Currently Closed',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Open daily: 7:00 AM - 9:00 PM',
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.9),
+                    fontSize: 14,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
 
-  Widget _closedCard() => Container(
-    margin: const EdgeInsets.all(16),
-    padding: const EdgeInsets.all(20),
-    height: 120,
-    decoration: BoxDecoration(
-      borderRadius: BorderRadius.circular(16),
-      color: AppColors.white,
-      boxShadow: [
-        BoxShadow(
-          color: Colors.black.withOpacity(.1),
-          blurRadius: 8,
-          offset: const Offset(0, 4),
-        ),
-      ],
-    ),
-    child: Row(
-      children: [
-        const Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                'We\'re Closed',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.darkText,
-                ),
-              ),
-              SizedBox(height: 4),
-              Text(
-                'Open again at 7 AM',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: AppColors.darkText,
-                ),
-              ),
-            ],
-          ),
-        ),
-        Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: AppColors.primary.withOpacity(0.1),
-            shape: BoxShape.circle,
-          ),
-          child: const Icon(
-            Icons.watch_later,
-            size: 30,
-            color: AppColors.primary,
-          ),
-        ),
-      ],
-    ),
-  );
+  // ...existing code...
 }
 
 // ----------  FLY TO CART ANIMATION  ----------
@@ -726,7 +845,7 @@ class _RiderStyleMealCardState extends State<_RiderStyleMealCard>
   Future<void> _addToCart() async {
     if (_qty <= 0) return;
 
-    // ADDED: Check availability before adding to cart
+    // Check availability before adding to cart
     final isAvailable = widget.meal['isAvailable'] ?? true;
     if (!isAvailable) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -757,7 +876,6 @@ class _RiderStyleMealCardState extends State<_RiderStyleMealCard>
       return;
     }
 
-    // FIXED: Store quantity before resetting
     final addedQuantity = _qty;
 
     final cart = context.read<CartProvider>();
@@ -765,28 +883,47 @@ class _RiderStyleMealCardState extends State<_RiderStyleMealCard>
       id: '${widget.meal['title']}_${DateTime.now().millisecondsSinceEpoch}',
       mealTitle: widget.meal['title'],
       price: (widget.meal['price'] as num).toInt(),
-      quantity: addedQuantity, // Use stored quantity
-      mealImage: widget.meal['image'] ?? '',
+      quantity: addedQuantity,
+      mealImage: widget.meal['image'] is String ? widget.meal['image'] : '', // FIXED: Only use string images
     ));
 
-    final flyWidget = ClipOval(
-      child: Image.asset(
-        widget.meal['image'] ?? '',
-        width: 50,
-        height: 50,
-        fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => const Icon(Icons.fastfood, size: 40, color: AppColors.primary),
-      ),
-    );
+    // UPDATED: Build fly widget based on image type
+    final imageValue = widget.meal['image'];
+    Widget flyWidget;
     
-    // FIXED: Reset quantity BEFORE starting animation
+    if (imageValue is Uint8List) {
+      flyWidget = ClipOval(
+        child: Image.memory(
+          imageValue,
+          width: 50,
+          height: 50,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => const Icon(Icons.fastfood, size: 40, color: AppColors.primary),
+        ),
+      );
+    } else if (imageValue is String && imageValue.startsWith('assets/')) {
+      flyWidget = ClipOval(
+        child: Image.asset(
+          imageValue,
+          width: 50,
+          height: 50,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => const Icon(Icons.fastfood, size: 40, color: AppColors.primary),
+        ),
+      );
+    } else {
+      flyWidget = const ClipOval(
+        child: Icon(Icons.fastfood, size: 40, color: AppColors.primary),
+      );
+    }
+    
     setState(() => _qty = 0);
     
     _flyToCart(context, homeScreenState._cartIconKey, flyWidget, () {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('$addedQuantity × ${widget.meal['title']} added to cart'), // Use stored quantity
+          content: Text('$addedQuantity × ${widget.meal['title']} added to cart'),
           backgroundColor: AppColors.primary,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           margin: const EdgeInsets.fromLTRB(16, 0, 16, 24),
@@ -797,211 +934,214 @@ class _RiderStyleMealCardState extends State<_RiderStyleMealCard>
     });
   }
 
+  // UPDATED: Build image helper (moved outside build for reuse)
+  Widget _buildImageWidget(dynamic imageValue) {
+    Widget errorWidget = const Icon(Icons.fastfood, size: 60, color: AppColors.primary);
+    
+    if (imageValue is Uint8List) {
+      return Image.memory(
+        imageValue,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => errorWidget,
+      );
+    }
+    
+    if (imageValue is String) {
+      if (imageValue.startsWith('assets/')) {
+        return Image.asset(
+          imageValue,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => errorWidget,
+        );
+      }
+      return Image.network(
+        imageValue,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => errorWidget,
+      );
+    }
+    
+    return errorWidget;
+  }
+
   @override
   Widget build(BuildContext context) {
     final m = widget.meal;
     final isLandscape = ResponsiveHelper.isLandscape(context);
-    final isAvailable = m['isAvailable'] ?? true; // ADDED: Check availability
+    final isAvailable = m['isAvailable'] ?? true;
     
     return Card(
       elevation: 3,
       margin: EdgeInsets.zero,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      // ADDED: Grey out unavailable items
       color: isAvailable ? null : Colors.grey.shade300,
-      child: Container(
-        constraints: BoxConstraints(
-          minHeight: isLandscape ? 120 : 180,
-        ),
-        child: Stack(
-          children: [
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // FIXED: Image section with fixed height
+          Container(
+            height: isLandscape ? 100 : 120,
+            decoration: BoxDecoration(
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+              color: AppColors.lightGray.withOpacity(0.3),
+            ),
+            child: Stack(
               children: [
-                // Image section with AspectRatio
-                AspectRatio(
-                  aspectRatio: isLandscape ? 1.8 : 1.2,
-                  child: Stack(
-                    children: [
-                      Container(
-                        decoration: BoxDecoration(
-                          borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-                          image: DecorationImage(
-                            image: AssetImage(m['image'] ?? ''),
-                            fit: BoxFit.cover,
-                            onError: (_, __) => const AssetImage(''),
-                            // ADDED: Grey out image if unavailable
-                            colorFilter: isAvailable 
-                                ? null 
-                                : ColorFilter.mode(
-                                    Colors.grey.withOpacity(0.5),
-                                    BlendMode.saturation,
+                ClipRRect(
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+                  child: ColorFiltered(
+                    colorFilter: isAvailable 
+                        ? const ColorFilter.mode(Colors.transparent, BlendMode.multiply)
+                        : ColorFilter.mode(Colors.grey.withOpacity(0.5), BlendMode.saturation),
+                    child: SizedBox.expand(
+                      child: _buildImageWidget(m['image']),
+                    ),
+                  ),
+                ),
+                if (!isAvailable)
+                  Container(
+                    decoration: const BoxDecoration(
+                      borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
+                      color: Colors.black54,
+                    ),
+                    child: const Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.block, color: Colors.white, size: 32),
+                          SizedBox(height: 4),
+                          Text(
+                            'OUT OF STOCK',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          // FIXED: Reduced padding and spacing
+          Padding(
+            padding: EdgeInsets.all(isLandscape ? 6 : 10), // REDUCED: from 8/12 to 6/10
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min, // ADDED: Minimize size
+              children: [
+                // Title
+                Text(
+                  m['title'],
+                  style: TextStyle(
+                    fontSize: isLandscape ? 12 : 14,
+                    fontWeight: FontWeight.bold,
+                    color: isAvailable ? AppColors.darkText : Colors.grey,
+                    decoration: isAvailable ? null : TextDecoration.lineThrough,
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 2), // REDUCED: from 4 to 2
+                // Price
+                Text(
+                  'Ksh ${m['price']}',
+                  style: TextStyle(
+                    fontSize: isLandscape ? 12 : 14,
+                    fontWeight: FontWeight.bold,
+                    color: isAvailable ? AppColors.primary : Colors.grey,
+                  ),
+                ),
+                const SizedBox(height: 6), // REDUCED: from 8 to 6
+                // FIXED: Reduced button heights and sizes
+                Row(
+                  children: [
+                    Expanded(
+                      flex: 4,
+                      child: Opacity(
+                        opacity: isAvailable ? 1.0 : 0.5,
+                        child: Container(
+                          height: isLandscape ? 26 : 28, // REDUCED: from 28/32 to 26/28
+                          decoration: BoxDecoration(
+                            color: AppColors.primary.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: _qtyButton(
+                                  Icons.remove, 
+                                  isAvailable 
+                                      ? () => setState(() => _qty = math.max(0, _qty - 1))
+                                      : () {},
+                                ),
+                              ),
+                              Expanded(
+                                child: Center(
+                                  child: Text(
+                                    '$_qty',
+                                    style: TextStyle(
+                                      fontSize: isLandscape ? 10 : 11, // REDUCED: from 11/12 to 10/11
+                                      fontWeight: FontWeight.bold,
+                                      color: AppColors.primary,
+                                    ),
                                   ),
+                                ),
+                              ),
+                              Expanded(
+                                child: _qtyButton(
+                                  Icons.add, 
+                                  isAvailable 
+                                      ? () => setState(() => _qty++)
+                                      : () {},
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ),
-                      // ADDED: Unavailable overlay
-                      if (!isAvailable)
-                        Container(
-                          decoration: const BoxDecoration(
-                            borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
-                            color: Colors.black54,
-                          ),
-                          child: const Center(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(Icons.block, color: Colors.white, size: 32),
-                                SizedBox(height: 4),
-                                Text(
-                                  'OUT OF STOCK',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 12,
-                                  ),
-                                ),
-                              ],
+                    ),
+                    const SizedBox(width: 6), // REDUCED: from 8 to 6
+                    Expanded(
+                      flex: 5,
+                      child: SizedBox(
+                        height: isLandscape ? 26 : 28, // REDUCED: from 28/32 to 26/28
+                        child: ElevatedButton(
+                          onPressed: (isAvailable && _qty > 0) ? _addToCart : null,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: (isAvailable && _qty > 0) 
+                                ? AppColors.primary 
+                                : AppColors.lightGray,
+                            padding: EdgeInsets.zero,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(6),
                             ),
                           ),
+                          child: Icon(
+                            Icons.shopping_cart,
+                            color: Colors.white,
+                            size: isLandscape ? 13 : 14, // REDUCED: from 14/16 to 13/14
+                          ),
                         ),
-                    ],
-                  ),
-                ),
-                // Content section with SingleChildScrollView
-                Flexible(
-                  flex: isLandscape ? 4 : 3,
-                  child: LayoutBuilder(
-                    builder: (context, constraints) {
-                      return SingleChildScrollView(
-                        physics: const ClampingScrollPhysics(),
-                        padding: EdgeInsets.all(isLandscape ? 8 : 12),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            // Title
-                            Text(
-                              m['title'],
-                              style: TextStyle(
-                                fontSize: isLandscape ? 12 : 14,
-                                fontWeight: FontWeight.bold,
-                                color: isAvailable ? AppColors.darkText : Colors.grey,
-                                decoration: isAvailable ? null : TextDecoration.lineThrough,
-                              ),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            const SizedBox(height: 4),
-                            // Price
-                            Text(
-                              'Ksh ${m['price']}',
-                              style: TextStyle(
-                                fontSize: isLandscape ? 12 : 14,
-                                fontWeight: FontWeight.bold,
-                                color: isAvailable ? AppColors.primary : Colors.grey,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            // UPDATED: Disable quantity selector if unavailable
-                            SizedBox(
-                              width: constraints.maxWidth - 24,
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Flexible(
-                                    flex: 4,
-                                    child: Opacity(
-                                      opacity: isAvailable ? 1.0 : 0.5,
-                                      child: Container(
-                                        height: isLandscape ? 28 : 32,
-                                        decoration: BoxDecoration(
-                                          color: AppColors.primary.withOpacity(0.1),
-                                          borderRadius: BorderRadius.circular(6),
-                                        ),
-                                        child: Row(
-                                          children: [
-                                            Flexible(
-                                              child: _qtyButton(
-                                                Icons.remove, 
-                                                isAvailable 
-                                                    ? () => setState(() => _qty = math.max(0, _qty - 1))
-                                                    : () {},
-                                              ),
-                                            ),
-                                            Flexible(
-                                              child: Center(
-                                                child: Text(
-                                                  '$_qty',
-                                                  style: TextStyle(
-                                                    fontSize: isLandscape ? 11 : 12,
-                                                    fontWeight: FontWeight.bold,
-                                                    color: AppColors.primary,
-                                                  ),
-                                                ),
-                                              ),
-                                            ),
-                                            Flexible(
-                                              child: _qtyButton(
-                                                Icons.add, 
-                                                isAvailable 
-                                                    ? () => setState(() => _qty++)
-                                                    : () {},
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Flexible(
-                                    flex: 5,
-                                    child: SizedBox(
-                                      height: isLandscape ? 28 : 32,
-                                      child: ElevatedButton(
-                                        // UPDATED: Disable button if unavailable
-                                        onPressed: (isAvailable && _qty > 0) ? _addToCart : null,
-                                        style: ElevatedButton.styleFrom(
-                                          backgroundColor: (isAvailable && _qty > 0) 
-                                              ? AppColors.primary 
-                                              : AppColors.lightGray,
-                                          padding: EdgeInsets.zero,
-                                          shape: RoundedRectangleBorder(
-                                            borderRadius: BorderRadius.circular(6),
-                                          ),
-                                        ),
-                                        child: Icon(
-                                          Icons.shopping_cart,
-                                          color: Colors.white,
-                                          size: isLandscape ? 14 : 16,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-                    },
-                  ),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 
-  // Helper method for quantity buttons - REMOVED size constraints
   Widget _qtyButton(IconData icon, VoidCallback onTap) {
     final isLandscape = ResponsiveHelper.isLandscape(context);
     return IconButton(
       padding: EdgeInsets.zero,
-      iconSize: isLandscape ? 14 : 16,
+      iconSize: isLandscape ? 13 : 14, // REDUCED: from 14/16 to 13/14
       onPressed: onTap,
       icon: Icon(icon, color: AppColors.primary),
     );

@@ -127,114 +127,100 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> with SingleTick
     final canCancel = _canOrderBeCancelled(order);
 
     return Card(
-      margin: const EdgeInsets.symmetric(vertical: 8),
-      elevation: 2,
-      child: InkWell(
-        onTap: () => _showOrderDetailsDialog(order),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'Order #${order.id}',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                    ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: _getStatusColor(order.status).withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: _getStatusColor(order.status)),
-                    ),
-                    child: Text(
-                      _getStatusText(order.status),
-                      style: TextStyle(
-                        fontSize: 12,
+        margin: const EdgeInsets.symmetric(vertical: 8),
+        elevation: 2,
+        child: InkWell(
+          onTap: () => _showOrderDetailsDialog(order),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Order #${order.id}',
+                      style: const TextStyle(
                         fontWeight: FontWeight.bold,
-                        color: _getStatusColor(order.status),
+                        fontSize: 16,
                       ),
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Text(
-                _formatDate(order.date),
-                style: TextStyle(
-                  color: AppColors.darkText.withOpacity(0.6),
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                order.items.map((item) => '${item.title} x${item.quantity}').join(', '),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: AppColors.darkText.withOpacity(0.8),
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Ksh ${order.totalAmount}',
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
-                ),
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  if (canCancel)
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: () => _cancelOrder(context, order),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.red,
-                          side: const BorderSide(color: Colors.red),
-                        ),
-                        child: const Text('Cancel Order'),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: _getStatusColor(order.status).withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: _getStatusColor(order.status)),
                       ),
-                    ),
-                  if (canCancel) const SizedBox(width: 8),
-                  if (order.status == OrderStatus.delivered)
-                    Expanded(
-                      child: ElevatedButton(
-                        onPressed: () => _reorderItems(order, context),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.primary,
-                          foregroundColor: Colors.white,
-                        ),
-                        child: const Text('Reorder'),
-                      ),
-                    ),
-                  if (order.status == OrderStatus.delivered && 
-                      order.items.any((item) => item.rating == null)) ...[
-                    if (canCancel) const SizedBox(width: 8),
-                    Expanded(
-                      child: TextButton.icon(
-                        onPressed: () => _showRatingDialog(order),
-                        icon: const Icon(Icons.star, size: 16),
-                        label: const Text('Rate'),
-                        style: TextButton.styleFrom(
-                          foregroundColor: Colors.amber,
+                      child: Text(
+                        _getStatusText(order.status),
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: _getStatusColor(order.status),
                         ),
                       ),
                     ),
                   ],
-                ],
-              ),
-            ],
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  _formatDate(order.date),
+                  style: TextStyle(
+                    color: AppColors.darkText.withOpacity(0.6),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  order.items.map((item) => '${item.title} x${item.quantity}').join(', '),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: AppColors.darkText.withOpacity(0.8),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Ksh ${order.totalAmount}',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    if (canCancel)
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () => _cancelOrder(context, order),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.red,
+                            side: const BorderSide(color: Colors.red),
+                          ),
+                          child: const Text('Cancel Order'),
+                        ),
+                      ),
+                    if (canCancel) const SizedBox(width: 8),
+                    if (order.status == OrderStatus.delivered)
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: () => _reorderItems(order, context),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.primary,
+                            foregroundColor: Colors.white,
+                          ),
+                          child: const Text('Reorder'),
+                        ),
+                      ),
+                  ],
+                ),
+              ],
+            ),
           ),
         ),
-      ),
-    );
+      );
   }
 
   void _cancelOrder(BuildContext context, Order order) async {
@@ -309,7 +295,7 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> with SingleTick
     return status.toString().split('.').last;
   }
 
-  // UPDATED: Show ratings in order details
+  // UPDATED: Removed rating button from order details
   void _showOrderDetailsDialog(Order order) {
     showDialog(
       context: context,
@@ -396,15 +382,6 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> with SingleTick
           ),
         ),
         actions: [
-          if (order.status == OrderStatus.delivered && 
-              order.items.any((item) => item.rating == null))
-            TextButton(
-              onPressed: () {
-                Navigator.pop(context);
-                _showRatingDialog(order);
-              },
-              child: const Text('Rate Items'),
-            ),
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: const Text('Close'),
@@ -437,14 +414,6 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> with SingleTick
           ),
         ],
       ),
-    );
-  }
-
-  // ADDED: Rating dialog
-  void _showRatingDialog(Order order) {
-    showDialog(
-      context: context,
-      builder: (context) => _RatingDialog(order: order),
     );
   }
 
@@ -528,320 +497,6 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> with SingleTick
         final order = orders[index];
         return _buildOrderCard(context, order);
       },
-    );
-  }
-}
-
-class _RatingDialog extends StatefulWidget {
-  final Order order;
-
-  const _RatingDialog({required this.order});
-
-  @override
-  State<_RatingDialog> createState() => _RatingDialogState();
-}
-
-class _RatingDialogState extends State<_RatingDialog> {
-  final Map<String, int> _ratings = {};
-  final Map<String, TextEditingController> _commentControllers = {};
-
-  @override
-  void initState() {
-    super.initState();
-    // Initialize ratings and controllers for each item
-    for (var item in widget.order.items) {
-      _ratings[item.id] = item.rating ?? 0;
-      _commentControllers[item.id] = TextEditingController(text: item.review ?? '');
-    }
-  }
-
-  @override
-  void dispose() {
-    for (var controller in _commentControllers.values) {
-      controller.dispose();
-    }
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      title: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [AppColors.primary, AppColors.primary.withOpacity(0.8)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.2),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(Icons.star, color: Colors.white, size: 20),
-            ),
-            const SizedBox(width: 12),
-            const Expanded(
-              child: Text(
-                'Rate Your Order',
-                style: TextStyle(fontSize: 16, color: Colors.white, fontWeight: FontWeight.bold),
-              ),
-            ),
-          ],
-        ),
-      ),
-      titlePadding: EdgeInsets.zero,
-      contentPadding: const EdgeInsets.all(20),
-      content: SizedBox(
-        width: double.maxFinite,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: AppColors.primary.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: AppColors.primary.withOpacity(0.3)),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.receipt, size: 14, color: AppColors.primary),
-                    const SizedBox(width: 6),
-                    Text(
-                      'Order #${widget.order.id}',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.primary,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-              // Rate each item separately
-              ...widget.order.items.map((item) => _buildItemRating(item)),
-            ],
-          ),
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: Text(
-            'Cancel',
-            style: TextStyle(color: AppColors.darkText.withOpacity(0.6)),
-          ),
-        ),
-        Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [AppColors.primary, AppColors.primary.withOpacity(0.8)],
-            ),
-            borderRadius: BorderRadius.circular(8),
-            boxShadow: [
-              BoxShadow(
-                color: AppColors.primary.withOpacity(0.3),
-                blurRadius: 8,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
-          child: ElevatedButton(
-            onPressed: () => _submitRatings(context),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.transparent,
-              shadowColor: Colors.transparent,
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-            ),
-            child: const Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.check_circle, color: Colors.white, size: 18),
-                SizedBox(width: 6),
-                Text('Submit Ratings', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildItemRating(OrderItem item) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.primary.withOpacity(0.2)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: AppColors.primary.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(Icons.restaurant, size: 16, color: AppColors.primary),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  item.title,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.darkText,
-                  ),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          // Star rating
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: AppColors.background,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Wrap(
-              spacing: 6,
-              children: List.generate(5, (index) {
-                final isSelected = index < (_ratings[item.id] ?? 0);
-                return GestureDetector(
-                  onTap: () {
-                    setState(() {
-                      _ratings[item.id] = index + 1;
-                    });
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.all(4),
-                    decoration: BoxDecoration(
-                      color: isSelected 
-                          ? Colors.amber.withOpacity(0.2) 
-                          : Colors.transparent,
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Icon(
-                      isSelected ? Icons.star : Icons.star_border,
-                      color: Colors.amber,
-                      size: 28,
-                    ),
-                  ),
-                );
-              }),
-            ),
-          ),
-          const SizedBox(height: 12),
-          // Comment field
-          TextField(
-            controller: _commentControllers[item.id],
-            decoration: InputDecoration(
-              hintText: 'Share your thoughts... (optional)',
-              hintStyle: TextStyle(fontSize: 12, color: AppColors.darkText.withOpacity(0.4)),
-              prefixIcon: Icon(Icons.comment, size: 18, color: AppColors.primary.withOpacity(0.6)),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide(color: AppColors.lightGray.withOpacity(0.3)),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide(color: AppColors.lightGray.withOpacity(0.3)),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
-                borderSide: const BorderSide(color: AppColors.primary, width: 2),
-              ),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              isDense: true,
-              filled: true,
-              fillColor: AppColors.background,
-            ),
-            maxLines: 3,
-            style: const TextStyle(fontSize: 13),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _submitRatings(BuildContext context) {
-    final provider = Provider.of<OrderProvider>(context, listen: false);
-    
-    // Update each item's rating and review
-    for (var item in widget.order.items) {
-      final rating = _ratings[item.id] ?? 0;
-      final review = _commentControllers[item.id]?.text.trim() ?? '';
-      
-      if (rating > 0) {
-        provider.rateOrderItem(widget.order.id, item.id, rating, review);
-      }
-    }
-
-    Navigator.pop(context);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Container(
-          padding: const EdgeInsets.symmetric(vertical: 4),
-          child: const Row(
-            children: [
-              Icon(Icons.check_circle, color: Colors.white),
-              SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      'Thank you for your feedback!',
-                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                    ),
-                    SizedBox(height: 2),
-                    Text(
-                      'Your ratings help us improve',
-                      style: TextStyle(fontSize: 12),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-        backgroundColor: AppColors.success,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        margin: const EdgeInsets.all(16),
-        duration: const Duration(seconds: 3),
-      ),
     );
   }
 }

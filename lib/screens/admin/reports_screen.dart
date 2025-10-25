@@ -8,7 +8,6 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pdf/widgets.dart' as pw;
-import 'package:pdf/pdf.dart' as pdf;
 import 'package:printing/printing.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:open_filex/open_filex.dart';
@@ -40,7 +39,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
   final compactFmt = NumberFormat.compactCurrency(locale: 'en_US', symbol: 'Ksh ');
 
   bool _loading = false;
-  bool _isCopying = false;
   String _copyProgressMessage = '';
   String? _lastSavedDir;
 
@@ -70,39 +68,27 @@ class _ReportsScreenState extends State<ReportsScreen> {
     if (period == ReportPeriod.day) {
       return List.generate(24, (i) {
         final label = '${i.toString().padLeft(2, '0')}:00';
-        final isPeak = (i >= 12 && i <= 14) || (i >= 18 && i <= 20);
-        final base = isPeak ? 1200 : 400;
-        final variation = random.nextInt(300);
-        final value = (base + variation + (i * 20)).toDouble();
+        final value = 500.0 + random.nextDouble() * 2000;
         return _ChartPoint(label, value);
       });
     } else if (period == ReportPeriod.week) {
       final days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
       return List.generate(7, (i) {
-        final isWeekend = i >= 5;
-        final base = isWeekend ? 8000 : 5000;
-        final variation = random.nextInt(2000);
-        final value = (base + variation + (i * 500)).toDouble();
+        final value = 5000.0 + random.nextDouble() * 15000;
         return _ChartPoint(days[i], value);
       });
     } else if (period == ReportPeriod.month) {
       final daysInMonth = DateUtils.getDaysInMonth(date.year, date.month);
       return List.generate(daysInMonth, (i) {
         final label = '${i + 1}';
-        final isWeekend = DateTime(date.year, date.month, i + 1).weekday >= 6;
-        final base = isWeekend ? 6000 : 4000;
-        final variation = random.nextInt(1500);
-        final value = (base + variation + ((i % 7) * 200)).toDouble();
+        final value = 1000.0 + random.nextDouble() * 5000;
         return _ChartPoint(label, value);
       });
     } else {
+      final months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
       return List.generate(12, (i) {
-        final monthName = DateFormat.MMM().format(DateTime(date.year, i + 1));
-        final isHolidaySeason = i == 11;
-        final base = isHolidaySeason ? 120000 : 80000;
-        final variation = random.nextInt(30000);
-        final value = (base + variation + (i * 5000)).toDouble();
-        return _ChartPoint(monthName, value);
+        final value = 50000.0 + random.nextDouble() * 100000;
+        return _ChartPoint(months[i], value);
       });
     }
   }
@@ -116,39 +102,37 @@ class _ReportsScreenState extends State<ReportsScreen> {
       'Beef Burger', 'Chicken Curry', 'Rice Beans', 'Fish Fillet', 'Fruit Salad'
     ];
     
-    int getCount(int base, int range) => base + random.nextInt(range);
-    
     if (period == ReportPeriod.day) {
       return [
-        _TopItem(menuItems[0], getCount(8, 4)),
-        _TopItem(menuItems[1], getCount(6, 3)),
-        _TopItem(menuItems[3], getCount(5, 2)),
-        _TopItem(menuItems[2], getCount(4, 2)),
-        _TopItem(menuItems[4], getCount(3, 2)),
+        _TopItem(menuItems[0], 45 + random.nextInt(20)),
+        _TopItem(menuItems[1], 38 + random.nextInt(15)),
+        _TopItem(menuItems[2], 32 + random.nextInt(12)),
+        _TopItem(menuItems[3], 28 + random.nextInt(10)),
+        _TopItem(menuItems[4], 22 + random.nextInt(8)),
       ];
     } else if (period == ReportPeriod.week) {
       return [
-        _TopItem(menuItems[0], getCount(45, 20)),
-        _TopItem(menuItems[4], getCount(35, 15)),
-        _TopItem(menuItems[5], getCount(25, 10)),
-        _TopItem(menuItems[1], getCount(20, 8)),
-        _TopItem(menuItems[6], getCount(15, 5)),
+        _TopItem(menuItems[0], 280 + random.nextInt(50)),
+        _TopItem(menuItems[1], 245 + random.nextInt(45)),
+        _TopItem(menuItems[2], 210 + random.nextInt(40)),
+        _TopItem(menuItems[3], 185 + random.nextInt(35)),
+        _TopItem(menuItems[4], 150 + random.nextInt(30)),
       ];
     } else if (period == ReportPeriod.month) {
       return [
-        _TopItem(menuItems[0], getCount(180, 50)),
-        _TopItem(menuItems[4], getCount(140, 40)),
-        _TopItem(menuItems[1], getCount(120, 30)),
-        _TopItem(menuItems[5], getCount(100, 25)),
-        _TopItem(menuItems[3], getCount(90, 20)),
+        _TopItem(menuItems[0], 980 + random.nextInt(200)),
+        _TopItem(menuItems[1], 845 + random.nextInt(180)),
+        _TopItem(menuItems[2], 720 + random.nextInt(150)),
+        _TopItem(menuItems[3], 640 + random.nextInt(130)),
+        _TopItem(menuItems[4], 560 + random.nextInt(110)),
       ];
     } else {
       return [
-        _TopItem(menuItems[0], getCount(1500, 400)),
-        _TopItem(menuItems[4], getCount(1200, 300)),
-        _TopItem(menuItems[1], getCount(1000, 250)),
-        _TopItem(menuItems[5], getCount(800, 200)),
-        _TopItem(menuItems[6], getCount(600, 150)),
+        _TopItem(menuItems[0], 11500 + random.nextInt(2000)),
+        _TopItem(menuItems[1], 10200 + random.nextInt(1800)),
+        _TopItem(menuItems[2], 8900 + random.nextInt(1500)),
+        _TopItem(menuItems[3], 7800 + random.nextInt(1300)),
+        _TopItem(menuItems[4], 6700 + random.nextInt(1100)),
       ];
     }
   }
@@ -163,46 +147,34 @@ class _ReportsScreenState extends State<ReportsScreen> {
         initialDate: _selectedDate,
         firstDate: DateTime(2020),
         lastDate: DateTime.now(),
-        builder: (context, child) => Theme(
-          data: Theme.of(context).copyWith(
-            colorScheme: ColorScheme.light(
-              primary: AppColors.primary,
-              onPrimary: AppColors.white,
-            ),
-          ),
-          child: child!,
-        ),
       );
       if (picked != null) {
-        setState(() => _selectedDate = picked);
-        await _loadDataForCurrentSelection();
+        setState(() {
+          _selectedDate = picked;
+        });
+        _loadDataForCurrentSelection();
       }
     } else if (_period == ReportPeriod.month) {
       final picked = await _showMonthPicker(context, _selectedDate);
       if (picked != null) {
-        setState(() => _selectedDate = DateTime(picked.year, picked.month, 1));
-        await _loadDataForCurrentSelection();
+        setState(() {
+          _selectedDate = picked;
+        });
+        _loadDataForCurrentSelection();
       }
     } else {
       final picked = await showDatePicker(
         context: context,
         initialDate: _selectedDate,
-        firstDate: DateTime(2018),
+        firstDate: DateTime(2020),
         lastDate: DateTime.now(),
         initialDatePickerMode: DatePickerMode.year,
-        builder: (context, child) => Theme(
-          data: Theme.of(context).copyWith(
-            colorScheme: ColorScheme.light(
-              primary: AppColors.primary,
-              onPrimary: AppColors.white,
-            ),
-          ),
-          child: child!,
-        ),
       );
       if (picked != null) {
-        setState(() => _selectedDate = DateTime(picked.year, 1, 1));
-        await _loadDataForCurrentSelection();
+        setState(() {
+          _selectedDate = DateTime(picked.year, 1, 1);
+        });
+        _loadDataForCurrentSelection();
       }
     }
   }
@@ -221,147 +193,38 @@ class _ReportsScreenState extends State<ReportsScreen> {
         builder: (context, setDialogState) {
           return AlertDialog(
             title: const Text('Select Month'),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // FIXED: Year selector with proper constraints
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: AppColors.cardBackground,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Column(
-                      children: [
-                        // Year label and dropdown
-                        Row(
-                          children: [
-                            const Icon(Icons.calendar_today, size: 18, color: AppColors.primary),
-                            const SizedBox(width: 8),
-                            const Text('Year:', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8),
-                                decoration: BoxDecoration(
-                                  color: AppColors.white,
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(color: AppColors.lightGray),
-                                ),
-                                child: DropdownButton<int>(
-                                  value: selectedYear,
-                                  isExpanded: true,
-                                  underline: const SizedBox(),
-                                  items: years.map((y) => DropdownMenuItem(
-                                    value: y,
-                                    child: Text(
-                                      y.toString(),
-                                      style: const TextStyle(fontSize: 14),
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  )).toList(),
-                                  onChanged: (y) {
-                                    if (y == null) return;
-                                    setDialogState(() => selectedYear = y);
-                                  },
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        // Navigation buttons
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            IconButton(
-                              tooltip: 'Previous year',
-                              onPressed: () => setDialogState(() {
-                                selectedYear = (selectedYear - 1);
-                                if (selectedYear < years.last) selectedYear = years.last;
-                              }),
-                              icon: const Icon(Icons.chevron_left, size: 20),
-                              style: IconButton.styleFrom(
-                                backgroundColor: AppColors.primary.withOpacity(0.1),
-                                padding: const EdgeInsets.all(8),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            IconButton(
-                              tooltip: 'Next year',
-                              onPressed: () => setDialogState(() {
-                                selectedYear = (selectedYear + 1);
-                                if (selectedYear > years.first) selectedYear = years.first;
-                              }),
-                              icon: const Icon(Icons.chevron_right, size: 20),
-                              style: IconButton.styleFrom(
-                                backgroundColor: AppColors.primary.withOpacity(0.1),
-                                padding: const EdgeInsets.all(8),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  // Month grid
-                  GridView.builder(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 3,
-                      crossAxisSpacing: 8,
-                      mainAxisSpacing: 8,
-                      childAspectRatio: 2,
-                    ),
-                    itemCount: 12,
-                    itemBuilder: (context, index) {
-                      final month = index + 1;
-                      final isSelected = month == selectedMonth;
-                      return InkWell(
-                        onTap: () => setDialogState(() => selectedMonth = month),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(vertical: 8),
-                          decoration: BoxDecoration(
-                            color: isSelected ? AppColors.primary : AppColors.white,
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(
-                              color: isSelected ? AppColors.primary : AppColors.lightGray,
-                            ),
-                          ),
-                          child: Center(
-                            child: Text(
-                              _getMonthName(month),
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                                color: isSelected ? AppColors.white : AppColors.darkText,
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                ],
-              ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                DropdownButton<int>(
+                  value: selectedYear,
+                  isExpanded: true,
+                  items: years.map((year) => DropdownMenuItem(value: year, child: Text('$year'))).toList(),
+                  onChanged: (value) => setDialogState(() => selectedYear = value!),
+                ),
+                const SizedBox(height: 16),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: List.generate(12, (i) {
+                    final month = i + 1;
+                    final isSelected = selectedMonth == month;
+                    return ChoiceChip(
+                      label: Text(_getMonthName(month)),
+                      selected: isSelected,
+                      onSelected: (_) => setDialogState(() => selectedMonth = month),
+                    );
+                  }),
+                ),
+              ],
             ),
             actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
               TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text('Cancel'),
-              ),
-              ElevatedButton(
                 onPressed: () {
                   result = DateTime(selectedYear, selectedMonth, 1);
                   Navigator.pop(ctx);
                 },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primary,
-                ),
                 child: const Text('OK'),
               ),
             ],
@@ -392,31 +255,15 @@ class _ReportsScreenState extends State<ReportsScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            AppColors.primary.withOpacity(0.05),
-            AppColors.primary.withOpacity(0.02),
-          ],
-        ),
+        color: AppColors.primary.withOpacity(0.05),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          _buildMiniStat('TOTAL', compactFmt.format(totalRevenue)),
-          Container(
-            width: 1,
-            height: 30,
-            color: AppColors.darkText.withOpacity(0.2),
-            margin: const EdgeInsets.symmetric(horizontal: 16),
-          ),
-          _buildMiniStat('PEAK', peakPoint.label),
-          Container(
-            width: 1,
-            height: 30,
-            color: AppColors.darkText.withOpacity(0.2),
-            margin: const EdgeInsets.symmetric(horizontal: 16),
-          ),
-          _buildMiniStat('AVERAGE', compactFmt.format(averageRevenue)),
+          _buildMiniStat('Peak', compactFmt.format(peakPoint.value)),
+          _buildMiniStat('Average', compactFmt.format(averageRevenue)),
+          _buildMiniStat('Total', compactFmt.format(totalRevenue)),
         ],
       ),
     );
@@ -425,44 +272,13 @@ class _ReportsScreenState extends State<ReportsScreen> {
   Widget _buildMiniStat(String label, String value) {
     return Expanded(
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              color: AppColors.darkText.withOpacity(0.5),
-              letterSpacing: 0.5,
-            ),
-          ),
+          Text(label, style: TextStyle(fontSize: 11, color: AppColors.darkText.withOpacity(0.6))),
           const SizedBox(height: 4),
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.bold,
-              color: AppColors.primary,
-            ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
+          Text(value, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
         ],
       ),
     );
-  }
-
-  String _getPeriodDisplayName() {
-    switch (_period) {
-      case ReportPeriod.day:
-        return 'Today';
-      case ReportPeriod.week:
-        return 'This Week';
-      case ReportPeriod.month:
-        return 'This Month';
-      case ReportPeriod.year:
-        return 'This Year';
-    }
   }
 
   // ---------------------------
@@ -471,60 +287,31 @@ class _ReportsScreenState extends State<ReportsScreen> {
   Widget _buildPeriodSelector() {
     return Column(
       children: [
-        // FIXED: Make ToggleButtons scrollable in its own row
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: ToggleButtons(
-            isSelected: [
-              _period == ReportPeriod.day,
-              _period == ReportPeriod.week,
-              _period == ReportPeriod.month,
-              _period == ReportPeriod.year
-            ],
-            onPressed: (i) async {
-              setState(() {
-                _period = ReportPeriod.values[i];
-              });
-              await _loadDataForCurrentSelection();
-            },
-            borderRadius: BorderRadius.circular(8),
-            selectedColor: AppColors.white,
-            fillColor: AppColors.primary,
-            color: AppColors.darkText,
-            constraints: const BoxConstraints(
-              minHeight: 40,
-              minWidth: 70,
-            ),
-            children: const [
-              Padding(padding: EdgeInsets.symmetric(horizontal: 12), child: Text('Day')),
-              Padding(padding: EdgeInsets.symmetric(horizontal: 12), child: Text('Week')),
-              Padding(padding: EdgeInsets.symmetric(horizontal: 12), child: Text('Month')),
-              Padding(padding: EdgeInsets.symmetric(horizontal: 12), child: Text('Year')),
-            ],
-          ),
+        Row(
+          children: ReportPeriod.values.map((p) {
+            final selected = _period == p;
+            return Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: ChoiceChip(
+                  label: Text(p.name.toUpperCase()),
+                  selected: selected,
+                  onSelected: (_) {
+                    setState(() {
+                      _period = p;
+                    });
+                    _loadDataForCurrentSelection();
+                  },
+                ),
+              ),
+            );
+          }).toList(),
         ),
-        const SizedBox(height: 12),
-        // Date picker button on its own row
-        SizedBox(
-          width: double.infinity,
-          child: ElevatedButton.icon(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.primary,
-              foregroundColor: AppColors.white,
-              padding: const EdgeInsets.symmetric(vertical: 12),
-            ),
-            onPressed: _pickDate,
-            icon: const Icon(Icons.calendar_today, size: 16),
-            label: Text(
-              _period == ReportPeriod.day
-                  ? DateFormat.yMMMd().format(_selectedDate)
-                  : _period == ReportPeriod.week
-                      ? 'Week of ${DateFormat.MMMMd().format(_selectedDate)}'
-                      : _period == ReportPeriod.month
-                          ? DateFormat.yMMM().format(_selectedDate)
-                          : DateFormat.y().format(_selectedDate),
-            ),
-          ),
+        const SizedBox(height: 8),
+        OutlinedButton.icon(
+          icon: const Icon(Icons.calendar_today, size: 16),
+          label: Text(DateFormat.yMMMd().format(_selectedDate)),
+          onPressed: _pickDate,
         ),
       ],
     );
@@ -532,67 +319,39 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
   Widget _buildChartTypeSelector() {
     return Row(
-      children: [
-        const Text('Chart: ', style: TextStyle(fontWeight: FontWeight.bold)),
-        const SizedBox(width: 8),
-        DropdownButton<ChartType>(
-          value: _chartType,
-          items: ChartType.values
-              .map((ct) => DropdownMenuItem(
-                    value: ct,
-                    child: Text(ct.name.toUpperCase()),
-                  ))
-              .toList(),
-          onChanged: (val) {
-            if (val == null) return;
-            setState(() => _chartType = val);
-          },
-        ),
-        const Spacer(),
-        ElevatedButton.icon(
-          onPressed: (_isCopying || _loading) ? null : _onExportPressed,
-          icon: const Icon(Icons.download),
-          label: const Text('Export'),
-          style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, foregroundColor: AppColors.white),
-        ),
-      ],
+      children: ChartType.values.map((t) {
+        final selected = _chartType == t;
+        return Expanded(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: ChoiceChip(
+              label: Text(t.name.toUpperCase()),
+              selected: selected,
+              onSelected: (_) => setState(() => _chartType = t),
+            ),
+          ),
+        );
+      }).toList(),
     );
   }
 
   Widget _buildChartArea() {
     if (_loading) {
       return _GlassCard(
-        child: SizedBox(
-          height: 320,
-          child: Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const CircularProgressIndicator(),
-                const SizedBox(height: 16),
-                Text('Loading chart data...', style: TextStyle(color: AppColors.darkText.withOpacity(0.6))),
-              ],
-            ),
-          ),
-        ),
+        child: const Center(child: CircularProgressIndicator()),
       );
     }
 
     if (_chartData.isEmpty) {
       return _GlassCard(
-        child: SizedBox(
-          height: 320,
-          child: Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.bar_chart, size: 64, color: AppColors.darkText.withOpacity(0.3)),
-                const SizedBox(height: 16),
-                Text('No data available', style: TextStyle(fontSize: 16, color: AppColors.darkText.withOpacity(0.5))),
-                const SizedBox(height: 8),
-                Text('Try selecting a different period', style: TextStyle(color: AppColors.darkText.withOpacity(0.4))),
-              ],
-            ),
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.bar_chart, size: 60, color: AppColors.darkText.withOpacity(0.3)),
+              const SizedBox(height: 16),
+              Text('No data available', style: TextStyle(color: AppColors.darkText.withOpacity(0.5))),
+            ],
           ),
         ),
       );
@@ -615,40 +374,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Row(
-                  children: [
-                    Icon(Icons.insights, size: 20, color: AppColors.darkText),
-                    const SizedBox(width: 8),
-                    Text('Sales Analytics', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.darkText)),
-                  ],
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: AppColors.primary.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(Icons.trending_up, size: 14, color: AppColors.primary),
-                      const SizedBox(width: 4),
-                      Text(_getPeriodDisplayName(), style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.primary)),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const Divider(height: 1),
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: _buildChartHeader(),
-          ),
+          _buildChartHeader(),
+          const SizedBox(height: 16),
           SizedBox(
             height: 280,
             child: _chartType == ChartType.pie
@@ -670,88 +397,45 @@ class _ReportsScreenState extends State<ReportsScreen> {
     final maxY = (data.map((e) => e.value).reduce((a, b) => a > b ? a : b)) * 1.2;
 
     return BarChart(BarChartData(
-      alignment: BarChartAlignment.spaceAround,
       maxY: maxY,
-      barTouchData: BarTouchData(
-        enabled: true,
-        touchTooltipData: BarTouchTooltipData(
-          getTooltipColor: (group) => AppColors.primary.withOpacity(0.9),
-          tooltipPadding: const EdgeInsets.all(8),
-          getTooltipItem: (group, groupIndex, rod, rodIndex) {
-            final point = data[group.x.toInt()];
-            return BarTooltipItem(
-              '${point.label}\n',
-              const TextStyle(color: AppColors.white, fontWeight: FontWeight.bold, fontSize: 12),
-              children: [
-                TextSpan(
-                  text: currencyFmt.format(rod.toY),
-                  style: TextStyle(color: AppColors.white.withOpacity(0.9), fontSize: 14, fontWeight: FontWeight.bold),
-                ),
-              ],
-            );
-          },
-        ),
-      ),
+      barGroups: data.asMap().entries.map((e) {
+        return BarChartGroupData(
+          x: e.key,
+          barRods: [
+            BarChartRodData(
+              toY: e.value.value,
+              color: AppColors.primary,
+              width: 20,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
+            ),
+          ],
+        );
+      }).toList(),
       titlesData: FlTitlesData(
         leftTitles: AxisTitles(
           sideTitles: SideTitles(
             showTitles: true,
-            reservedSize: 56,
-            interval: maxY / 4,
-            getTitlesWidget: (value, meta) {
-              if (value == 0) return const SizedBox();
-              final txt = value >= 1000 ? 'K ${(value / 1000).toStringAsFixed(0)}' : value.toStringAsFixed(0);
-              return Padding(
-                padding: const EdgeInsets.only(right: 8.0),
-                child: Text(txt, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: AppColors.darkText.withOpacity(0.6))),
-              );
-            },
+            reservedSize: 50,
+            getTitlesWidget: (value, meta) => Text(
+              compactFmt.format(value),
+              style: const TextStyle(fontSize: 10),
+            ),
           ),
         ),
         bottomTitles: AxisTitles(
           sideTitles: SideTitles(
             showTitles: true,
-            reservedSize: 36,
             getTitlesWidget: (value, meta) {
-              final idx = value.toInt();
-              if (idx < 0 || idx >= data.length) return const SizedBox();
-              final label = data[idx].label;
-              return Padding(
-                padding: const EdgeInsets.only(top: 8.0),
-                child: Text(label, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: AppColors.darkText.withOpacity(0.6)), textAlign: TextAlign.center),
-              );
+              if (value.toInt() >= data.length) return const SizedBox();
+              return Text(data[value.toInt()].label, style: const TextStyle(fontSize: 10));
             },
           ),
         ),
         topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
         rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
       ),
-      gridData: FlGridData(
-        show: true,
-        drawVerticalLine: false,
-        horizontalInterval: maxY / 4,
-        getDrawingHorizontalLine: (value) => FlLine(color: AppColors.darkText.withOpacity(0.1), strokeWidth: 1),
-      ),
-      borderData: FlBorderData(show: true, border: Border.all(color: AppColors.darkText.withOpacity(0.2), width: 1)),
-      barGroups: data.asMap().entries.map((entry) {
-        final i = entry.key;
-        final pt = entry.value;
-        return BarChartGroupData(
-          x: i,
-          barRods: [
-            BarChartRodData(
-              toY: pt.value,
-              width: 16,
-              borderRadius: BorderRadius.circular(8),
-              gradient: LinearGradient(
-                colors: [AppColors.primary.withOpacity(0.8), AppColors.primary.withOpacity(0.4)],
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-              ),
-            ),
-          ],
-        );
-      }).toList(),
+      gridData: FlGridData(show: true, drawVerticalLine: false),
+      borderData: FlBorderData(show: false),
     ));
   }
 
@@ -762,122 +446,41 @@ class _ReportsScreenState extends State<ReportsScreen> {
     return LineChart(LineChartData(
       maxY: maxY,
       minY: minY,
-      lineTouchData: LineTouchData(
-        enabled: true,
-        touchTooltipData: LineTouchTooltipData(
-          getTooltipColor: (touchedSpot) => AppColors.primary.withOpacity(0.9),
-          tooltipPadding: const EdgeInsets.all(8),
-          getTooltipItems: (touchedSpots) {
-            return touchedSpots.map((touchedSpot) {
-              final point = data[touchedSpot.x.toInt()];
-              return LineTooltipItem(
-                '${point.label}\n',
-                const TextStyle(
-                  color: AppColors.white,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 12,
-                ),
-                children: [
-                  TextSpan(
-                    text: currencyFmt.format(touchedSpot.y),
-                    style: TextStyle(
-                      color: AppColors.white.withOpacity(0.9),
-                      fontSize: 14,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ],
-              );
-            }).toList();
-          },
+      lineBarsData: [
+        LineChartBarData(
+          spots: data.asMap().entries.map((e) => FlSpot(e.key.toDouble(), e.value.value)).toList(),
+          isCurved: true,
+          color: AppColors.primary,
+          barWidth: 3,
+          dotData: const FlDotData(show: true),
+          belowBarData: BarAreaData(
+            show: true,
+            color: AppColors.primary.withOpacity(0.2),
+          ),
         ),
-        handleBuiltInTouches: true,
-      ),
+      ],
       titlesData: FlTitlesData(
         leftTitles: AxisTitles(
           sideTitles: SideTitles(
-            showTitles: true, 
-            reservedSize: 56, 
-            interval: maxY / 4, 
-            getTitlesWidget: (value, meta) {
-              if (value == 0) return const SizedBox();
-              final txt = value >= 1000 ? 'K ${(value / 1000).toStringAsFixed(0)}' : value.toStringAsFixed(0);
-              return Padding(
-                padding: const EdgeInsets.only(right: 8.0),
-                child: Text(txt, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: AppColors.darkText.withOpacity(0.6))),
-              );
-            }
+            showTitles: true,
+            reservedSize: 50,
+            getTitlesWidget: (value, meta) => Text(compactFmt.format(value), style: const TextStyle(fontSize: 10)),
           ),
         ),
         bottomTitles: AxisTitles(
           sideTitles: SideTitles(
             showTitles: true,
-            reservedSize: 36,
             getTitlesWidget: (value, meta) {
-              final idx = value.toInt();
-              if (idx < 0 || idx >= data.length) return const SizedBox();
-              final label = data[idx].label;
-              return Padding(
-                padding: const EdgeInsets.only(top: 8.0),
-                child: Text(
-                  label, 
-                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: AppColors.darkText.withOpacity(0.6)),
-                  textAlign: TextAlign.center,
-                ),
-              );
+              if (value.toInt() >= data.length) return const SizedBox();
+              return Text(data[value.toInt()].label, style: const TextStyle(fontSize: 10));
             },
           ),
         ),
         topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
         rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
       ),
-      gridData: FlGridData(
-        show: true,
-        drawVerticalLine: false,
-        horizontalInterval: maxY / 4,
-        getDrawingHorizontalLine: (value) {
-          return FlLine(
-            color: AppColors.darkText.withOpacity(0.1),
-            strokeWidth: 1,
-          );
-        },
-      ),
-      borderData: FlBorderData(
-        show: true,
-        border: Border.all(
-          color: AppColors.darkText.withOpacity(0.2),
-          width: 1,
-        ),
-      ),
-      lineBarsData: [
-        LineChartBarData(
-          spots: data.asMap().entries.map((e) => FlSpot(e.key.toDouble(), e.value.value)).toList(),
-          isCurved: true,
-          curveSmoothness: 0.3,
-          gradient: LinearGradient(
-            colors: [
-              AppColors.primary.withOpacity(0.8),
-              AppColors.primary.withOpacity(0.4),
-            ],
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-          ),
-          barWidth: 4,
-          isStrokeCapRound: true,
-          dotData: const FlDotData(show: true),
-          belowBarData: BarAreaData(
-            show: true,
-            gradient: LinearGradient(
-              colors: [
-                AppColors.primary.withOpacity(0.3),
-                AppColors.primary.withOpacity(0.05),
-              ],
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-            ),
-          ),
-        ),
-      ],
+      gridData: FlGridData(show: true, drawVerticalLine: false),
+      borderData: FlBorderData(show: false),
     ));
   }
 
@@ -885,110 +488,24 @@ class _ReportsScreenState extends State<ReportsScreen> {
     final total = data.fold<double>(0, (p, e) => p + e.value);
 
     if (total <= 0 || data.isEmpty) {
-      return Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Center(child: Text('No data to display', style: TextStyle(color: AppColors.darkText))),
-      );
+      return const Center(child: Text('No data'));
     }
 
     return LayoutBuilder(builder: (context, constraints) {
-      final availableHeight = constraints.maxHeight.isFinite ? constraints.maxHeight : 320.0;
-      final chartSize = min(max(availableHeight * 0.56, 120.0), 240.0);
-      final centerSpace = chartSize * 0.22;
-
-      // reduce the slice radius slightly so the chart won't paint outside its box
-      final sliceRadius = (chartSize / 2) - 16;
-
-      final sections = data.asMap().entries.map((entry) {
-        final idx = entry.key;
-        final e = entry.value;
-        final percent = (e.value / total) * 100;
-        final color = Colors.primaries[idx % Colors.primaries.length];
-        return PieChartSectionData(
-          value: e.value,
-          title: percent > 5 ? '${percent.toStringAsFixed(0)}%' : '',
-          color: color,
-          radius: sliceRadius.clamp(40.0, chartSize / 2),
-          titleStyle: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.bold,
-            color: color.computeLuminance() > 0.5 ? Colors.black : Colors.white,
-          ),
-        );
-      }).toList();
-
-      return Padding(
-        padding: const EdgeInsets.all(12.0),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(12), // clip to match outer container
-          child: SizedBox(
-            height: chartSize + 16,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                SizedBox(
-                  width: chartSize,
-                  height: chartSize,
-                  child: Padding(
-                    padding: const EdgeInsets.all(6.0), // inner padding to avoid bleed
-                    child: PieChart(
-                      PieChartData(
-                        sections: sections,
-                        centerSpaceRadius: centerSpace,
-                        sectionsSpace: 4,
-                        pieTouchData: PieTouchData(enabled: true),
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: SingleChildScrollView(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: data.asMap().entries.map((entry) {
-                        final idx = entry.key;
-                        final e = entry.value;
-                        final percent = (e.value / total) * 100;
-                        final color = Colors.primaries[idx % Colors.primaries.length];
-                        return Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 6.0),
-                          child: Row(
-                            children: [
-                              Container(
-                                width: 12,
-                                height: 12,
-                                decoration: BoxDecoration(
-                                  color: color,
-                                  borderRadius: BorderRadius.circular(2),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  e.label,
-                                  style: TextStyle(fontSize: 12, color: AppColors.darkText),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                '${percent.toStringAsFixed(1)}%',
-                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.darkText),
-                              ),
-                            ],
-                          ),
-                        );
-                      }).toList(),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
+      return PieChart(PieChartData(
+        sections: data.map((point) {
+          final percentage = (point.value / total) * 100;
+          return PieChartSectionData(
+            value: point.value,
+            title: '${percentage.toStringAsFixed(1)}%',
+            color: Colors.primaries[data.indexOf(point) % Colors.primaries.length],
+            radius: 100,
+            titleStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white),
+          );
+        }).toList(),
+        sectionsSpace: 2,
+        centerSpaceRadius: 40,
+      ));
     });
   }
 
@@ -996,21 +513,19 @@ class _ReportsScreenState extends State<ReportsScreen> {
     if (_loading) return const SizedBox.shrink();
 
     if (_topItems.isEmpty) {
-      return const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Text('No top items found.'));
+      return const Center(child: Text('No top items'));
     }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        const Text('Top Selling Items', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
         const SizedBox(height: 12),
-        Text('Most sold items', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.darkText)),
-        const SizedBox(height: 8),
-        ..._topItems.map((t) => ListTile(
-              tileColor: AppColors.cardBackground,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-              title: Text(t.name),
-              trailing: Text('${t.count}', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.darkText)),
-            )),
+        ..._topItems.map((item) => ListTile(
+          leading: CircleAvatar(child: Text('${_topItems.indexOf(item) + 1}')),
+          title: Text(item.name),
+          trailing: Text('${item.count}', style: const TextStyle(fontWeight: FontWeight.bold)),
+        )),
       ],
     );
   }
@@ -1022,84 +537,53 @@ class _ReportsScreenState extends State<ReportsScreen> {
   Future<void> _onExportPressed() async {
     setState(() => _loading = true);
     try {
-      final csv = _buildCsv();
-      final csvFilename = 'report_${_period.name}_${DateTime.now().millisecondsSinceEpoch}.csv';
-      final csvFile = await _saveFile(csvFilename, csv.codeUnits);
-
-      final pdfBytes = await _buildPdfBytes();
-      final pdfFilename = 'report_${_period.name}_${DateTime.now().millisecondsSinceEpoch}.pdf';
-      final pdfFile = await _saveFile(pdfFilename, pdfBytes);
-
+      final csvFile = await _saveFile('report.csv', _buildCsv().codeUnits);
+      final pdfFile = await _saveFile('report.pdf', await _buildPdfBytes());
       await _showExportOptions(context, csvFile, pdfFile);
     } catch (e, st) {
-      debugPrint('Export prepare error: $e\n$st');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to prepare report: $e')));
-      }
+      debugPrint('Export error: $e\n$st');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Export failed: $e')),
+      );
     } finally {
-      if (mounted) {
-        setState(() => _loading = false);
-      }
+      if (mounted) setState(() => _loading = false);
     }
   }
 
   Future<void> _showExportOptions(BuildContext ctx, File csvFile, File pdfFile) {
     return showModalBottomSheet(
       context: ctx,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(12))),
-      builder: (c) {
-        return Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            Text('Export Report', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.darkText)),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: ElevatedButton.icon(
-                    icon: const Icon(Icons.save),
-                    label: const Text('Save to Downloads'),
-                    style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, foregroundColor: AppColors.white),
-                    onPressed: () async {
-                      Navigator.pop(c);
-                      await _saveFilesToDownloads([csvFile, pdfFile]);
-                    },
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    icon: const Icon(Icons.share),
-                    label: const Text('Share'),
-                    style: OutlinedButton.styleFrom(foregroundColor: AppColors.darkText),
-                    onPressed: () {
-                      Navigator.pop(c);
-                      _shareFiles([csvFile, pdfFile]);
-                    },
-                  ),
-                ),
-              ],
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.share),
+              title: const Text('Share Files'),
+              onTap: () {
+                Navigator.pop(context);
+                _shareFiles([csvFile, pdfFile]);
+              },
             ),
-            const SizedBox(height: 12),
-            // NEW: Preview PDF button
-            Row(children: [
-              Expanded(
-                child: TextButton.icon(
-                  icon: const Icon(Icons.visibility),
-                  label: const Text('Preview PDF'),
-                  onPressed: () async {
-                    Navigator.pop(c);
-                    await _previewPdf();
-                  },
-                ),
-              ),
-            ]),
-            const SizedBox(height: 8),
-            Text('You can both save and share. If saving fails, files remain in temporary folder.', 
-                 style: TextStyle(color: AppColors.darkText.withOpacity(0.75), fontSize: 12)),
-          ]),
-        );
-      },
+            ListTile(
+              leading: const Icon(Icons.download),
+              title: const Text('Save to Downloads'),
+              onTap: () {
+                Navigator.pop(context);
+                _saveFilesToDownloads([csvFile, pdfFile]);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.remove_red_eye),
+              title: const Text('Preview PDF'),
+              onTap: () {
+                Navigator.pop(context);
+                _previewPdf();
+              },
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -1108,148 +592,76 @@ class _ReportsScreenState extends State<ReportsScreen> {
     await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) {
-        return SafeArea(
-          child: Container(
-            decoration: BoxDecoration(
-              color: Theme.of(context).scaffoldBackgroundColor,
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-            ),
-            height: MediaQuery.of(context).size.height * 0.85,
-            padding: const EdgeInsets.all(12),
-            child: Column(
-              children: [
-                Row(
-                  children: [
-                    Expanded(child: Text('PDF Preview', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.darkText))),
-                    IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(ctx)),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Expanded(
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: Container(
-                      color: Colors.white,
-                      child: PdfPreview(
-                        canChangePageFormat: false,
-                        allowPrinting: true,
-                        allowSharing: false,
-                        build: (format) async => await _buildPdfBytes(),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
+      builder: (context) => SizedBox(
+        height: MediaQuery.of(context).size.height * 0.9,
+        child: PdfPreview(build: (format) => _buildPdfBytes()),
+      ),
     );
   }
 
   Future<void> _shareFiles(List<File> files) async {
     try {
-      final csvFile = files[0];
-      final pdfFile = files[1];
-      final csvBytes = await csvFile.readAsBytes();
-      final pdfBytes = await pdfFile.readAsBytes();
-
-      final xfiles = [
-        XFile.fromData(csvBytes, name: p.basename(csvFile.path), mimeType: 'text/csv'),
-        XFile.fromData(pdfBytes, name: p.basename(pdfFile.path), mimeType: 'application/pdf'),
-      ];
-
+      final xfiles = files.map((f) => XFile(f.path)).toList();
       await Share.shareXFiles(xfiles, text: 'Sales report - ${_period.name.toUpperCase()} (${_selectedDate.toIso8601String()})');
     } catch (e, st) {
       debugPrint('Share error: $e\n$st');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to share report: $e')));
-      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Share failed: $e')),
+      );
     }
   }
 
   Future<void> _saveFilesToDownloads(List<File> files) async {
     if (!mounted) return;
 
-    // Request permission on Android
-    // On Android we attempt to copy to the Downloads folder; explicit runtime permission requests are omitted here
-    // to avoid depending on the permission_handler package — failures will be caught and reported to the user.
-    // (If your app targets Android versions requiring MANAGE_EXTERNAL_STORAGE, consider adding permission handling.)
-    // No explicit permission request performed.
-
-    // show copying dialog
     _showCopyingDialog();
 
     final savedPaths = <String>[];
     try {
-      for (int i = 0; i < files.length; i++) {
-        final f = files[i];
-        _updateCopyProgress('Copying ${p.basename(f.path)} (${i + 1}/${files.length})...');
-        final copied = await _copyToDownloads(f);
-        savedPaths.add(copied.path);
+      for (final file in files) {
+        _updateCopyProgress('Copying ${p.basename(file.path)}...');
+        final dest = await _copyToDownloads(file);
+        savedPaths.add(dest.path);
       }
 
-      // set last saved dir to parent of first copied file (common Downloads folder)
-      if (savedPaths.isNotEmpty) {
-        final parent = File(savedPaths.first).parent.path;
-        setState(() => _lastSavedDir = parent);
-      }
-
-      // close copying dialog
       _closeCopyingDialog();
-
-      final msg = 'Files saved to Downloads folder';
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(msg), 
-            duration: const Duration(seconds: 3),
-            action: SnackBarAction(
-              label: 'Open',
-              onPressed: _openDownloadsFolder,
-            ),
-          )
-        );
-      }
+      
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${files.length} file(s) saved'),
+          action: SnackBarAction(
+            label: 'Open Folder',
+            onPressed: _openDownloadsFolder,
+          ),
+        ),
+      );
     } catch (e, st) {
-      debugPrint('Save to downloads error: $e\n$st');
+      debugPrint('Save error: $e\n$st');
       _closeCopyingDialog();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to save to Downloads: $e')));
-      }
-    } finally {
-      setState(() {
-        _isCopying = false;
-        _copyProgressMessage = '';
-      });
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Save failed: $e')),
+      );
     }
   }
 
   // show modal dialog with progress indicator
   void _showCopyingDialog() {
     if (!mounted) return;
-    setState(() => _isCopying = true);
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (dctx) {
-        return WillPopScope(
-          onWillPop: () async => false,
-          child: AlertDialog(
-            backgroundColor: AppColors.cardBackground,
-            content: Row(
-              children: [
-                const SizedBox(width: 8),
-                const CircularProgressIndicator(),
-                const SizedBox(width: 16),
-                Expanded(child: Text(_copyProgressMessage.isEmpty ? 'Preparing files...' : _copyProgressMessage)),
-              ],
-            ),
-          ),
-        );
-      },
+      builder: (context) => AlertDialog(
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const CircularProgressIndicator(),
+            const SizedBox(height: 16),
+            Text(_copyProgressMessage),
+          ],
+        ),
+      ),
     );
   }
 
@@ -1261,66 +673,37 @@ class _ReportsScreenState extends State<ReportsScreen> {
   void _closeCopyingDialog() {
     if (!mounted) return;
     try {
-      Navigator.of(context, rootNavigator: true).pop(); // close dialog
+      Navigator.of(context, rootNavigator: true).pop();
     } catch (_) {}
   }
 
   Future<File> _copyToDownloads(File src) async {
     try {
       if (Platform.isAndroid) {
-        // Try to get the Downloads directory
-        final downloadsDir = await getDownloadsDirectory();
-        if (downloadsDir != null) {
-          final dest = File('${downloadsDir.path}/${p.basename(src.path)}');
+        final dir = Directory('/storage/emulated/0/Download');
+        if (await dir.exists()) {
+          final dest = File('${dir.path}/${p.basename(src.path)}');
           await src.copy(dest.path);
-          return dest;
-        }
-        
-        // Fallback for Android
-        final externalDir = await getExternalStorageDirectory();
-        if (externalDir != null) {
-          final downloadsPath = '${externalDir.path}/Download';
-          final downloadsDir = Directory(downloadsPath);
-          if (!await downloadsDir.exists()) await downloadsDir.create(recursive: true);
-          final dest = File('${downloadsDir.path}/${p.basename(src.path)}');
-          await src.copy(dest.path);
-          return dest;
-        }
-      } else {
-        // For iOS and other platforms
-        final downloads = await getDownloadsDirectory();
-        if (downloads != null) {
-          final dest = File('${downloads.path}/${p.basename(src.path)}');
-          await src.copy(dest.path);
+          _lastSavedDir = dir.path;
           return dest;
         }
       }
     } catch (e) {
-      debugPrint('copyToDownloads exception: $e');
+      debugPrint('Copy to downloads error: $e');
     }
 
-    // Fallback to temporary directory
     final tempDir = await getTemporaryDirectory();
     final dest = File('${tempDir.path}/${p.basename(src.path)}');
     await src.copy(dest.path);
     return dest;
   }
 
-  // Open the downloads directory (Android-only). Uses open_filex to ask OS to open folder.
   Future<void> _openDownloadsFolder() async {
-    if (_lastSavedDir == null) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No Downloads folder to open')));
-      }
-      return;
-    }
+    if (_lastSavedDir == null) return;
     try {
       await OpenFilex.open(_lastSavedDir!);
     } catch (e, st) {
-      debugPrint('Open downloads error: $e\n$st');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Unable to open Downloads folder on this device')));
-      }
+      debugPrint('Open folder error: $e\n$st');
     }
   }
 
@@ -1331,13 +714,13 @@ class _ReportsScreenState extends State<ReportsScreen> {
     final buffer = StringBuffer();
     buffer.writeln('Label,Value');
     for (var p in _chartData) {
-      buffer.writeln('"${p.label}",${p.value.toStringAsFixed(2)}');
+      buffer.writeln('${p.label},${p.value}');
     }
     buffer.writeln();
     buffer.writeln('Most sold items');
     buffer.writeln('Item,Count');
     for (var t in _topItems) {
-      buffer.writeln('"${t.name}",${t.count}');
+      buffer.writeln('${t.name},${t.count}');
     }
     return buffer.toString();
   }
@@ -1347,23 +730,18 @@ class _ReportsScreenState extends State<ReportsScreen> {
     final header = 'Report - ${_period.name.toUpperCase()} ${DateFormat.yMMMd().format(_selectedDate)}';
     doc.addPage(
       pw.Page(
-        pageFormat: pdf.PdfPageFormat.a4,
-        build: (pw.Context ctx) {
-          return pw.Column(children: [
-            pw.Text(header, style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold)),
-            pw.SizedBox(height: 8),
-            pw.Text('Sales data', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
-            pw.SizedBox(height: 6),
-            pw.Table.fromTextArray(
-              headers: ['Label', 'Value'],
-              data: _chartData.map((e) => [e.label, currencyFmt.format(e.value)]).toList(),
-            ),
-            pw.SizedBox(height: 12),
-            pw.Text('Top sold items', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
-            pw.SizedBox(height: 6),
-            pw.Table.fromTextArray(headers: ['Item', 'Count'], data: _topItems.map((t) => [t.name, t.count.toString()]).toList()),
-          ]);
-        },
+        build: (context) => pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            pw.Text(header, style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold)),
+            pw.SizedBox(height: 20),
+            pw.Text('Total Revenue: ${currencyFmt.format(_totalRevenue)}'),
+            pw.Text('Total Orders: $_totalOrders'),
+            pw.SizedBox(height: 20),
+            pw.Text('Top Items:', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+            ..._topItems.map((item) => pw.Text('${item.name}: ${item.count}')),
+          ],
+        ),
       ),
     );
     return doc.save();
@@ -1384,59 +762,34 @@ class _ReportsScreenState extends State<ReportsScreen> {
     final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
     
     return Scaffold(
-      backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text("Sales Analytics"),
+        title: const Text('Sales Reports'),
         backgroundColor: AppColors.primary,
-        elevation: 4,
-        iconTheme: const IconThemeData(color: AppColors.white),
-        titleTextStyle: const TextStyle(color: AppColors.white, fontSize: 18, fontWeight: FontWeight.bold),
+        foregroundColor: AppColors.white,
         actions: [
           IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _loading ? null : _loadDataForCurrentSelection,
-            tooltip: 'Refresh Data',
+            icon: const Icon(Icons.file_download),
+            onPressed: _onExportPressed,
+            tooltip: 'Export',
           ),
         ],
       ),
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          return SingleChildScrollView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            padding: EdgeInsets.all(isLandscape ? 12 : 16),
-            child: ConstrainedBox(
-              constraints: BoxConstraints(minHeight: constraints.maxHeight - (isLandscape ? 24 : 32)),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildStatsCards(),
-                  SizedBox(height: isLandscape ? 12 : 16),
-                  _buildPeriodSelector(),
-                  SizedBox(height: isLandscape ? 12 : 16),
-                  _buildChartTypeSelector(),
-                  SizedBox(height: isLandscape ? 12 : 16),
-                  if (_lastSavedDir != null && Platform.isAndroid)
-                    Padding(
-                      padding: EdgeInsets.only(bottom: isLandscape ? 6 : 8),
-                      child: OutlinedButton.icon(
-                        icon: const Icon(Icons.folder_open, size: 16),
-                        label: Text('Open Downloads', style: TextStyle(fontSize: isLandscape ? 12 : 14)),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: AppColors.primary,
-                          padding: EdgeInsets.symmetric(horizontal: isLandscape ? 12 : 16, vertical: isLandscape ? 8 : 12),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        ),
-                        onPressed: _openDownloadsFolder,
-                      ),
-                    ),
-                  _buildChartArea(),
-                  SizedBox(height: isLandscape ? 12 : 16),
-                  _buildTopItemsList(),
-                ],
-              ),
-            ),
-          );
-        },
+      body: SingleChildScrollView(
+        padding: EdgeInsets.all(isLandscape ? 12 : 16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildStatsCards(),
+            const SizedBox(height: 16),
+            _buildPeriodSelector(),
+            const SizedBox(height: 16),
+            _buildChartTypeSelector(),
+            const SizedBox(height: 16),
+            _buildChartArea(),
+            const SizedBox(height: 24),
+            _buildTopItemsList(),
+          ],
+        ),
       ),
     );
   }
@@ -1446,21 +799,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
   // ---------------------------
   Widget _buildStatsCards() {
     if (_loading) {
-      return Row(
-        children: List.generate(3, (i) => 
-          Expanded(
-            child: Container(
-              margin: EdgeInsets.only(right: i < 2 ? 8 : 0),
-              height: 100,
-              decoration: BoxDecoration(
-                color: AppColors.cardBackground,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: const Center(child: CircularProgressIndicator()),
-            ),
-          ),
-        ),
-      );
+      return const Center(child: CircularProgressIndicator());
     }
 
     return Row(
@@ -1469,26 +808,17 @@ class _ReportsScreenState extends State<ReportsScreen> {
           child: _buildStatsCard(
             title: 'Revenue',
             value: compactFmt.format(_totalRevenue),
-            icon: Icons.monetization_on,
+            icon: Icons.attach_money,
             color: AppColors.success,
           ),
         ),
-        const SizedBox(width: 8),
+        const SizedBox(width: 12),
         Expanded(
           child: _buildStatsCard(
             title: 'Orders',
             value: '$_totalOrders',
-            icon: Icons.shopping_cart,
-            color: Colors.blue,
-          ),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: _buildStatsCard(
-            title: 'Avg Value',
-            value: compactFmt.format(_totalOrders > 0 ? _totalRevenue / _totalOrders : 0),
-            icon: Icons.trending_up,
-            color: Colors.orange,
+            icon: Icons.receipt,
+            color: AppColors.primary,
           ),
         ),
       ],
@@ -1497,7 +827,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
   Widget _buildStatsCard({required String title, required String value, required IconData icon, required Color color}) {
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: AppColors.white,
         borderRadius: BorderRadius.circular(12),
@@ -1510,38 +840,12 @@ class _ReportsScreenState extends State<ReportsScreen> {
         ],
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: color.withOpacity(0.1),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(icon, size: 20, color: color),
-          ),
+          Icon(icon, size: 32, color: color),
           const SizedBox(height: 8),
-          Text(
-            title,
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w500,
-              color: AppColors.darkText.withOpacity(0.6),
-            ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
+          Text(value, style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: color)),
           const SizedBox(height: 4),
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-              color: AppColors.darkText,
-            ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
+          Text(title, style: TextStyle(fontSize: 12, color: AppColors.darkText.withOpacity(0.6))),
         ],
       ),
     );
@@ -1558,16 +862,16 @@ class _GlassCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
     
-    // Simple container like dashboard - no BackdropFilter
     return Container(
+      padding: EdgeInsets.all(isLandscape ? 12 : 16),
       decoration: BoxDecoration(
         color: AppColors.white,
-        borderRadius: BorderRadius.circular(isLandscape ? 12 : 16),
+        borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.05),
-            blurRadius: isLandscape ? 6 : 10,
-            offset: Offset(0, isLandscape ? 2 : 4),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
           ),
         ],
       ),

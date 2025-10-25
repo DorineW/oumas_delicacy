@@ -727,13 +727,28 @@ class _AdminOrderCardState extends State<AdminOrderCard>
           mainAxisSize: MainAxisSize.min,
           children: [
             ...riders.map((rider) => ListTile(
-              leading: const Icon(Icons.person),
+              leading: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withOpacity(0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.delivery_dining, color: AppColors.primary),
+              ),
               title: Text(rider['name']!),
+              subtitle: const Text('External rider'),
               onTap: () => Navigator.pop(context, rider),
             )),
             const Divider(),
             ListTile(
-              leading: const Icon(Icons.home_work),
+              leading: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.orange.withOpacity(0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.admin_panel_settings, color: Colors.orange),
+              ),
               title: const Text('In-House Delivery'),
               subtitle: const Text('Admin will handle delivery'),
               onTap: () => Navigator.pop(context, {'id': 'admin', 'name': 'In-House'}),
@@ -745,15 +760,189 @@ class _AdminOrderCardState extends State<AdminOrderCard>
 
     if (selected != null && mounted) {
       final provider = Provider.of<OrderProvider>(context, listen: false);
+      
+      // FIXED: Properly assign rider and update status
       provider.assignToRider(order.id, selected['id']!, selected['name']!);
       
+      // Show success message
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Order assigned to ${selected['name']}'),
+          content: Row(
+            children: [
+              const Icon(Icons.check_circle, color: Colors.white),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  selected['id'] == 'admin'
+                      ? 'Order assigned to In-House delivery'
+                      : 'Order assigned to ${selected['name']}',
+                ),
+              ),
+            ],
+          ),
           backgroundColor: AppColors.success,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          margin: const EdgeInsets.all(16),
         ),
       );
+      
+      // ADDED: If in-house delivery, show admin delivery dialog
+      if (selected['id'] == 'admin') {
+        Future.delayed(const Duration(milliseconds: 500), () {
+          if (mounted) {
+            _showAdminDeliveryDialog(context, order);
+          }
+        });
+      }
     }
+  }
+
+  // ADDED: Admin delivery management dialog
+  Future<void> _showAdminDeliveryDialog(BuildContext context, Order order) async {
+    await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.orange.withOpacity(0.2),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.admin_panel_settings, color: Colors.orange, size: 20),
+            ),
+            const SizedBox(width: 12),
+            const Expanded(
+              child: Text(
+                'In-House Delivery',
+                style: TextStyle(fontSize: 16),
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildDetailRow('Order', order.id),
+            _buildDetailRow('Customer', order.customerName),
+            if (order.deliveryAddress != null)
+              _buildDetailRow('Address', order.deliveryAddress!),
+            if (order.deliveryPhone != null)
+              _buildDetailRow('Phone', order.deliveryPhone!),
+            _buildDetailRow('Total', 'Ksh ${order.totalAmount}'),
+            const Divider(),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.orange.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.orange.withOpacity(0.3)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Delivery Actions',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Update order status as you progress with the delivery:',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: AppColors.darkText.withOpacity(0.7),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+          if (order.status == OrderStatus.assigned)
+            ElevatedButton.icon(
+              onPressed: () {
+                Provider.of<OrderProvider>(context, listen: false)
+                    .updateStatus(order.id, OrderStatus.pickedUp);
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('✓ Order marked as picked up'),
+                    backgroundColor: AppColors.success,
+                  ),
+                );
+              },
+              icon: const Icon(Icons.shopping_bag_outlined, size: 18),
+              label: const Text('Pick Up'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.teal,
+                foregroundColor: Colors.white,
+              ),
+            ),
+          if (order.status == OrderStatus.pickedUp)
+            ElevatedButton.icon(
+              onPressed: () {
+                Provider.of<OrderProvider>(context, listen: false)
+                    .updateStatus(order.id, OrderStatus.onRoute);
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('✓ Order marked as on route'),
+                    backgroundColor: AppColors.success,
+                  ),
+                );
+              },
+              icon: const Icon(Icons.local_shipping_outlined, size: 18),
+              label: const Text('On Route'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.indigo,
+                foregroundColor: Colors.white,
+              ),
+            ),
+          if (order.status == OrderStatus.onRoute || order.status == OrderStatus.pickedUp)
+            ElevatedButton.icon(
+              onPressed: () {
+                Provider.of<OrderProvider>(context, listen: false)
+                    .updateStatus(order.id, OrderStatus.delivered);
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Row(
+                      children: [
+                        const Icon(Icons.check_circle, color: Colors.white),
+                        const SizedBox(width: 12),
+                        const Expanded(
+                          child: Text('✓ Order delivered successfully!'),
+                        ),
+                      ],
+                    ),
+                    backgroundColor: AppColors.success,
+                    behavior: SnackBarBehavior.floating,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    margin: const EdgeInsets.all(16),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.check_circle_outline, size: 18),
+              label: const Text('Deliver'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.success,
+                foregroundColor: Colors.white,
+              ),
+            ),
+        ],
+      ),
+    );
   }
 }
 
