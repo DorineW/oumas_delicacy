@@ -23,6 +23,7 @@ import 'providers/rider_provider.dart';
 import 'providers/notification_provider.dart';
 import 'providers/reviews_provider.dart'; // ADDED
 import 'providers/favorites_provider.dart'; // ADDED: Import
+import 'providers/location_provider.dart'; // ADDED: Import LocationProvider
 import 'models/notification_model.dart';
 import 'models/cart_item.dart'; // ADDED
 import 'models/order.dart'; // ADDED for DeliveryType
@@ -66,6 +67,7 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => CartProvider()),
         ChangeNotifierProvider(create: (_) => MenuProvider()),
         ChangeNotifierProvider(create: (_) => NotificationProvider()),
+        ChangeNotifierProvider(create: (_) => LocationProvider()), // ADDED: Register LocationProvider
         ChangeNotifierProxyProvider<NotificationProvider, OrderProvider>(
           create: (context) => OrderProvider(),
           update: (context, notifProvider, orderProvider) {

@@ -396,6 +396,7 @@ class _AdminOrderCardState extends State<AdminOrderCard>
     with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _opacity;
+  Timer? _refreshTimer; // ADDED: Timer to refresh cancellation time
 
   @override
   void initState() {
@@ -417,11 +418,21 @@ class _AdminOrderCardState extends State<AdminOrderCard>
         if (mounted) _controller.stop();
       });
     }
+
+    // ADDED: Start refresh timer for pending orders to update cancellation time
+    if (widget.order.status == OrderStatus.pending && widget.order.canCancel) {
+      _refreshTimer = Timer.periodic(const Duration(seconds: 10), (timer) {
+        if (mounted) {
+          setState(() {}); // Refresh to update cancellation time
+        }
+      });
+    }
   }
 
   @override
   void dispose() {
     _controller.dispose();
+    _refreshTimer?.cancel(); // ADDED: Cancel refresh timer
     super.dispose();
   }
 
@@ -461,7 +472,6 @@ class _AdminOrderCardState extends State<AdminOrderCard>
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            // UPDATED: Show Order ID first, then customer name below
                             Text(
                               widget.order.id,
                               style: const TextStyle(
@@ -470,7 +480,6 @@ class _AdminOrderCardState extends State<AdminOrderCard>
                               ),
                             ),
                             const SizedBox(height: 2),
-                            // UPDATED: Customer name with icon
                             Row(
                               children: [
                                 Icon(
@@ -513,8 +522,37 @@ class _AdminOrderCardState extends State<AdminOrderCard>
                       ),
                     ],
                   ),
+                  
+                  // ADDED: Cancellation timer warning for pending orders
+                  if (widget.order.status == OrderStatus.pending && widget.order.canCancel) ...[
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.orange.withOpacity(0.5)),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.timer, size: 16, color: Colors.orange),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Customer can cancel within ${widget.order.cancellationTimeRemaining} min',
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: Colors.orange,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                  
                   const SizedBox(height: 8),
-                  // UPDATED: Items list with better styling
                   Row(
                     children: [
                       Icon(
@@ -540,7 +578,6 @@ class _AdminOrderCardState extends State<AdminOrderCard>
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      // UPDATED: Show delivery type with icon
                       Row(
                         children: [
                           Icon(
@@ -589,6 +626,50 @@ class _AdminOrderCardState extends State<AdminOrderCard>
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // ADDED: Show cancellation reason if cancelled
+              if (widget.order.status == OrderStatus.cancelled && 
+                  widget.order.cancellationReason != null) ...[
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  margin: const EdgeInsets.only(bottom: 12),
+                  decoration: BoxDecoration(
+                    color: Colors.red.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.red.withOpacity(0.3)),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Icon(Icons.cancel, size: 20, color: Colors.red),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Cancellation Reason:',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: Colors.red,
+                                fontSize: 12,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              widget.order.cancellationReason!,
+                              style: const TextStyle(
+                                color: Colors.red,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              
               _buildDetailRow('Customer', widget.order.customerName),
               _buildDetailRow('Date', '${widget.order.date.day}/${widget.order.date.month}/${widget.order.date.year} ${widget.order.date.hour}:${widget.order.date.minute}'),
               _buildDetailRow('Status', _getStatusText(widget.order.status)),
@@ -616,7 +697,7 @@ class _AdminOrderCardState extends State<AdminOrderCard>
           ),
         ),
         actions: [
-          // FIXED: Show Confirm button for pending orders
+          // Confirm button for pending orders
           if (widget.order.status == OrderStatus.pending)
             TextButton(
               onPressed: () {
@@ -627,7 +708,7 @@ class _AdminOrderCardState extends State<AdminOrderCard>
               child: const Text('Confirm'),
             ),
           
-          // FIXED: Show Assign Rider for confirmed delivery orders
+          // Assign Rider for confirmed delivery orders
           if (widget.order.status == OrderStatus.confirmed && 
               widget.order.deliveryType == DeliveryType.delivery)
             TextButton(
@@ -638,7 +719,7 @@ class _AdminOrderCardState extends State<AdminOrderCard>
               child: const Text('Assign Rider'),
             ),
           
-          // FIXED: Show Mark Delivered for pickup orders that are confirmed
+          // Mark Delivered for pickup orders that are confirmed
           if (widget.order.status == OrderStatus.confirmed &&
               widget.order.deliveryType == DeliveryType.pickup)
             TextButton(
@@ -650,7 +731,7 @@ class _AdminOrderCardState extends State<AdminOrderCard>
               child: const Text('Mark Delivered'),
             ),
           
-          // Show Mark Delivered for delivery orders in progress
+          // Mark Delivered for delivery orders in progress
           if (widget.order.status == OrderStatus.assigned ||
               widget.order.status == OrderStatus.pickedUp ||
               widget.order.status == OrderStatus.onRoute)
@@ -663,17 +744,16 @@ class _AdminOrderCardState extends State<AdminOrderCard>
               child: const Text('Mark Delivered'),
             ),
           
-          // FIXED: Show Cancel for any order that's not already cancelled or delivered
+          // UPDATED: Cancel with reason for non-cancelled/non-delivered orders
           if (widget.order.status != OrderStatus.cancelled &&
               widget.order.status != OrderStatus.delivered)
             TextButton(
               onPressed: () {
-                Provider.of<OrderProvider>(context, listen: false)
-                    .updateStatus(widget.order.id, OrderStatus.cancelled);
-                Navigator.pop(context);
+                Navigator.pop(context); // Close details dialog
+                _showCancellationDialog(context, widget.order);
               },
               style: TextButton.styleFrom(foregroundColor: Colors.red),
-              child: const Text('Cancel'),
+              child: const Text('Cancel Order'),
             ),
           
           TextButton(
@@ -683,6 +763,203 @@ class _AdminOrderCardState extends State<AdminOrderCard>
         ],
       ),
     );
+  }
+
+  // ADDED: Cancellation reason dialog
+  void _showCancellationDialog(BuildContext context, Order order) {
+    String? selectedReason;
+    final TextEditingController customController = TextEditingController();
+    
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.red.withOpacity(0.2),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.cancel, color: Colors.red, size: 20),
+                ),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Text(
+                    'Cancel Order',
+                    style: TextStyle(fontSize: 16),
+                  ),
+                ),
+              ],
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.info, size: 16, color: Colors.orange),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Order ${order.id}',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.orange,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Select cancellation reason:',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  
+                  // Reason options
+                  ...[
+                    'Customer Requested',
+                    'Out of Stock',
+                    'Restaurant Busy',
+                    'Delivery Area Issue',
+                    'Payment Problem',
+                    'Other',
+                  ].map((reason) => Container(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    decoration: BoxDecoration(
+                      color: selectedReason == reason 
+                          ? AppColors.primary.withOpacity(0.1)
+                          : Colors.transparent,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: selectedReason == reason
+                            ? AppColors.primary
+                            : AppColors.lightGray.withOpacity(0.3),
+                      ),
+                    ),
+                    child: RadioListTile<String>(
+                      title: Text(
+                        reason,
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: selectedReason == reason
+                              ? AppColors.primary
+                              : AppColors.darkText,
+                          fontWeight: selectedReason == reason
+                              ? FontWeight.w600
+                              : FontWeight.normal,
+                        ),
+                      ),
+                      value: reason,
+                      groupValue: selectedReason,
+                      activeColor: AppColors.primary,
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+                      onChanged: (value) => setDialogState(() => selectedReason = value),
+                    ),
+                  )),
+                  
+                  // Custom reason input
+                  if (selectedReason == 'Other') ...[
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: customController,
+                      decoration: InputDecoration(
+                        labelText: 'Please specify reason',
+                        hintText: 'Enter custom reason...',
+                        prefixIcon: const Icon(Icons.edit, size: 20),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                      ),
+                      maxLines: 2,
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  customController.dispose();
+                  Navigator.pop(context);
+                },
+                child: const Text('Back'),
+              ),
+              ElevatedButton(
+                onPressed: selectedReason == null ? null : () {
+                  String reason = selectedReason!;
+                  
+                  // Use custom reason if "Other" is selected
+                  if (selectedReason == 'Other') {
+                    final custom = customController.text.trim();
+                    if (custom.isEmpty) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Please specify a custom reason'),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                      return;
+                    }
+                    reason = custom;
+                  }
+                  
+                  // Cancel the order with reason
+                  Provider.of<OrderProvider>(context, listen: false)
+                      .cancelOrder(order.id, reason);
+                  
+                  customController.dispose();
+                  Navigator.pop(context);
+                  
+                  // Show success message
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Row(
+                        children: [
+                          const Icon(Icons.check_circle, color: Colors.white),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text('Order ${order.id} cancelled: $reason'),
+                          ),
+                        ],
+                      ),
+                      backgroundColor: Colors.red,
+                      behavior: SnackBarBehavior.floating,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      margin: const EdgeInsets.all(16),
+                    ),
+                  );
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red,
+                  foregroundColor: Colors.white,
+                ),
+                child: const Text('Confirm Cancellation'),
+              ),
+            ],
+          );
+        },
+      ),
+    ).then((_) => customController.dispose());
   }
 
   Widget _buildDetailRow(String label, String value, {bool isBold = false}) {

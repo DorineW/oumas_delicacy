@@ -55,6 +55,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
     // Reload profile after returning
     _loadProfile();
+    
+    // ADDED: Reload auth service with updated profile
+    final auth = Provider.of<AuthService>(context, listen: false);
+    await auth.loadUserProfile();
   }
 
   void _showLogoutDialog(BuildContext context) {
@@ -218,7 +222,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           },
         ),
       ),
-    );
+    ); // FIXED: Added missing closing parenthesis
   }
 }
 
@@ -227,14 +231,14 @@ class _ProfileOption extends StatelessWidget {
   final String title;
   final bool isDestructive;
   final VoidCallback? onTap;
-  final Widget? trailing; // ADDED
+  final Widget? trailing;
 
   const _ProfileOption({
     required this.icon,
     required this.title,
     this.isDestructive = false,
     this.onTap,
-    this.trailing, // ADDED
+    this.trailing,
   });
 
   @override
@@ -248,7 +252,7 @@ class _ProfileOption extends StatelessWidget {
           color: isDestructive ? Colors.red : AppColors.darkText,
         ),
       ),
-      trailing: trailing ?? const Icon(Icons.arrow_forward_ios, size: 16), // UPDATED
+      trailing: trailing ?? const Icon(Icons.arrow_forward_ios, size: 16),
       onTap: onTap,
     );
   }

@@ -2,17 +2,20 @@
 
 
 enum OrderStatus {
-  pending,
-  confirmed,
-  assigned,    // ADDED: Order assigned to rider
-  pickedUp,    // ADDED: Rider picked up order
-  onRoute,     // ADDED: Rider is delivering
-  delivered,
-  cancelled,
-  inProcess,   // KEPT: For backward compatibility
+  pending,     // Within 5-min cancellation window
+  confirmed,   // Admin confirmed, ready for next step
+  inProcess,   // ADDED: Order being prepared (for pickup orders)
+  assigned,    // Rider assigned (delivery only)
+  pickedUp,    // Rider collected order
+  onRoute,     // Rider en route to customer
+  delivered,   // Order completed
+  cancelled,   // Order cancelled
 }
 
-enum DeliveryType { delivery, pickup }
+enum DeliveryType {
+  delivery,
+  pickup,
+}
 
 class OrderItem {
   final String id;
@@ -57,31 +60,31 @@ class Order {
   final String id;
   final String customerId;
   final String customerName;
-  final DateTime date;
+  final String? deliveryPhone; // ADDED
   final List<OrderItem> items;
   final int totalAmount;
+  final DateTime date;
   final OrderStatus status;
   final DeliveryType deliveryType;
-  final String? riderId;           // ADDED: Assigned rider ID
-  final String? riderName;         // ADDED: Assigned rider name
-  final String? deliveryAddress;   // ADDED: Delivery address
-  final String? deliveryPhone;     // ADDED: Customer phone
-  final Map<String, double>? deliveryLocation; // ADDED: Lat/Lng
+  final String? deliveryAddress;
+  final String? riderId;
+  final String? riderName;
+  final String? cancellationReason; // ADDED: Cancellation reason
 
   Order({
     required this.id,
     required this.customerId,
     required this.customerName,
-    required this.date,
+    this.deliveryPhone, // ADDED
     required this.items,
     required this.totalAmount,
+    required this.date,
     required this.status,
     required this.deliveryType,
+    this.deliveryAddress,
     this.riderId,
     this.riderName,
-    this.deliveryAddress,
-    this.deliveryPhone,
-    this.deliveryLocation,
+    this.cancellationReason, // ADDED
   });
 
   // ADDED: Copy with method for updates
@@ -89,6 +92,7 @@ class Order {
     String? id,
     String? customerId,
     String? customerName,
+    String? deliveryPhone, // ADDED
     DateTime? date,
     List<OrderItem>? items,
     int? totalAmount,
@@ -97,13 +101,12 @@ class Order {
     String? riderId,
     String? riderName,
     String? deliveryAddress,
-    String? deliveryPhone,
-    Map<String, double>? deliveryLocation,
   }) {
     return Order(
       id: id ?? this.id,
       customerId: customerId ?? this.customerId,
       customerName: customerName ?? this.customerName,
+      deliveryPhone: deliveryPhone ?? this.deliveryPhone, // ADDED
       date: date ?? this.date,
       items: items ?? this.items,
       totalAmount: totalAmount ?? this.totalAmount,
@@ -112,8 +115,22 @@ class Order {
       riderId: riderId ?? this.riderId,
       riderName: riderName ?? this.riderName,
       deliveryAddress: deliveryAddress ?? this.deliveryAddress,
-      deliveryPhone: deliveryPhone ?? this.deliveryPhone,
-      deliveryLocation: deliveryLocation ?? this.deliveryLocation,
     );
+  }
+
+  // ADDED: Check if customer can still cancel (within 5 minutes)
+  bool get canCancel {
+    if (status == OrderStatus.cancelled || status == OrderStatus.delivered) {
+      return false;
+    }
+    final timeSinceOrder = DateTime.now().difference(date).inMinutes;
+    return timeSinceOrder < 5; // 5-minute cancellation window
+  }
+
+  // ADDED: Get remaining cancellation time in minutes
+  int get cancellationTimeRemaining {
+    final timeSinceOrder = DateTime.now().difference(date).inMinutes;
+    final remaining = 5 - timeSinceOrder;
+    return remaining > 0 ? remaining : 0;
   }
 }

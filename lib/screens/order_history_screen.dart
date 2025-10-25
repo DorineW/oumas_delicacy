@@ -224,78 +224,209 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> with SingleTick
   }
 
   void _cancelOrder(BuildContext context, Order order) async {
-    final provider = Provider.of<OrderProvider>(context, listen: false);
-    
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Cancel Order?'),
-        content: const Text('Are you sure you want to cancel this order?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Keep Order'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Cancel Order'),
-          ),
-        ],
-      ),
-    );
+    final reason = await _showCancellationReasonDialog(context, order);
 
-    if (confirmed == true) {
-      provider.updateStatus(order.id, OrderStatus.cancelled);
+    if (reason != null && reason.isNotEmpty) {
+      final provider = Provider.of<OrderProvider>(context, listen: false);
+      provider.cancelOrder(order.id, reason); // UPDATED: Use cancelOrder with reason
+      
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Order #${order.id} has been cancelled'),
-          backgroundColor: AppColors.success,
+          content: Row(
+            children: [
+              const Icon(Icons.check_circle, color: Colors.white),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text('Order #${order.id} has been cancelled'),
+              ),
+            ],
+          ),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          margin: const EdgeInsets.all(16),
         ),
       );
     }
   }
 
-  String _formatDate(DateTime date) {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final orderDay = DateTime(date.year, date.month, date.day);
-
-    if (orderDay == today) {
-      return 'Today at ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
-    } else if (orderDay == today.subtract(const Duration(days: 1))) {
-      return 'Yesterday at ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
-    } else {
-      return '${date.day}/${date.month}/${date.year} ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
-    }
+  // ADDED: Show cancellation reason dialog
+  Future<String?> _showCancellationReasonDialog(BuildContext context, Order order) async {
+    String? selectedReason;
+    final TextEditingController customController = TextEditingController();
+    
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.red.withOpacity(0.2),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.cancel, color: Colors.red, size: 20),
+                ),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Text(
+                    'Cancel Order',
+                    style: TextStyle(fontSize: 16),
+                  ),
+                ),
+              ],
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.info, size: 16, color: Colors.orange),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Order #${order.id}',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.orange,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Please tell us why you want to cancel:',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  
+                  // Reason options
+                  ...[
+                    'Changed my mind',
+                    'Ordered by mistake',
+                    'Too expensive',
+                    'Found better alternative',
+                    'Taking too long',
+                    'Other',
+                  ].map((reason) => Container(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    decoration: BoxDecoration(
+                      color: selectedReason == reason 
+                          ? AppColors.primary.withOpacity(0.1)
+                          : Colors.transparent,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: selectedReason == reason
+                            ? AppColors.primary
+                            : AppColors.lightGray.withOpacity(0.3),
+                      ),
+                    ),
+                    child: RadioListTile<String>(
+                      title: Text(
+                        reason,
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: selectedReason == reason
+                              ? AppColors.primary
+                              : AppColors.darkText,
+                          fontWeight: selectedReason == reason
+                              ? FontWeight.w600
+                              : FontWeight.normal,
+                        ),
+                      ),
+                      value: reason,
+                      groupValue: selectedReason,
+                      activeColor: AppColors.primary,
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+                      onChanged: (value) => setDialogState(() => selectedReason = value),
+                    ),
+                  )),
+                  
+                  // Custom reason input
+                  if (selectedReason == 'Other') ...[
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: customController,
+                      decoration: InputDecoration(
+                        labelText: 'Please specify reason',
+                        hintText: 'Enter your reason...',
+                        prefixIcon: const Icon(Icons.edit, size: 20),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                      ),
+                      maxLines: 2,
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  customController.dispose();
+                  Navigator.pop(context);
+                },
+                child: const Text('Keep Order'),
+              ),
+              ElevatedButton(
+                onPressed: selectedReason == null ? null : () {
+                  String reason = selectedReason!;
+                  
+                  // Use custom reason if "Other" is selected
+                  if (selectedReason == 'Other') {
+                    final custom = customController.text.trim();
+                    if (custom.isEmpty) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Please specify a custom reason'),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                      return;
+                    }
+                    reason = custom;
+                  }
+                  
+                  customController.dispose();
+                  Navigator.pop(context, reason);
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red,
+                  foregroundColor: Colors.white,
+                ),
+                child: const Text('Confirm Cancellation'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+    
+    return result;
   }
 
-  Color _getStatusColor(OrderStatus status) {
-    switch (status) {
-      case OrderStatus.pending:
-        return Colors.orange;
-      case OrderStatus.confirmed:
-        return Colors.blue;
-      case OrderStatus.assigned: // ADDED
-        return Colors.purple;
-      case OrderStatus.pickedUp: // ADDED
-        return Colors.teal;
-      case OrderStatus.onRoute: // ADDED
-        return Colors.indigo;
-      case OrderStatus.inProcess:
-        return Colors.purple;
-      case OrderStatus.delivered:
-        return AppColors.success;
-      case OrderStatus.cancelled:
-        return Colors.red;
-    }
-  }
-
-  String _getStatusText(OrderStatus status) {
-    return status.toString().split('.').last;
-  }
-
-  // UPDATED: Removed rating button from order details
+  // UPDATED: Show cancellation reason in order details
   void _showOrderDetailsDialog(Order order) {
     showDialog(
       context: context,
@@ -306,6 +437,50 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> with SingleTick
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // ADDED: Show cancellation reason if cancelled
+              if (order.status == OrderStatus.cancelled && 
+                  order.cancellationReason != null) ...[
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  margin: const EdgeInsets.only(bottom: 12),
+                  decoration: BoxDecoration(
+                    color: Colors.red.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.red.withOpacity(0.3)),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Icon(Icons.cancel, size: 20, color: Colors.red),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Cancellation Reason:',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: Colors.red,
+                                fontSize: 12,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              order.cancellationReason!,
+                              style: const TextStyle(
+                                color: Colors.red,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              
               _buildDetailRow('Customer', order.customerName),
               _buildDetailRow('Date', _formatDate(order.date)),
               _buildDetailRow('Status', _getStatusText(order.status)),
@@ -415,6 +590,45 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> with SingleTick
         ],
       ),
     );
+  }
+
+  String _formatDate(DateTime date) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final orderDay = DateTime(date.year, date.month, date.day);
+
+    if (orderDay == today) {
+      return 'Today at ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+    } else if (orderDay == today.subtract(const Duration(days: 1))) {
+      return 'Yesterday at ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+    } else {
+      return '${date.day}/${date.month}/${date.year} ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+    }
+  }
+
+  Color _getStatusColor(OrderStatus status) {
+    switch (status) {
+      case OrderStatus.pending:
+        return Colors.orange;
+      case OrderStatus.confirmed:
+        return Colors.blue;
+      case OrderStatus.assigned:
+        return Colors.purple;
+      case OrderStatus.pickedUp:
+        return Colors.teal;
+      case OrderStatus.onRoute:
+        return Colors.indigo;
+      case OrderStatus.inProcess:
+        return Colors.purple;
+      case OrderStatus.delivered:
+        return AppColors.success;
+      case OrderStatus.cancelled:
+        return Colors.red;
+    }
+  }
+
+  String _getStatusText(OrderStatus status) {
+    return status.toString().split('.').last;
   }
 
   @override

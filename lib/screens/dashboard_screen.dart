@@ -25,36 +25,32 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<OrderProvider>();
-    final favoritesProvider = context.watch<FavoritesProvider>(); // ADDED
-    final menuProvider = context.watch<MenuProvider>(); // ADDED
-    final auth = context.watch<AuthService>(); // ADDED
-    final userId = auth.currentUser?.id ?? 'guest'; // ADDED
+    final favoritesProvider = context.watch<FavoritesProvider>();
+    final menuProvider = context.watch<MenuProvider>();
+    final auth = context.watch<AuthService>();
+    final userId = auth.currentUser?.id ?? 'guest';
     
-    // ADDED: Get first name only
+    // UPDATED: Get actual user name from SharedPreferences
     final fullName = auth.currentUser?.name ?? 'Guest';
     final firstName = fullName.split(' ').first;
     
     final orders = provider.orders;
 
     final int orderCount = orders.length;
-    final int favCount = favoritesProvider.getCountForUser(userId); // UPDATED: User-specific
+    final int favCount = favoritesProvider.getCountForUser(userId);
     final int reviewCount = orders.fold<int>(
       0,
       (sum, order) => sum + order.items.where((item) => item.rating != null).length,
     );
 
     final completedOrders = orders.where((o) => o.status == OrderStatus.delivered).length;
-    final totalSpent = orders
-        .where((o) => o.status == OrderStatus.delivered)
-        .fold<double>(0, (sum, o) => sum + o.totalAmount);
+    // REMOVED: totalSpent calculation
     
     final isLandscape = ResponsiveHelper.isLandscape(context);
     
     return PopScope(
       canPop: false,
-      onPopInvoked: (didPop) {
-        // Let parent HomeScreen handle navigation
-      },
+      onPopInvoked: (didPop) {},
       child: Scaffold(
         backgroundColor: AppColors.background,
         appBar: AppBar(
@@ -295,71 +291,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       ),
                       SizedBox(height: isLandscape ? 8 : 12),
 
-                      // Recent Orders List
+                      // UPDATED: Recent Orders List - grouped by date
                       orders.isEmpty
                           ? _EmptyState()
-                          : Column(
-                              children: orders
-                                  .where((order) => order.status == OrderStatus.delivered)
-                                  .take(3)
-                                  .map((order) => _RecentOrderCard(order: order))
-                                  .toList(),
-                            ),
+                          : _buildGroupedOrders(orders.where((order) => 
+                                order.status == OrderStatus.delivered
+                              ).toList()),
 
-                      SizedBox(height: isLandscape ? 16 : 24),
-
-                      // Total Spent Card
-                      Container(
-                        width: double.infinity,
-                        padding: EdgeInsets.all(isLandscape ? 16 : 20),
-                        decoration: BoxDecoration(
-                          color: AppColors.white,
-                          borderRadius: BorderRadius.circular(16),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.05),
-                              blurRadius: 10,
-                              offset: const Offset(0, 4),
-                            ),
-                          ],
-                        ),
-                        child: Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color: AppColors.primary.withOpacity(0.1),
-                                shape: BoxShape.circle,
-                              ),
-                              child: Icon(Icons.account_balance_wallet, color: AppColors.primary, size: isLandscape ? 24 : 28),
-                            ),
-                            const SizedBox(width: 16),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'Total Spent',
-                                    style: TextStyle(
-                                      fontSize: isLandscape ? 12 : 14,
-                                      color: AppColors.darkText.withOpacity(0.6),
-                                    ),
-                                  ),
-                                  SizedBox(height: isLandscape ? 2 : 4),
-                                  Text(
-                                    'Ksh ${totalSpent.toStringAsFixed(0)}',
-                                    style: TextStyle(
-                                      fontSize: isLandscape ? 20 : 24,
-                                      fontWeight: FontWeight.bold,
-                                      color: AppColors.primary,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
+                      // REMOVED: Total Spent Card
                     ],
                   ),
                 ),
@@ -369,6 +308,61 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ),
       ),
     );
+  }
+
+  // ADDED: Build grouped orders by date
+  Widget _buildGroupedOrders(List<Order> orders) {
+    // Sort orders by date (newest first)
+    final sortedOrders = List<Order>.from(orders)
+      ..sort((a, b) => b.date.compareTo(a.date));
+    
+    // Group orders by date
+    final Map<String, List<Order>> groupedOrders = {};
+    for (final order in sortedOrders.take(10)) { // Show last 10 orders
+      final dateKey = _getDateKey(order.date);
+      groupedOrders.putIfAbsent(dateKey, () => []).add(order);
+    }
+    
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: groupedOrders.entries.map((entry) {
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Date header
+            Padding(
+              padding: const EdgeInsets.only(left: 4, top: 8, bottom: 8),
+              child: Text(
+                entry.key,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.darkText.withOpacity(0.7),
+                ),
+              ),
+            ),
+            // Orders for this date
+            ...entry.value.map((order) => _RecentOrderCard(order: order)),
+          ],
+        );
+      }).toList(),
+    );
+  }
+
+  // ADDED: Get date key for grouping
+  String _getDateKey(DateTime date) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final yesterday = today.subtract(const Duration(days: 1));
+    final orderDate = DateTime(date.year, date.month, date.day);
+    
+    if (orderDate == today) {
+      return 'Today';
+    } else if (orderDate == yesterday) {
+      return 'Yesterday';
+    } else {
+      return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
+    }
   }
 
   // ADDED: Favorites dropdown section (like low stock in inventory)
@@ -589,7 +583,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           IconButton(
                             icon: const Icon(Icons.favorite, color: Colors.red, size: 20),
                             onPressed: () {
-                              favoritesProvider.toggleFavorite(meal['title']);
+                              favoritesProvider.toggleFavorite(userId, meal['title']); // FIXED: Pass userId
                               HapticFeedback.lightImpact();
                             },
                             padding: EdgeInsets.zero,
@@ -635,20 +629,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
     
     return errorWidget;
-  }
-}
-
-// Compatibility extension: provide getFavoritesForUser and getCountForUser if they're missing from FavoritesProvider.
-// These return safe defaults to keep the dashboard compiling; replace with proper implementations
-// that read the provider's stored favorites if available.
-extension FavoritesProviderCompat on FavoritesProvider {
-  List<String> getFavoritesForUser(String userId) {
-    return <String>[];
-  }
-
-  int getCountForUser(String userId) {
-    // Delegate to getFavoritesForUser so the logic is consistent; this returns 0 by default.
-    return getFavoritesForUser(userId).length;
   }
 }
 
@@ -762,11 +742,11 @@ class _RecentOrderCard extends StatelessWidget {
         return Colors.orange;
       case OrderStatus.confirmed:
         return Colors.blue;
-      case OrderStatus.assigned: // ADDED
+      case OrderStatus.assigned:
         return Colors.purple;
-      case OrderStatus.pickedUp: // ADDED
+      case OrderStatus.pickedUp:
         return Colors.teal;
-      case OrderStatus.onRoute: // ADDED
+      case OrderStatus.onRoute:
         return Colors.indigo;
       case OrderStatus.inProcess:
         return Colors.purple;
@@ -803,19 +783,25 @@ class _RecentOrderCard extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Flexible(
-                child: Text(
-                  'Order #${order.id}',
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.darkText,
+              // UPDATED: Show time instead of Order#
+              Row(
+                children: [
+                  Icon(
+                    Icons.access_time,
+                    size: 14,
+                    color: AppColors.darkText.withOpacity(0.6),
                   ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
+                  const SizedBox(width: 4),
+                  Text(
+                    _formatTime(order.date),
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.darkText.withOpacity(0.8),
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(width: 8),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
@@ -835,7 +821,7 @@ class _RecentOrderCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 8),
-          // UPDATED: Show item names instead of count
+          // Show item names
           Text(
             order.items.map((item) => '${item.quantity}x ${item.title}').join(', '),
             style: TextStyle(
@@ -849,20 +835,15 @@ class _RecentOrderCard extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Flexible(
-                child: Text(
-                  'KES ${order.totalAmount}',
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.primary,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+              Text(
+                'KES ${order.totalAmount}',
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.primary,
                 ),
               ),
-              const SizedBox(width: 8),
-              // ADDED: Rate button for delivered orders
+              // Rate button for delivered orders
               if (order.status == OrderStatus.delivered)
                 TextButton.icon(
                   onPressed: () => _showRatingDialog(context, order),
@@ -872,14 +853,6 @@ class _RecentOrderCard extends StatelessWidget {
                     foregroundColor: Colors.amber,
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   ),
-                )
-              else
-                Text(
-                  _formatDate(order.date),
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: AppColors.darkText.withOpacity(0.5),
-                  ),
                 ),
             ],
           ),
@@ -888,20 +861,18 @@ class _RecentOrderCard extends StatelessWidget {
     );
   }
 
-  // ADDED: Show rating dialog for each item
+  // ADDED: Format time
+  String _formatTime(DateTime date) {
+    final hour = date.hour.toString().padLeft(2, '0');
+    final minute = date.minute.toString().padLeft(2, '0');
+    return '$hour:$minute';
+  }
+
   void _showRatingDialog(BuildContext context, Order order) {
     showDialog(
       context: context,
       builder: (context) => _RatingDialog(order: order),
     );
-  }
-
-  String _formatDate(DateTime date) {
-    final now = DateTime.now();
-    final diff = now.difference(date);
-    if (diff.inDays == 0) return 'Today';
-    if (diff.inDays == 1) return 'Yesterday';
-    return '${date.day}/${date.month}/${date.year}';
   }
 }
 

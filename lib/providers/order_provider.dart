@@ -67,31 +67,64 @@ class OrderProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  void addOrder(Order order) {
+  Future<void> addOrder(Order order) async {
     _orders.add(order);
     notifyListeners();
+
+    // UPDATED: Send notification to admin with real customer details
+    if (_notificationProvider != null) {
+      _notificationProvider!.addNotification(
+        AppNotification(
+          id: DateTime.now().millisecondsSinceEpoch.toString(),
+          title: 'New Order Received',
+          message: 'Order ${order.id} from ${order.customerName}${order.deliveryPhone != null ? " (${order.deliveryPhone})" : ""}', // UPDATED: Include phone
+          userId: 'admin',
+          timestamp: DateTime.now(),
+          type: 'new_order',
+          // REMOVED: orderId parameter (not in AppNotification model)
+        ),
+      );
+    }
   }
 
-  // UPDATED: Assign order to rider and update status
+  // UPDATED: Properly assign rider and update status
   void assignToRider(String orderId, String riderId, String riderName) {
     final index = _orders.indexWhere((o) => o.id == orderId);
     if (index != -1) {
-      final oldOrder = _orders[index];
+      final currentOrder = _orders[index];
+      
       _orders[index] = Order(
-        id: oldOrder.id,
-        customerId: oldOrder.customerId,
-        customerName: oldOrder.customerName,
-        date: oldOrder.date,
-        items: oldOrder.items,
-        totalAmount: oldOrder.totalAmount,
-        status: OrderStatus.assigned, // CHANGED: Update status to assigned
-        deliveryType: oldOrder.deliveryType,
-        deliveryAddress: oldOrder.deliveryAddress,
-        deliveryPhone: oldOrder.deliveryPhone,
-        riderId: riderId, // ADDED: Set rider ID
-        riderName: riderName, // ADDED: Set rider name
+        id: currentOrder.id,
+        customerId: currentOrder.customerId,
+        customerName: currentOrder.customerName,
+        items: currentOrder.items,
+        totalAmount: currentOrder.totalAmount,
+        date: currentOrder.date,
+        status: OrderStatus.assigned, // FIXED: Update status to assigned
+        deliveryType: currentOrder.deliveryType,
+        deliveryAddress: currentOrder.deliveryAddress,
+        deliveryPhone: currentOrder.deliveryPhone,
+        riderId: riderId,
+        riderName: riderName,
       );
+      
+      // FIXED: Notify listeners so changes reflect in rider app
       notifyListeners();
+      
+      // Send notification to rider (if notification provider is available)
+      if (_notificationProvider != null && riderId != 'admin') {
+        _notificationProvider!.addNotification(
+          AppNotification(
+            id: DateTime.now().millisecondsSinceEpoch.toString(),
+            title: 'New Delivery Assignment',
+            message: 'Order $orderId has been assigned to you',
+            userId: riderId,
+            timestamp: DateTime.now(),
+            type: 'orderAssigned',
+            data: {'orderId': orderId},
+          ),
+        );
+      }
     }
   }
 
@@ -169,8 +202,44 @@ class OrderProvider extends ChangeNotifier {
     _notificationProvider!.addNotification(notification);
   }
 
-  void cancelOrder(String orderId) {
-    updateStatus(orderId, OrderStatus.cancelled);
+  // ADDED: Cancel order with reason
+  void cancelOrder(String orderId, String reason) {
+    final index = _orders.indexWhere((o) => o.id == orderId);
+    if (index != -1) {
+      final currentOrder = _orders[index];
+      
+      _orders[index] = Order(
+        id: currentOrder.id,
+        customerId: currentOrder.customerId,
+        customerName: currentOrder.customerName,
+        deliveryPhone: currentOrder.deliveryPhone,
+        items: currentOrder.items,
+        totalAmount: currentOrder.totalAmount,
+        date: currentOrder.date,
+        status: OrderStatus.cancelled,
+        deliveryType: currentOrder.deliveryType,
+        deliveryAddress: currentOrder.deliveryAddress,
+        riderId: currentOrder.riderId,
+        riderName: currentOrder.riderName,
+        cancellationReason: reason, // ADDED: Set cancellation reason
+      );
+      
+      notifyListeners();
+      
+      // Send notification to customer
+      if (_notificationProvider != null) {
+        _notificationProvider!.addNotification(
+          AppNotification(
+            id: DateTime.now().millisecondsSinceEpoch.toString(),
+            title: 'Order Cancelled',
+            message: 'Your order $orderId has been cancelled. Reason: $reason',
+            userId: currentOrder.customerId,
+            timestamp: DateTime.now(),
+            type: 'order_cancelled',
+          ),
+        );
+      }
+    }
   }
 
   List<Order> ordersForCustomer(String customerId) {

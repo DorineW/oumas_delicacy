@@ -970,171 +970,181 @@ class _RiderStyleMealCardState extends State<_RiderStyleMealCard>
     final isLandscape = ResponsiveHelper.isLandscape(context);
     final isAvailable = m['isAvailable'] ?? true;
     
-    return Card(
-      elevation: 3,
-      margin: EdgeInsets.zero,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      color: isAvailable ? null : Colors.grey.shade300,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // FIXED: Image section with fixed height
-          Container(
-            height: isLandscape ? 100 : 120,
-            decoration: BoxDecoration(
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-              color: AppColors.lightGray.withOpacity(0.3),
-            ),
-            child: Stack(
-              children: [
-                ClipRRect(
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-                  child: ColorFiltered(
-                    colorFilter: isAvailable 
-                        ? const ColorFilter.mode(Colors.transparent, BlendMode.multiply)
-                        : ColorFilter.mode(Colors.grey.withOpacity(0.5), BlendMode.saturation),
-                    child: SizedBox.expand(
-                      child: _buildImageWidget(m['image']),
-                    ),
-                  ),
-                ),
-                if (!isAvailable)
-                  Container(
-                    decoration: const BoxDecoration(
-                      borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
-                      color: Colors.black54,
-                    ),
-                    child: const Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.block, color: Colors.white, size: 32),
-                          SizedBox(height: 4),
-                          Text(
-                            'OUT OF STOCK',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 12,
-                            ),
-                          ),
-                        ],
+    return GestureDetector( // ADDED: Wrap entire card in GestureDetector
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => MealDetailScreen(meal: m),
+          ),
+        );
+      },
+      child: Card(
+        elevation: 3,
+        margin: EdgeInsets.zero,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        color: isAvailable ? null : Colors.grey.shade300,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // FIXED: Image section with fixed height
+            Container(
+              height: isLandscape ? 100 : 120,
+              decoration: BoxDecoration(
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+                color: AppColors.lightGray.withOpacity(0.3),
+              ),
+              child: Stack(
+                children: [
+                  ClipRRect(
+                    borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+                    child: ColorFiltered(
+                      colorFilter: isAvailable 
+                          ? const ColorFilter.mode(Colors.transparent, BlendMode.multiply)
+                          : ColorFilter.mode(Colors.grey.withOpacity(0.5), BlendMode.saturation),
+                      child: SizedBox.expand(
+                        child: _buildImageWidget(m['image']),
                       ),
                     ),
                   ),
-              ],
-            ),
-          ),
-          // FIXED: Reduced padding and spacing
-          Padding(
-            padding: EdgeInsets.all(isLandscape ? 6 : 10), // REDUCED: from 8/12 to 6/10
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min, // ADDED: Minimize size
-              children: [
-                // Title
-                Text(
-                  m['title'],
-                  style: TextStyle(
-                    fontSize: isLandscape ? 12 : 14,
-                    fontWeight: FontWeight.bold,
-                    color: isAvailable ? AppColors.darkText : Colors.grey,
-                    decoration: isAvailable ? null : TextDecoration.lineThrough,
-                  ),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 2), // REDUCED: from 4 to 2
-                // Price
-                Text(
-                  'Ksh ${m['price']}',
-                  style: TextStyle(
-                    fontSize: isLandscape ? 12 : 14,
-                    fontWeight: FontWeight.bold,
-                    color: isAvailable ? AppColors.primary : Colors.grey,
-                  ),
-                ),
-                const SizedBox(height: 6), // REDUCED: from 8 to 6
-                // FIXED: Reduced button heights and sizes
-                Row(
-                  children: [
-                    Expanded(
-                      flex: 4,
-                      child: Opacity(
-                        opacity: isAvailable ? 1.0 : 0.5,
-                        child: Container(
-                          height: isLandscape ? 26 : 28, // REDUCED: from 28/32 to 26/28
-                          decoration: BoxDecoration(
-                            color: AppColors.primary.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: _qtyButton(
-                                  Icons.remove, 
-                                  isAvailable 
-                                      ? () => setState(() => _qty = math.max(0, _qty - 1))
-                                      : () {},
-                                ),
+                  if (!isAvailable)
+                    Container(
+                      decoration: const BoxDecoration(
+                        borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
+                        color: Colors.black54,
+                      ),
+                      child: const Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.block, color: Colors.white, size: 32),
+                            SizedBox(height: 4),
+                            Text(
+                              'OUT OF STOCK',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 12,
                               ),
-                              Expanded(
-                                child: Center(
-                                  child: Text(
-                                    '$_qty',
-                                    style: TextStyle(
-                                      fontSize: isLandscape ? 10 : 11, // REDUCED: from 11/12 to 10/11
-                                      fontWeight: FontWeight.bold,
-                                      color: AppColors.primary,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            // FIXED: Reduced padding and spacing
+            Padding(
+              padding: EdgeInsets.all(isLandscape ? 6 : 10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Title
+                  Text(
+                    m['title'],
+                    style: TextStyle(
+                      fontSize: isLandscape ? 12 : 14,
+                      fontWeight: FontWeight.bold,
+                      color: isAvailable ? AppColors.darkText : Colors.grey,
+                      decoration: isAvailable ? null : TextDecoration.lineThrough,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 2),
+                  // Price
+                  Text(
+                    'Ksh ${m['price']}',
+                    style: TextStyle(
+                      fontSize: isLandscape ? 12 : 14,
+                      fontWeight: FontWeight.bold,
+                      color: isAvailable ? AppColors.primary : Colors.grey,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  // FIXED: Reduced button heights and sizes
+                  Row(
+                    children: [
+                      Expanded(
+                        flex: 4,
+                        child: Opacity(
+                          opacity: isAvailable ? 1.0 : 0.5,
+                          child: Container(
+                            height: isLandscape ? 26 : 28,
+                            decoration: BoxDecoration(
+                              color: AppColors.primary.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: _qtyButton(
+                                    Icons.remove, 
+                                    isAvailable 
+                                        ? () => setState(() => _qty = math.max(0, _qty - 1))
+                                        : () {},
+                                  ),
+                                ),
+                                Expanded(
+                                  child: Center(
+                                    child: Text(
+                                      '$_qty',
+                                      style: TextStyle(
+                                        fontSize: isLandscape ? 10 : 11,
+                                        fontWeight: FontWeight.bold,
+                                        color: AppColors.primary,
+                                      ),
                                     ),
                                   ),
                                 ),
-                              ),
-                              Expanded(
-                                child: _qtyButton(
-                                  Icons.add, 
-                                  isAvailable 
-                                      ? () => setState(() => _qty++)
-                                      : () {},
+                                Expanded(
+                                  child: _qtyButton(
+                                    Icons.add, 
+                                    isAvailable 
+                                        ? () => setState(() => _qty++)
+                                        : () {},
+                                  ),
                                 ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 6), // REDUCED: from 8 to 6
-                    Expanded(
-                      flex: 5,
-                      child: SizedBox(
-                        height: isLandscape ? 26 : 28, // REDUCED: from 28/32 to 26/28
-                        child: ElevatedButton(
-                          onPressed: (isAvailable && _qty > 0) ? _addToCart : null,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: (isAvailable && _qty > 0) 
-                                ? AppColors.primary 
-                                : AppColors.lightGray,
-                            padding: EdgeInsets.zero,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(6),
+                              ],
                             ),
                           ),
-                          child: Icon(
-                            Icons.shopping_cart,
-                            color: Colors.white,
-                            size: isLandscape ? 13 : 14, // REDUCED: from 14/16 to 13/14
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        flex: 5,
+                        child: SizedBox(
+                          height: isLandscape ? 26 : 28,
+                          child: ElevatedButton(
+                            onPressed: (isAvailable && _qty > 0) ? _addToCart : null,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: (isAvailable && _qty > 0) 
+                                  ? AppColors.primary 
+                                  : AppColors.lightGray,
+                              padding: EdgeInsets.zero,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                            ),
+                            child: Icon(
+                              Icons.shopping_cart,
+                              color: Colors.white,
+                              size: isLandscape ? 13 : 14,
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                  ],
-                ),
-              ],
+                    ],
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
-    );
+    ); // ADDED: Close GestureDetector
   }
 
   Widget _qtyButton(IconData icon, VoidCallback onTap) {

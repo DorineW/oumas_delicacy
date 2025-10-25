@@ -12,6 +12,7 @@ import '../models/cart_item.dart';
 import '../providers/cart_provider.dart';
 import '../providers/favorites_provider.dart';
 import '../providers/reviews_provider.dart'; // ADDED
+import '../services/auth_service.dart'; // ADDED
 
 class MealDetailScreen extends StatefulWidget {
   final Map<String, dynamic> meal;
@@ -236,13 +237,16 @@ class _MealDetailScreenState extends State<MealDetailScreen> {
     final cartProvider = Provider.of<CartProvider>(context, listen: false);
     final favoritesProvider = Provider.of<FavoritesProvider>(context);
     final reviewsProvider = Provider.of<ReviewsProvider>(context); // ADDED
+    final auth = Provider.of<AuthService>(context); // ADDED
+
+    final userId = auth.currentUser?.id ?? 'guest'; // ADDED
+    final isFavorite = favoritesProvider.isFavorite(userId, meal['title']); // ADDED
 
     final String title = (meal['title'] ?? 'Untitled').toString();
     final int price = (meal['price'] ?? 0) is int ? meal['price'] : int.tryParse(meal['price'].toString()) ?? 0;
     final String category = (meal['category'] ?? '').toString();
     final double rating = reviewsProvider.getAverageRating(title); // UPDATED: Get from provider
     final String description = (meal['description'] ?? 'Delicious and freshly made.').toString();
-    final bool isLiked = favoritesProvider.isFavorite(title);
     final reviews = reviewsProvider.getReviewsForMeal(title); // ADDED: Get reviews for this meal
 
     return Scaffold(
@@ -289,36 +293,25 @@ class _MealDetailScreenState extends State<MealDetailScreen> {
               onPressed: () => Navigator.pop(context),
             ),
             actions: [
+              // UPDATED: Use proper favorites provider
               IconButton(
-                icon: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.5),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(
-                    isLiked ? Icons.favorite : Icons.favorite_border,
-                    color: isLiked ? Colors.red : Colors.white,
-                    size: 20,
-                  ),
+                icon: Icon(
+                  isFavorite ? Icons.favorite : Icons.favorite_border,
+                  color: isFavorite ? Colors.red : Colors.white,
                 ),
                 onPressed: () {
-                  // UPDATED: Use provider to toggle favorite (provider expects the meal title)
-                  favoritesProvider.toggleFavorite(title);
+                  favoritesProvider.toggleFavorite(userId, widget.meal['title']);
                   HapticFeedback.lightImpact();
                   
-                  // Show snackbar feedback
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
                       content: Text(
-                        isLiked 
-                            ? '💔 Removed from favorites' 
-                            : '❤️ Added to favorites',
+                        isFavorite 
+                            ? 'Removed from favorites' 
+                            : 'Added to favorites',
                       ),
-                      backgroundColor: isLiked ? Colors.grey : Colors.red,
-                      behavior: SnackBarBehavior.floating,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       duration: const Duration(seconds: 1),
+                      backgroundColor: isFavorite ? Colors.grey : Colors.red,
                     ),
                   );
                 },

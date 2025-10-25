@@ -132,7 +132,35 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         if (lat is num && lng is num) {
           setState(() {
             _deliveryLatLng = LatLng(lat.toDouble(), lng.toDouble());
+            if (result.containsKey('address')) {
+              _deliveryAddressController.text = result['address'] ?? '';
+            }
           });
+          
+          // ADDED: Check if outside delivery zone
+          if (result['outsideZone'] == true) {
+            if (!mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Row(
+                  children: [
+                    const Icon(Icons.warning, color: Colors.white),
+                    const SizedBox(width: 8),
+                    const Expanded(
+                      child: Text(
+                        'You are outside the delivery area! Delivery may not be available.',
+                      ),
+                    ),
+                  ],
+                ),
+                backgroundColor: Colors.red,
+                duration: const Duration(seconds: 5),
+                behavior: SnackBarBehavior.floating,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                margin: const EdgeInsets.all(16),
+              ),
+            );
+          }
           return;
         }
       }

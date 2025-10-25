@@ -655,8 +655,8 @@ class _AdminMenuManagementScreenState extends State<AdminMenuManagementScreen> {
               if (isCategories) ...[
                 const SizedBox(width: 4),
                 Icon(
-                  _showCategoryManagement ? Icons.visibility_off : Icons.visibility,
-                  size: 14,
+                  _showCategoryManagement ? Icons.expand_less : Icons.expand_more,
+                  size: 16,
                   color: color,
                 ),
               ],
@@ -674,9 +674,8 @@ class _AdminMenuManagementScreenState extends State<AdminMenuManagementScreen> {
     );
   }
 
-  // UPDATED: Build category management section - matches inventory low stock styling
+  // UPDATED: Build category management section with close button and better sizing
   Widget _buildCategoryManagement(MenuProvider menuProvider) {
-    // FIXED: Only show when toggle is active
     if (!_showCategoryManagement) {
       return const SizedBox.shrink();
     }
@@ -699,11 +698,19 @@ class _AdminMenuManagementScreenState extends State<AdminMenuManagementScreen> {
         color: Colors.blue.withOpacity(0.05),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: Colors.blue.withOpacity(0.3)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Column(
+        mainAxisSize: MainAxisSize.min, // ADDED: Prevent overflow
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header
+          // UPDATED: Header with close button
           Row(
             children: [
               Container(
@@ -740,54 +747,71 @@ class _AdminMenuManagementScreenState extends State<AdminMenuManagementScreen> {
                   ),
                 ),
               ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          
-          // Add new category
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _categoryNameController,
-                  decoration: InputDecoration(
-                    hintText: 'Enter new category name...',
-                    hintStyle: TextStyle(fontSize: 14, color: AppColors.darkText.withOpacity(0.4)),
-                    prefixIcon: Icon(Icons.add_circle_outline, size: 20, color: Colors.blue),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      borderSide: BorderSide(color: AppColors.lightGray.withOpacity(0.3)),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      borderSide: BorderSide(color: AppColors.lightGray.withOpacity(0.3)),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      borderSide: const BorderSide(color: Colors.blue, width: 2),
-                    ),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                    isDense: true,
-                  ),
-                  onSubmitted: (_) => _addCategory(menuProvider),
-                ),
-              ),
               const SizedBox(width: 8),
-              ElevatedButton.icon(
-                onPressed: () => _addCategory(menuProvider),
-                icon: const Icon(Icons.add, size: 18),
-                label: const Text('Add'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blue,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                ),
+              // ADDED: Close button
+              IconButton(
+                onPressed: () {
+                  setState(() {
+                    _showCategoryManagement = false;
+                  });
+                },
+                icon: const Icon(Icons.close, color: Colors.blue),
+                tooltip: 'Close',
+                constraints: const BoxConstraints(),
+                padding: const EdgeInsets.all(4),
               ),
             ],
           ),
           const SizedBox(height: 16),
           
-          // Existing categories list
+          // UPDATED: Add new category with constrained height
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 48), // ADDED: Prevent overflow
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _categoryNameController,
+                    decoration: InputDecoration(
+                      hintText: 'Enter new category name...',
+                      hintStyle: TextStyle(fontSize: 14, color: AppColors.darkText.withOpacity(0.4)),
+                      prefixIcon: const Icon(Icons.add_circle_outline, size: 20, color: Colors.blue),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide(color: AppColors.lightGray.withOpacity(0.3)),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide(color: AppColors.lightGray.withOpacity(0.3)),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: const BorderSide(color: Colors.blue, width: 2),
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                      isDense: true,
+                    ),
+                    onSubmitted: (_) => _addCategory(menuProvider),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                ElevatedButton.icon(
+                  onPressed: () => _addCategory(menuProvider),
+                  icon: const Icon(Icons.add, size: 18),
+                  label: const Text('Add'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    minimumSize: const Size(0, 48), // ADDED: Match text field height
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          
+          // UPDATED: Existing categories list with max height
           if (allCategories.isEmpty)
             Container(
               padding: const EdgeInsets.all(20),
@@ -802,62 +826,68 @@ class _AdminMenuManagementScreenState extends State<AdminMenuManagementScreen> {
               ),
             )
           else
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: allCategories.map((category) {
-                final itemCount = menuProvider.menuItems
-                    .where((item) => item['category'] == category)
-                    .length;
-                
-                return Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.blue.withOpacity(0.2)),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.folder, size: 16, color: Colors.blue),
-                      const SizedBox(width: 6),
-                      Text(
-                        category,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w600,
-                          fontSize: 13,
-                        ),
+            // ADDED: Constrain height and make scrollable
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 200), // ADDED: Max height
+              child: SingleChildScrollView(
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: allCategories.map((category) {
+                    final itemCount = menuProvider.menuItems
+                        .where((item) => item['category'] == category)
+                        .length;
+                    
+                    return Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.blue.withOpacity(0.2)),
                       ),
-                      const SizedBox(width: 4),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: Colors.blue.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Text(
-                          '$itemCount',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.blue,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.folder, size: 16, color: Colors.blue),
+                          const SizedBox(width: 6),
+                          Text(
+                            category,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 13,
+                            ),
                           ),
-                        ),
+                          const SizedBox(width: 4),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.blue.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Text(
+                              '$itemCount',
+                              style: const TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.blue,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          InkWell(
+                            onTap: () => _deleteCategory(menuProvider, category),
+                            child: Icon(
+                              Icons.close,
+                              size: 16,
+                              color: Colors.red.withOpacity(0.7),
+                            ),
+                          ),
+                        ],
                       ),
-                      const SizedBox(width: 4),
-                      InkWell(
-                        onTap: () => _deleteCategory(menuProvider, category),
-                        child: Icon(
-                          Icons.close,
-                          size: 16,
-                          color: Colors.red.withOpacity(0.7),
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              }).toList(),
+                    );
+                  }).toList(),
+                ),
+              ),
             ),
         ],
       ),

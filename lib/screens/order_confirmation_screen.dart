@@ -16,6 +16,7 @@ class OrderConfirmationScreen extends StatefulWidget {
   final String customerName;
   final String? deliveryAddress;
   final String? specialInstructions;
+  final String? phoneNumber; // ADDED
 
   const OrderConfirmationScreen({
     super.key,
@@ -26,6 +27,7 @@ class OrderConfirmationScreen extends StatefulWidget {
     required this.customerName,
     this.deliveryAddress,
     this.specialInstructions,
+    this.phoneNumber, // ADDED
   });
 
   @override
@@ -43,14 +45,13 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
   void initState() {
     super.initState();
     _startCancellationTimer();
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    if (!_addedToProvider) {
-      _initializeOrder();
-    }
+    
+    // FIXED: Defer initialization until after build
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && !_addedToProvider) {
+        _initializeOrder();
+      }
+    });
   }
 
   @override
@@ -75,15 +76,19 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
       id: id,
       customerId: widget.customerId,
       customerName: widget.customerName,
+      deliveryPhone: widget.phoneNumber,
       date: DateTime.now(),
       items: items,
       totalAmount: widget.totalAmount,
       status: OrderStatus.confirmed,
       deliveryType: widget.deliveryType,
+      deliveryAddress: widget.deliveryAddress,
     );
 
     provider.addOrder(_order);
-    _addedToProvider = true;
+    setState(() {
+      _addedToProvider = true;
+    });
   }
 
   void _startCancellationTimer() {
@@ -102,42 +107,210 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
   }
 
   void _cancelOrder() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Cancel Order?'),
-        content: Text(
-          'You have ${_formatTimeLeft(_cancellationTimeLeft)} left to cancel. Are you sure?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Keep Order'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Cancel Order'),
-          ),
-        ],
-      ),
-    );
+    final confirmed = await _showCancellationReasonDialog();
 
-    if (confirmed == true) {
+    if (confirmed != null && confirmed.isNotEmpty) {
       final provider = Provider.of<OrderProvider>(context, listen: false);
-      provider.updateStatus(_order.id, OrderStatus.cancelled);
+      provider.cancelOrder(_order.id, confirmed); // UPDATED: Use cancelOrder with reason
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Order cancelled successfully'),
-            backgroundColor: Colors.green,
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.check_circle, color: Colors.white),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Text('Order cancelled successfully'),
+                ),
+              ],
+            ),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            margin: const EdgeInsets.all(16),
           ),
         );
         
         Navigator.popUntil(context, (route) => route.isFirst);
       }
     }
+  }
+
+  // ADDED: Show cancellation reason dialog
+  Future<String?> _showCancellationReasonDialog() async {
+    String? selectedReason;
+    final TextEditingController customController = TextEditingController();
+    
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.red.withOpacity(0.2),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.cancel, color: Colors.red, size: 20),
+                ),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Text(
+                    'Cancel Order',
+                    style: TextStyle(fontSize: 16),
+                  ),
+                ),
+              ],
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.timer, size: 16, color: Colors.orange),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Time remaining: ${_formatTimeLeft(_cancellationTimeLeft)}',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.orange,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Please tell us why you want to cancel:',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  
+                  // Reason options
+                  ...[
+                    'Changed my mind',
+                    'Ordered by mistake',
+                    'Too expensive',
+                    'Found better alternative',
+                    'Taking too long',
+                    'Other',
+                  ].map((reason) => Container(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    decoration: BoxDecoration(
+                      color: selectedReason == reason 
+                          ? AppColors.primary.withOpacity(0.1)
+                          : Colors.transparent,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: selectedReason == reason
+                            ? AppColors.primary
+                            : AppColors.lightGray.withOpacity(0.3),
+                      ),
+                    ),
+                    child: RadioListTile<String>(
+                      title: Text(
+                        reason,
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: selectedReason == reason
+                              ? AppColors.primary
+                              : AppColors.darkText,
+                          fontWeight: selectedReason == reason
+                              ? FontWeight.w600
+                              : FontWeight.normal,
+                        ),
+                      ),
+                      value: reason,
+                      groupValue: selectedReason,
+                      activeColor: AppColors.primary,
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+                      onChanged: (value) => setDialogState(() => selectedReason = value),
+                    ),
+                  )),
+                  
+                  // Custom reason input
+                  if (selectedReason == 'Other') ...[
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: customController,
+                      decoration: InputDecoration(
+                        labelText: 'Please specify reason',
+                        hintText: 'Enter your reason...',
+                        prefixIcon: const Icon(Icons.edit, size: 20),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                      ),
+                      maxLines: 2,
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  customController.dispose();
+                  Navigator.pop(context);
+                },
+                child: const Text('Keep Order'),
+              ),
+              ElevatedButton(
+                onPressed: selectedReason == null ? null : () {
+                  String reason = selectedReason!;
+                  
+                  // Use custom reason if "Other" is selected
+                  if (selectedReason == 'Other') {
+                    final custom = customController.text.trim();
+                    if (custom.isEmpty) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Please specify a custom reason'),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                      return;
+                    }
+                    reason = custom;
+                  }
+                  
+                  customController.dispose();
+                  Navigator.pop(context, reason);
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red,
+                  foregroundColor: Colors.white,
+                ),
+                child: const Text('Confirm Cancellation'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+    
+    return result;
   }
 
   String _formatTimeLeft(int seconds) {
@@ -320,13 +493,13 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
             
             const SizedBox(height: 16),
             
-            // FIXED: Direct navigation without popping first
+            // FIXED: Direct navigation to order history
             TextButton(
               onPressed: () {
                 Navigator.pushReplacement(
                   context,
                   MaterialPageRoute(
-                    builder: (context) => OrderHistoryScreen(customerId: widget.customerId),
+                    builder: (context) => const OrderHistoryScreen(), // FIXED: Removed customerId parameter
                   ),
                 );
               },
