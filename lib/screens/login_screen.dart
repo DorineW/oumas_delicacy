@@ -1,4 +1,6 @@
 // login_screen.dart
+// ignore_for_file: unused_import
+
 import 'package:flutter/material.dart';
 import 'package:sign_in_button/sign_in_button.dart';
 import 'package:provider/provider.dart';
@@ -9,6 +11,8 @@ import 'home_screen.dart';
 import 'admin/admin_dashboard_screen.dart';
 import 'rider/rider_dashboard_screen.dart';
 import '../widgets/bike_animation.dart'; // Import the bike animation
+import 'register_screen.dart'; // ADDED: Import register screen
+import 'forgot_password_screen.dart'; // ADDED
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -64,13 +68,23 @@ class _LoginScreenState extends State<LoginScreen>
 
       if (!mounted) return;
 
-      final isAdmin = Provider.of<AuthService>(context, listen: false).isAdmin;
+      // UPDATED: Check for admin, rider, or customer
+      final auth = Provider.of<AuthService>(context, listen: false);
+      final isAdmin = auth.isAdmin;
+      final isRider = auth.isRider;
 
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
-          builder: (context) =>
-              isAdmin ? const AdminDashboardScreen() : const HomeScreen(),
+          builder: (context) {
+            if (isAdmin) {
+              return const AdminDashboardScreen();
+            } else if (isRider) {
+              return const RiderDashboardScreen();
+            } else {
+              return const HomeScreen();
+            }
+          },
         ),
       );
     } catch (e) {
@@ -97,7 +111,7 @@ class _LoginScreenState extends State<LoginScreen>
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                // ADDED: Logo at the top
+                // Logo at the top
                 Image.asset(
                   'assets/images/splash_logo.png',
                   width: 120,
@@ -111,13 +125,6 @@ class _LoginScreenState extends State<LoginScreen>
                   },
                 ),
                 const SizedBox(height: 24),
-
-                // App Logo
-                Image.asset(
-                  "assets/images/app_icon.png",
-                  height: 120,
-                ),
-                const SizedBox(height: 20),
 
                 // Sliding slogan
                 SlideTransition(
@@ -146,6 +153,7 @@ class _LoginScreenState extends State<LoginScreen>
                   controller: _emailController,
                   decoration: InputDecoration(
                     labelText: 'Email',
+                    prefixIcon: const Icon(Icons.email),
                     filled: true,
                     fillColor: AppColors.cardBackground,
                     border: OutlineInputBorder(
@@ -161,6 +169,7 @@ class _LoginScreenState extends State<LoginScreen>
                   controller: _passwordController,
                   decoration: InputDecoration(
                     labelText: 'Password',
+                    prefixIcon: const Icon(Icons.lock),
                     filled: true,
                     fillColor: AppColors.cardBackground,
                     border: OutlineInputBorder(
@@ -171,7 +180,7 @@ class _LoginScreenState extends State<LoginScreen>
                 ),
                 const SizedBox(height: 24),
                 
-                // Customer Login button
+                // Login button
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
@@ -194,49 +203,53 @@ class _LoginScreenState extends State<LoginScreen>
                             ),
                           )
                         : const Text(
-                            'Login as Customer',
+                            'Login',
                             style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                           ),
                   ),
                 ),
                 const SizedBox(height: 16),
-                
-                // Rider Login button
+
+                // ADDED: Register button
                 SizedBox(
                   width: double.infinity,
-                  child: OutlinedButton.icon(
+                  child: OutlinedButton(
                     onPressed: _isLoading ? null : () {
-                      Navigator.pushReplacement(
+                      Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (_) => const RiderDashboardScreen(),
+                          builder: (_) => const RegisterScreen(),
                         ),
                       );
                     },
-                    icon: const Icon(Icons.delivery_dining, size: 20),
-                    label: const Text(
-                      'Login as Rider',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                    ),
                     style: OutlinedButton.styleFrom(
-                      foregroundColor: AppColors.accent,
-                      side: BorderSide(color: AppColors.accent, width: 2),
+                      foregroundColor: AppColors.primary,
+                      side: const BorderSide(color: AppColors.primary, width: 2),
                       padding: const EdgeInsets.symmetric(vertical: 16),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
+                    ),
+                    child: const Text(
+                      'Create Account',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                     ),
                   ),
                 ),
                 
                 const SizedBox(height: 12),
 
-                // Forgot password
+                // UPDATED: Forgot password - now navigates to forgot password screen
                 Align(
                   alignment: Alignment.centerRight,
                   child: TextButton(
                     onPressed: () {
-                      // TODO: Implement forgot password logic
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const ForgotPasswordScreen(),
+                        ),
+                      );
                     },
                     child: const Text(
                       "Forgot Password?",
@@ -292,25 +305,86 @@ class _LoginScreenState extends State<LoginScreen>
                 const SizedBox(height: 30),
 
                 // Demo admin login
-                TextButton(
-                  onPressed: kDebugMode
-                      ? () async {
-                          // set demo credentials and trigger the login flow (debug only)
-                          _emailController.text = 'admin@example.com';
-                          _passwordController.text = 'admin123';
-
-                          // call the same login function you already use
-                          await _login();
-                        }
-                      : null, // disabled in release builds
-                  child: Text(
-                    'Use admin credentials (demo)',
-                    style: TextStyle(color: AppColors.lightGray),
+                if (kDebugMode) ...[
+                  const SizedBox(height: 24),
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.blue.withOpacity(0.3)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(Icons.info, color: Colors.blue, size: 18),
+                            const SizedBox(width: 8),
+                            const Text(
+                              'Demo Accounts (Testing Only)',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 14,
+                                color: Colors.blue,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        _demoAccountButton(
+                          'Rider',
+                          'rider@example.com',
+                          'rider123',
+                          Icons.delivery_dining,
+                          Colors.orange,
+                        ),
+                        const SizedBox(height: 8),
+                        _demoAccountButton(
+                          'Admin',
+                          'admin@example.com',
+                          'admin123',
+                          Icons.admin_panel_settings,
+                          Colors.red,
+                        ),
+                      ],
+                    ),
                   ),
-                ),
+                ],
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _demoAccountButton(
+    String role,
+    String email,
+    String password,
+    IconData icon,
+    Color color,
+  ) {
+    return ElevatedButton.icon(
+      onPressed: () async {
+        // set demo credentials and trigger the login flow (debug only)
+        _emailController.text = email;
+        _passwordController.text = password;
+
+        // call the same login function you already use
+        await _login();
+      },
+      icon: Icon(icon, size: 20, color: Colors.white),
+      label: Text(
+        'Login as $role',
+        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+      ),
+      style: ElevatedButton.styleFrom(
+        backgroundColor: color,
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
         ),
       ),
     );

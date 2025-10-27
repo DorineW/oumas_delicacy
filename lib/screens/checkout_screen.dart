@@ -1,4 +1,6 @@
 // lib/screens/checkout_screen.dart
+// ignore_for_file: unused_import
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:geolocator/geolocator.dart' show Position;
@@ -186,72 +188,77 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     ).toList();
 
     if (unavailableItems.isNotEmpty) {
+      final itemNames = unavailableItems.map((item) => item.mealTitle).join(', ');
+      if (!mounted) return;
+      
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Some items became unavailable. Please review your cart.'),
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.error, color: Colors.white),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text('The following items are no longer available: $itemNames'),
+              ),
+            ],
+          ),
           backgroundColor: Colors.red,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          margin: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 4),
         ),
       );
       return;
     }
 
     setState(() => _isProcessing = true);
+    
     try {
-      // Simulate processing
-      await Future.delayed(const Duration(seconds: 1));
-      if (!mounted) return;
+      // Simulate payment processing
+      await Future.delayed(const Duration(seconds: 2));
 
-      final auth = Provider.of<AuthService>(context, listen: false);
-      final customerId = auth.currentUser?.id ?? 'guest';
-      final customerName = auth.currentUser?.name ?? 'Guest';
+      if (!mounted) {
+        setState(() => _isProcessing = false);
+        return;
+      }
 
-      // ADDED: Clear cart after successful payment
-      final cart = Provider.of<CartProvider>(context, listen: false);
-      
-      // FIXED: Navigate to confirmation screen
-      await Navigator.pushNamed(
+      // Navigate to confirmation screen
+      Navigator.pushReplacementNamed(
         context,
         '/confirmation',
         arguments: {
           'items': widget.selectedItems,
           'deliveryType': _deliveryLatLng != null ? DeliveryType.delivery : DeliveryType.pickup,
           'totalAmount': totalAmount,
-          'paymentMethod': _selectedMethod == PaymentMethod.cash ? 'Cash on Delivery' : 'M-Pesa',
-          'customerId': customerId,
-          'customerName': customerName,
-          'deliveryAddress': _deliveryAddressController.text.trim(),
-          'phoneNumber': _selectedMethod == PaymentMethod.cash 
-              ? _phoneController.text.trim() 
-              : _mpesaPhoneController.text.trim(),
-          'deliveryLocation': _deliveryLatLng != null 
-              ? {
-                  'latitude': _deliveryLatLng!.latitude,
-                  'longitude': _deliveryLatLng!.longitude,
-                }
+          'customerId': 'customer_001', // TODO: Get from auth
+          'customerName': 'Customer', // TODO: Get from auth
+          'deliveryAddress': _deliveryAddressController.text.isNotEmpty 
+              ? _deliveryAddressController.text 
+              : null,
+          'phoneNumber': _phoneController.text.isNotEmpty 
+              ? _phoneController.text 
               : null,
         },
       );
-
-      // ADDED: Clear cart items after confirmation screen is shown
-      if (mounted) {
-        for (final item in widget.selectedItems) {
-          cart.removeItem(item.id);
-        }
-        
-        // Pop back to home after clearing cart
-        Navigator.of(context).popUntil((route) => route.isFirst);
-      }
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted) {
+        setState(() => _isProcessing = false);
+        return;
+      }
+      
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Payment error: $e'),
+          content: Text('Payment failed: $e'),
           backgroundColor: Colors.red,
         ),
       );
-    } finally {
-      if (!mounted) return;
       setState(() => _isProcessing = false);
+    } finally {
+      // FIXED: Remove return statement from finally block
+      if (mounted) {
+        setState(() => _isProcessing = false);
+      }
     }
   }
 

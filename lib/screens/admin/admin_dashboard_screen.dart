@@ -1,5 +1,5 @@
 // lib/screens/admin/admin_dashboard_screen.dart
-// ignore_for_file: deprecated_member_use
+// ignore_for_file: deprecated_member_use, unused_import
 
 import 'dart:async';
 import 'dart:math';
@@ -28,9 +28,10 @@ class AdminDashboardScreen extends StatefulWidget {
 }
 
 class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
-  Timer? _fakeOrderTimer;
-  int _fakeOrderCounter = 1;
-  final Random _random = Random();
+  // REMOVED: Fake order timer and counter
+  // Timer? _fakeOrderTimer;
+  // int _fakeOrderCounter = 1;
+  // final Random _random = Random();
 
   // ADDED: State for chart visibility and time filter
   bool _showChart = false;
@@ -39,56 +40,16 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   @override
   void initState() {
     super.initState();
-    // UPDATED: Use OrderProvider instead of local list
-    _fakeOrderTimer = Timer.periodic(const Duration(seconds: 15), (_) {
-      _addFakeOrder();
-    });
+    // REMOVED: Fake order timer initialization
   }
 
   @override
   void dispose() {
-    _fakeOrderTimer?.cancel();
+    // REMOVED: Fake order timer cancellation
     super.dispose();
   }
 
-  // UPDATED: Add fake orders to OrderProvider
-  void _addFakeOrder() {
-    final provider = Provider.of<OrderProvider>(context, listen: false);
-    final count = 1 + _random.nextInt(3);
-    final chosen = List.generate(count, (_) => menuItems[_random.nextInt(menuItems.length)]);
-
-    final amount = chosen.fold<double>(0, (s, it) => s + it.price);
-    final now = DateTime.now();
-
-    final newOrder = Order(
-      id: 'ORD-${1000 + _fakeOrderCounter}',
-      customerId: 'cust_$_fakeOrderCounter',
-      customerName: 'Customer $_fakeOrderCounter',
-      date: now,
-      items: chosen.map((e) => OrderItem(
-        id: 'item_${_random.nextInt(100)}',
-        title: e.name,
-        quantity: 1 + _random.nextInt(3),
-        price: e.price.toInt(),
-      )).toList(),
-      totalAmount: amount.toInt(),
-      status: OrderStatus.pending, // IMPORTANT: Start as pending
-      deliveryType: _random.nextBool() ? DeliveryType.delivery : DeliveryType.pickup,
-    );
-
-    provider.addOrder(newOrder);
-    _fakeOrderCounter++;
-    
-    // ADDED: Automatically mark some orders as delivered for testing chart
-    if (_fakeOrderCounter % 3 == 0) {
-      // Every 3rd order, mark a random pending order as delivered
-      final pendingOrders = provider.orders.where((o) => o.status == OrderStatus.pending).toList();
-      if (pendingOrders.isNotEmpty) {
-        final orderToDeliver = pendingOrders[_random.nextInt(pendingOrders.length)];
-        provider.updateStatus(orderToDeliver.id, OrderStatus.delivered);
-      }
-    }
-  }
+  // REMOVED: _addFakeOrder method - no longer generating fake orders
 
   // UPDATED: Mark order as confirmed in OrderProvider
   void _markOrderHandled(String orderId, OrderProvider provider) {
@@ -680,7 +641,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     );
   }
 
-  // UPDATED: Stats card with delivered revenue
+  // UPDATED: Stats card with real orders only
   Widget _buildStatsCard(OrderProvider provider) {
     final now = DateTime.now();
     final todayOrders = provider.orders.where((o) =>
@@ -878,13 +839,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         return Colors.orange;
       case OrderStatus.confirmed:
         return Colors.blue;
-      case OrderStatus.assigned:
-        return Colors.purple;
-      case OrderStatus.pickedUp:
-        return Colors.teal;
-      case OrderStatus.onRoute:
-        return Colors.indigo;
-      case OrderStatus.inProcess:
+      case OrderStatus.inProgress: // UPDATED: Use inProgress instead of old statuses
         return Colors.purple;
       case OrderStatus.delivered:
         return AppColors.success;
@@ -899,13 +854,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         return Icons.shopping_cart;
       case OrderStatus.confirmed:
         return Icons.check_circle;
-      case OrderStatus.assigned:
-        return Icons.delivery_dining;
-      case OrderStatus.pickedUp:
-        return Icons.shopping_bag;
-      case OrderStatus.onRoute:
-        return Icons.directions_bike;
-      case OrderStatus.inProcess:
+      case OrderStatus.inProgress: // UPDATED: Use inProgress
         return Icons.restaurant;
       case OrderStatus.delivered:
         return Icons.done_all;
@@ -920,14 +869,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         return 'New order received';
       case OrderStatus.confirmed:
         return 'Order confirmed';
-      case OrderStatus.assigned:
-        return 'Order assigned to rider';
-      case OrderStatus.pickedUp:
-        return 'Order picked up';
-      case OrderStatus.onRoute:
-        return 'Order on the way';
-      case OrderStatus.inProcess:
-        return 'Order in process';
+      case OrderStatus.inProgress: // UPDATED: Use inProgress
+        return 'Order in preparation';
       case OrderStatus.delivered:
         return 'Order delivered';
       case OrderStatus.cancelled:
@@ -1205,6 +1148,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       onTap: onTap,
     );
   }
+
+  // UPDATED: Fix async context usage
 }
 
 class _AdminCard extends StatelessWidget {
@@ -1307,13 +1252,7 @@ class _NotificationOrderCard extends StatelessWidget {
         return Colors.orange;
       case OrderStatus.confirmed:
         return Colors.blue;
-      case OrderStatus.assigned: // ADDED
-        return Colors.purple;
-      case OrderStatus.pickedUp: // ADDED
-        return Colors.teal;
-      case OrderStatus.onRoute: // ADDED
-        return Colors.indigo;
-      case OrderStatus.inProcess:
+      case OrderStatus.inProgress: // UPDATED: Use inProgress
         return Colors.purple;
       case OrderStatus.delivered:
         return AppColors.success;
@@ -1323,7 +1262,18 @@ class _NotificationOrderCard extends StatelessWidget {
   }
 
   String _getStatusText(OrderStatus status) {
-    return status.toString().split('.').last;
+    switch (status) {
+      case OrderStatus.pending:
+        return 'Pending';
+      case OrderStatus.confirmed:
+        return 'Confirmed';
+      case OrderStatus.inProgress: // UPDATED: Use inProgress
+        return 'In Progress';
+      case OrderStatus.delivered:
+        return 'Delivered';
+      case OrderStatus.cancelled:
+        return 'Cancelled';
+    }
   }
 
   String _formatTime(DateTime date) {
@@ -1453,27 +1403,3 @@ class ChartPoint {
   final double value;
   const ChartPoint(this.label, this.value);
 }
-
-class MenuItem {
-  final String name;
-  final double price;
-  const MenuItem(this.name, this.price);
-}
-
-final List<MenuItem> menuItems = [
-  MenuItem('UGALI NYAMA CHOMA', 210),
-  MenuItem('UGALI LIVER', 220),
-  MenuItem('PILAU LIVER', 230),
-  MenuItem('UGALI SAMAKI', 300),
-  MenuItem('RICE LIVER', 220),
-  MenuItem('CHAPATI PLAIN', 20),
-  MenuItem('MATOKE BEEF', 230),
-  MenuItem('SAMOSA', 20),
-  MenuItem('SODA 500ml', 70),
-];
-
-final List<MenuItem> drinkItems = [
-  MenuItem('SODA 500ml', 70),
-  MenuItem('WATER 500ml', 50),
-  MenuItem('JUICE 300ml', 100),
-];

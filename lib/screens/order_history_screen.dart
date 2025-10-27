@@ -612,13 +612,7 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> with SingleTick
         return Colors.orange;
       case OrderStatus.confirmed:
         return Colors.blue;
-      case OrderStatus.assigned:
-        return Colors.purple;
-      case OrderStatus.pickedUp:
-        return Colors.teal;
-      case OrderStatus.onRoute:
-        return Colors.indigo;
-      case OrderStatus.inProcess:
+      case OrderStatus.inProgress:
         return Colors.purple;
       case OrderStatus.delivered:
         return AppColors.success;
@@ -628,7 +622,18 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> with SingleTick
   }
 
   String _getStatusText(OrderStatus status) {
-    return status.toString().split('.').last;
+    switch (status) {
+      case OrderStatus.pending:
+        return 'Pending';
+      case OrderStatus.confirmed:
+        return 'Confirmed';
+      case OrderStatus.inProgress:
+        return 'In Progress';
+      case OrderStatus.delivered:
+        return 'Delivered';
+      case OrderStatus.cancelled:
+        return 'Cancelled';
+    }
   }
 
   @override

@@ -2,14 +2,11 @@
 
 
 enum OrderStatus {
-  pending,     // Within 5-min cancellation window
-  confirmed,   // Admin confirmed, ready for next step
-  inProcess,   // ADDED: Order being prepared (for pickup orders)
-  assigned,    // Rider assigned (delivery only)
-  pickedUp,    // Rider collected order
-  onRoute,     // Rider en route to customer
-  delivered,   // Order completed
-  cancelled,   // Order cancelled
+  pending,      // Order placed, awaiting confirmation
+  confirmed,    // Admin confirmed, ready for preparation
+  inProgress,   // Being prepared
+  delivered,    // Order completed
+  cancelled,    // Order cancelled
 }
 
 enum DeliveryType {

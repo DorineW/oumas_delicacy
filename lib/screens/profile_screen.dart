@@ -33,18 +33,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
   // ADDED: Load saved profile data
   Future<void> _loadProfile() async {
     final prefs = await SharedPreferences.getInstance();
+    final auth = Provider.of<AuthService>(context, listen: false);
+    
     setState(() {
-      _userName = prefs.getString('name') ?? 'Dorin N.';
-      _userEmail = prefs.getString('email') ?? 'dorin@example.com';
+      // Load from auth service first, fallback to prefs
+      _userName = auth.currentUser?.name ?? prefs.getString('name') ?? 'Guest';
+      _userEmail = auth.currentUser?.email ?? prefs.getString('email') ?? 'guest@example.com';
       
       final profilePath = prefs.getString('profileImagePath');
       if (profilePath != null && profilePath.isNotEmpty) {
         final f = File(profilePath);
         if (f.existsSync()) {
           _profileImage = f;
+        } else {
+          _profileImage = null; // UPDATED: Clear invalid image path
         }
+      } else {
+        _profileImage = null; // UPDATED: No profile image for new users
       }
     });
+    
+    debugPrint('📱 Profile loaded: $_userName ($_userEmail)');
   }
 
   // ADDED: Refresh profile when returning from edit screen
@@ -117,12 +126,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 child: Column(
                   children: [
                     SizedBox(height: isLandscape ? 20 : 30),
-                    // UPDATED: Show saved profile image or default
+                    // UPDATED: Show saved profile image or default placeholder
                     CircleAvatar(
                       radius: isLandscape ? 40 : 50,
+                      backgroundColor: AppColors.primary.withOpacity(0.1), // ADDED: Background color
                       backgroundImage: _profileImage != null
                           ? FileImage(_profileImage!) as ImageProvider
-                          : const AssetImage('assets/images/profile.jpg'),
+                          : null, // UPDATED: Remove default asset image
+                      child: _profileImage == null
+                          ? Icon(
+                              Icons.person,
+                              size: isLandscape ? 40 : 50,
+                              color: AppColors.primary,
+                            )
+                          : null, // UPDATED: Show icon for new users
                     ),
                     SizedBox(height: isLandscape ? 12 : 16),
                     // UPDATED: Show saved name

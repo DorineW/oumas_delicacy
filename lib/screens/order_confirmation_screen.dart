@@ -38,6 +38,7 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
   bool _addedToProvider = false;
   late Order _order;
   Timer? _cancellationTimer;
+  Timer? _autoConfirmTimer; // ADDED: Timer for auto-confirmation
   int _cancellationTimeLeft = 300; // 5 minutes
   bool _canCancel = true;
 
@@ -57,6 +58,7 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
   @override
   void dispose() {
     _cancellationTimer?.cancel();
+    _autoConfirmTimer?.cancel(); // ADDED: Cancel auto-confirm timer
     super.dispose();
   }
 
@@ -80,7 +82,7 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
       date: DateTime.now(),
       items: items,
       totalAmount: widget.totalAmount,
-      status: OrderStatus.confirmed,
+      status: OrderStatus.pending, // CHANGED: Start as pending, not confirmed
       deliveryType: widget.deliveryType,
       deliveryAddress: widget.deliveryAddress,
     );
@@ -89,6 +91,9 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
     setState(() {
       _addedToProvider = true;
     });
+    
+    // ADDED: Start auto-confirmation timer
+    _startAutoConfirmTimer();
   }
 
   void _startCancellationTimer() {
@@ -102,6 +107,44 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
           _canCancel = false;
         });
         timer.cancel();
+      }
+    });
+  }
+
+  // ADDED: Auto-confirm order after 5 minutes
+  void _startAutoConfirmTimer() {
+    _autoConfirmTimer = Timer(const Duration(minutes: 5), () {
+      if (!mounted) return;
+      
+      final provider = Provider.of<OrderProvider>(context, listen: false);
+      final currentOrder = provider.orders.firstWhere(
+        (o) => o.id == _order.id,
+        orElse: () => _order,
+      );
+      
+      // Only auto-confirm if still pending (not cancelled)
+      if (currentOrder.status == OrderStatus.pending) {
+        provider.updateStatus(_order.id, OrderStatus.confirmed);
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Row(
+                children: [
+                  const Icon(Icons.check_circle, color: Colors.white),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Text('Your order has been confirmed!'),
+                  ),
+                ],
+              ),
+              backgroundColor: Colors.blue,
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              margin: const EdgeInsets.all(16),
+            ),
+          );
+        }
       }
     });
   }
@@ -328,18 +371,20 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
           size: 80,
         ),
         const SizedBox(height: 16),
-        const Text(
-          'Order Confirmed!',
-          style: TextStyle(
+        Text(
+          _canCancel ? 'Order Placed!' : 'Order Confirmed!',
+          style: const TextStyle(
             fontSize: 28,
             fontWeight: FontWeight.bold,
           ),
         ),
         const SizedBox(height: 8),
         Text(
-          widget.deliveryType == DeliveryType.delivery 
-            ? 'Your delicious food is on its way!'
-            : 'Your order will be ready for pickup soon!',
+          _canCancel
+              ? 'Your order is pending confirmation...'
+              : widget.deliveryType == DeliveryType.delivery 
+                  ? 'Your delicious food is on its way!'
+                  : 'Your order will be ready for pickup soon!',
           style: TextStyle(
             fontSize: 16,
             color: AppColors.darkText.withOpacity(0.7),
@@ -399,14 +444,17 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
     );
   }
 
+  // UPDATED: Cancellation policy with better messaging
   Widget _buildCancellationPolicy() {
     return Container(
       padding: const EdgeInsets.all(16),
       margin: const EdgeInsets.symmetric(vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.orange.withOpacity(0.1),
+        color: _canCancel ? Colors.orange.withOpacity(0.1) : Colors.blue.withOpacity(0.1),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.orange.withOpacity(0.3)),
+        border: Border.all(
+          color: _canCancel ? Colors.orange.withOpacity(0.3) : Colors.blue.withOpacity(0.3),
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -414,16 +462,16 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
           Row(
             children: [
               Icon(
-                _canCancel ? Icons.timer : Icons.lock_clock,
-                color: Colors.orange,
+                _canCancel ? Icons.timer : Icons.check_circle,
+                color: _canCancel ? Colors.orange : Colors.blue,
                 size: 20,
               ),
               const SizedBox(width: 8),
               Text(
-                _canCancel ? 'Cancellation Policy' : 'Cancellation Period Ended',
-                style: const TextStyle(
+                _canCancel ? 'Cancellation Window' : 'Order Confirmed',
+                style: TextStyle(
                   fontWeight: FontWeight.bold,
-                  color: Colors.orange,
+                  color: _canCancel ? Colors.orange : Colors.blue,
                 ),
               ),
             ],
@@ -431,8 +479,8 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
           const SizedBox(height: 8),
           Text(
             _canCancel 
-              ? 'You can cancel within 5 minutes. Time remaining: ${_formatTimeLeft(_cancellationTimeLeft)}'
-              : 'The 5-minute cancellation period has ended. Contact support for urgent concerns.',
+              ? 'Your order will be automatically confirmed in ${_formatTimeLeft(_cancellationTimeLeft)}. You can cancel before then.'
+              : 'Your order has been confirmed and is being prepared. Contact support for any changes.',
             style: TextStyle(
               color: AppColors.darkText.withOpacity(0.8),
             ),

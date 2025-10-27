@@ -742,13 +742,7 @@ class _RecentOrderCard extends StatelessWidget {
         return Colors.orange;
       case OrderStatus.confirmed:
         return Colors.blue;
-      case OrderStatus.assigned:
-        return Colors.purple;
-      case OrderStatus.pickedUp:
-        return Colors.teal;
-      case OrderStatus.onRoute:
-        return Colors.indigo;
-      case OrderStatus.inProcess:
+      case OrderStatus.inProgress:
         return Colors.purple;
       case OrderStatus.delivered:
         return AppColors.success;
@@ -758,7 +752,18 @@ class _RecentOrderCard extends StatelessWidget {
   }
 
   String _getStatusText(OrderStatus status) {
-    return status.toString().split('.').last.toUpperCase();
+    switch (status) {
+      case OrderStatus.pending:
+        return 'PENDING';
+      case OrderStatus.confirmed:
+        return 'CONFIRMED';
+      case OrderStatus.inProgress:
+        return 'IN PROGRESS';
+      case OrderStatus.delivered:
+        return 'DELIVERED';
+      case OrderStatus.cancelled:
+        return 'CANCELLED';
+    }
   }
 
   @override
