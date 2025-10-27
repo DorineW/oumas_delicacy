@@ -34,7 +34,7 @@ class _ManageOrdersScreenState extends State<ManageOrdersScreen>
   Set<OrderStatus> _selectedStatuses = {
     OrderStatus.pending,
     OrderStatus.confirmed,
-    OrderStatus.inProgress, // UPDATED: Use inProgress instead of inProcess
+    OrderStatus.preparing, // UPDATED: Use preparing instead of inProgress
   };
 
   @override
@@ -48,7 +48,15 @@ class _ManageOrdersScreenState extends State<ManageOrdersScreen>
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _scrollToHighlightedOrder();
+      // ADDED: Mark all pending orders as viewed
+      _markPendingOrdersAsViewed();
     });
+  }
+
+  // ADDED: Mark pending orders as viewed (resets notification count)
+  void _markPendingOrdersAsViewed() {
+    final provider = context.read<OrderProvider>();
+    provider.markPendingOrdersAsViewed();
   }
 
   @override
@@ -100,6 +108,20 @@ class _ManageOrdersScreenState extends State<ManageOrdersScreen>
     });
 
     return filtered; // ADDED: Missing return statement
+  }
+
+  // ADDED: Missing _getSortText method (only define once)
+  String _getSortText(OrderSort sort) {
+    switch (sort) {
+      case OrderSort.newestFirst:
+        return 'Newest First';
+      case OrderSort.oldestFirst:
+        return 'Oldest First';
+      case OrderSort.highestAmount:
+        return 'Highest Amount';
+      case OrderSort.lowestAmount:
+        return 'Lowest Amount';
+    }
   }
 
   void _showFilterDialog(BuildContext context) {
@@ -397,8 +419,10 @@ class _ManageOrdersScreenState extends State<ManageOrdersScreen>
         return 'Pending';
       case OrderStatus.confirmed:
         return 'Confirmed';
-      case OrderStatus.inProgress:
-        return 'In Progress';
+      case OrderStatus.preparing:
+        return 'Preparing';
+      case OrderStatus.outForDelivery:
+        return 'Out for Delivery';
       case OrderStatus.delivered:
         return 'Delivered';
       case OrderStatus.cancelled:
@@ -412,25 +436,14 @@ class _ManageOrdersScreenState extends State<ManageOrdersScreen>
         return Colors.orange;
       case OrderStatus.confirmed:
         return Colors.blue;
-      case OrderStatus.inProgress:
+      case OrderStatus.preparing:
         return Colors.purple;
+      case OrderStatus.outForDelivery:
+        return Colors.indigo;
       case OrderStatus.delivered:
         return AppColors.success;
       case OrderStatus.cancelled:
         return Colors.red;
-    }
-  }
-
-  String _getSortText(OrderSort sort) {
-    switch (sort) {
-      case OrderSort.newestFirst:
-        return 'Newest First';
-      case OrderSort.oldestFirst:
-        return 'Oldest First';
-      case OrderSort.highestAmount:
-        return 'Highest Amount';
-      case OrderSort.lowestAmount:
-        return 'Lowest Amount';
     }
   }
 }
@@ -805,7 +818,7 @@ class _AdminOrderCardState extends State<AdminOrderCard>
           ),
         ),
         actions: [
-          // Confirm button for pending orders
+          // UPDATED: Confirm button for pending orders
           if (widget.order.status == OrderStatus.pending)
             ElevatedButton(
               onPressed: () {
@@ -827,22 +840,44 @@ class _AdminOrderCardState extends State<AdminOrderCard>
               child: const Text('Confirm Order'),
             ),
 
-          // ADDED: Assign Rider button for confirmed orders
+          // ADDED: Start Preparing button for confirmed orders
           if (widget.order.status == OrderStatus.confirmed)
+            ElevatedButton(
+              onPressed: () {
+                Provider.of<OrderProvider>(context, listen: false)
+                    .updateStatus(widget.order.id, OrderStatus.preparing);
+                Navigator.pop(context);
+                
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: const Text('✓ Kitchen started preparing order'),
+                    backgroundColor: Colors.purple,
+                  ),
+                );
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.purple,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Start Preparing'),
+            ),
+
+          // UPDATED: Assign Rider button for preparing orders
+          if (widget.order.status == OrderStatus.preparing)
             ElevatedButton(
               onPressed: () {
                 Navigator.pop(context);
                 _assignRiderDialog(context, widget.order);
               },
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.purple,
+                backgroundColor: Colors.indigo,
                 foregroundColor: Colors.white,
               ),
               child: const Text('Assign Rider'),
             ),
 
-          // Mark Delivered for orders in progress
-          if (widget.order.status == OrderStatus.inProgress)
+          // UPDATED: Mark Delivered for orders out for delivery
+          if (widget.order.status == OrderStatus.outForDelivery)
             ElevatedButton(
               onPressed: () {
                 Provider.of<OrderProvider>(context, listen: false)
@@ -889,8 +924,9 @@ class _AdminOrderCardState extends State<AdminOrderCard>
     // ADDED: Get provider BEFORE showing dialog
     final provider = Provider.of<OrderProvider>(context, listen: false);
     
+    // FIXED: Use rider IDs that match AuthService demo accounts
     final riders = [
-      {'id': 'rider_1', 'name': 'John Rider'},
+      {'id': 'rider_001', 'name': 'John Rider'}, // FIXED: Match demo account ID
       {'id': 'rider_2', 'name': 'Mary Delivery'},
       {'id': 'rider_3', 'name': 'Bob Transport'},
     ];
@@ -902,6 +938,32 @@ class _AdminOrderCardState extends State<AdminOrderCard>
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            // ADDED: Info about current logged-in rider
+            Container(
+              padding: const EdgeInsets.all(12),
+              margin: const EdgeInsets.only(bottom: 16),
+              decoration: BoxDecoration(
+                color: Colors.blue.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.blue.withOpacity(0.3)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.info, size: 16, color: Colors.blue),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Order #${order.id}',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.blue,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
             ...riders.map((rider) => ListTile(
               leading: Container(
                 padding: const EdgeInsets.all(8),
@@ -912,7 +974,7 @@ class _AdminOrderCardState extends State<AdminOrderCard>
                 child: const Icon(Icons.delivery_dining, color: AppColors.primary),
               ),
               title: Text(rider['name']!),
-              subtitle: Text('ID: ${rider['id']}'),
+              subtitle: Text('ID: ${rider['id']}'), // Show rider ID for debugging
               onTap: () => Navigator.pop(dialogContext, rider),
             )),
             const Divider(),
@@ -938,6 +1000,7 @@ class _AdminOrderCardState extends State<AdminOrderCard>
     if (selected == null) return;
     
     // FIXED: Use provider that was captured BEFORE dialog
+    debugPrint('🔔 Assigning order ${order.id} to rider ${selected['id']} (${selected['name']})');
     provider.assignToRider(order.id, selected['id']!, selected['name']!);
     
     if (!mounted) return;
@@ -1195,8 +1258,10 @@ class _AdminOrderCardState extends State<AdminOrderCard>
         return Colors.orange;
       case OrderStatus.confirmed:
         return Colors.blue;
-      case OrderStatus.inProgress:
+      case OrderStatus.preparing:
         return Colors.purple;
+      case OrderStatus.outForDelivery:
+        return Colors.indigo;
       case OrderStatus.delivered:
         return AppColors.success;
       case OrderStatus.cancelled:
@@ -1210,8 +1275,10 @@ class _AdminOrderCardState extends State<AdminOrderCard>
         return 'Pending';
       case OrderStatus.confirmed:
         return 'Confirmed';
-      case OrderStatus.inProgress:
-        return 'In Progress';
+      case OrderStatus.preparing:
+        return 'Preparing';
+      case OrderStatus.outForDelivery:
+        return 'Out for Delivery';
       case OrderStatus.delivered:
         return 'Delivered';
       case OrderStatus.cancelled:

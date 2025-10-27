@@ -20,6 +20,13 @@ import 'admin_settings_screen.dart';
 import 'admin_menu_management_screen.dart';
 import '../../providers/menu_provider.dart';
 
+/// Models
+class ChartPoint {
+  final String label;
+  final double value;
+  const ChartPoint(this.label, this.value);
+}
+
 class AdminDashboardScreen extends StatefulWidget {
   const AdminDashboardScreen({super.key});
 
@@ -28,40 +35,27 @@ class AdminDashboardScreen extends StatefulWidget {
 }
 
 class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
-  // REMOVED: Fake order timer and counter
-  // Timer? _fakeOrderTimer;
-  // int _fakeOrderCounter = 1;
-  // final Random _random = Random();
-
-  // ADDED: State for chart visibility and time filter
   bool _showChart = false;
   String _selectedTimeFilter = '6H';
 
   @override
   void initState() {
     super.initState();
-    // REMOVED: Fake order timer initialization
   }
 
   @override
   void dispose() {
-    // REMOVED: Fake order timer cancellation
     super.dispose();
   }
 
-  // REMOVED: _addFakeOrder method - no longer generating fake orders
-
-  // UPDATED: Mark order as confirmed in OrderProvider
   void _markOrderHandled(String orderId, OrderProvider provider) {
     provider.updateStatus(orderId, OrderStatus.confirmed);
   }
 
-  // UPDATED: Get pending orders from OrderProvider
   List<Order> _getPendingOrders(OrderProvider provider) {
     return provider.orders.where((o) => o.status == OrderStatus.pending).toList();
   }
 
-  // UPDATED: Use OrderProvider for notifications
   void _openOrdersModal(BuildContext context, OrderProvider provider) {
     final pendingOrders = _getPendingOrders(provider);
     
@@ -174,7 +168,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     Navigator.of(context).push(MaterialPageRoute(builder: (_) => destination));
   }
 
-  // UPDATED: Make chart data based on delivered orders only
   List<ChartPoint> get _filteredChartData {
     final provider = Provider.of<OrderProvider>(context, listen: false);
     final deliveredOrders = provider.orders.where((o) => o.status == OrderStatus.delivered).toList();
@@ -212,7 +205,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     }
   }
 
-  // ADDED: Generate chart data from actual delivered orders
   List<ChartPoint> _generateChartData(
     List<Order> deliveredOrders,
     int dataPoints,
@@ -221,7 +213,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     final now = DateTime.now();
     final Map<String, double> dataMap = {};
     
-    // Initialize all time slots with 0
     for (int i = dataPoints - 1; i >= 0; i--) {
       DateTime timePoint;
       switch (_selectedTimeFilter) {
@@ -248,7 +239,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       }
     }
 
-    // Aggregate delivered orders into time slots
     for (final order in deliveredOrders) {
       final label = labelGenerator(order.date);
       if (label != null && dataMap.containsKey(label)) {
@@ -259,7 +249,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     return dataMap.entries.map((e) => ChartPoint(e.key, e.value)).toList();
   }
 
-  // UPDATED: Chart header with actual delivered data
   Widget _buildChartHeader() {
     final data = _filteredChartData;
     final totalRevenue = data.fold<double>(0, (sum, point) => sum + point.value);
@@ -317,7 +306,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           const SizedBox(height: 4),
           Text(
             value,
-            style: TextStyle(
+            style: const TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.bold,
               color: AppColors.primary,
@@ -351,7 +340,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           ),
         ),
         onSelected: (bool selected) {
-          // FIXED: Handle time filter change
           if (selected) {
             setState(() {
               _selectedTimeFilter = label;
@@ -362,89 +350,12 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     );
   }
 
-  Widget _buildChartSection() {
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 300),
-      width: double.infinity,
-      margin: const EdgeInsets.all(16),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.darkText.withOpacity(0.1),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                "Revenue Analytics",
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.darkText,
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: AppColors.primary.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.trending_up, size: 14, color: AppColors.primary),
-                    const SizedBox(width: 4),
-                    Text(
-                      _selectedTimeFilter,
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.primary,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          _buildChartHeader(),
-          const SizedBox(height: 8),
-          _buildDayChart(),
-          const SizedBox(height: 8),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                _buildTimeChip('6H', _selectedTimeFilter == '6H'),
-                _buildTimeChip('12H', _selectedTimeFilter == '12H'),
-                _buildTimeChip('1D', _selectedTimeFilter == '1D'),
-                _buildTimeChip('1W', _selectedTimeFilter == '1W'),
-                _buildTimeChip('1M', _selectedTimeFilter == '1M'),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ADDED: Build day chart method
   Widget _buildDayChart() {
     final data = _filteredChartData;
     final hasData = data.any((point) => point.value > 0);
     final maxY = data.isEmpty ? 1000.0 : max(1000.0, (data.map((e) => e.value).reduce(max)) * 1.3);
     final minY = 0.0;
-    final horizontalInterval = max(1.0, maxY / 4); // FIXED: Ensure interval is never zero
+    final horizontalInterval = max(1.0, maxY / 4);
 
     return Container(
       height: 240,
@@ -590,7 +501,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               ),
             ),
           ),
-          // ADDED: Show message when no data available
           if (!hasData)
             Center(
               child: Container(
@@ -641,13 +551,87 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     );
   }
 
-  // UPDATED: Stats card with real orders only
+  Widget _buildChartSection() {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 300),
+      width: double.infinity,
+      margin: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.darkText.withOpacity(0.1),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                "Revenue Analytics",
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.darkText,
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.trending_up, size: 14, color: AppColors.primary),
+                    const SizedBox(width: 4),
+                    Text(
+                      _selectedTimeFilter,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.primary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          _buildChartHeader(),
+          const SizedBox(height: 8),
+          _buildDayChart(),
+          const SizedBox(height: 8),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                _buildTimeChip('6H', _selectedTimeFilter == '6H'),
+                _buildTimeChip('12H', _selectedTimeFilter == '12H'),
+                _buildTimeChip('1D', _selectedTimeFilter == '1D'),
+                _buildTimeChip('1W', _selectedTimeFilter == '1W'),
+                _buildTimeChip('1M', _selectedTimeFilter == '1M'),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildStatsCard(OrderProvider provider) {
     final now = DateTime.now();
     final todayOrders = provider.orders.where((o) =>
       o.date.year == now.year && o.date.month == now.month && o.date.day == now.day).toList();
 
-    // FIXED: Only count delivered orders for revenue
     final todayRevenue = todayOrders
         .where((o) => o.status == OrderStatus.delivered)
         .fold<double>(0, (sum, o) => sum + o.totalAmount);
@@ -743,11 +727,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     );
   }
 
-  // UPDATED: Build recent activity from real orders
   Widget _buildRecentActivity() {
     final provider = Provider.of<OrderProvider>(context);
     
-    // Get recent orders (last 5) sorted by date
     final recentOrders = provider.orders.toList()
       ..sort((a, b) => b.date.compareTo(a.date));
     final displayOrders = recentOrders.take(5).toList();
@@ -825,7 +807,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     );
   }
 
-  // ADDED: Helper methods for activity display
   String _formatTimeAgo(Duration diff) {
     if (diff.inSeconds < 60) return '${diff.inSeconds}s ago';
     if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
@@ -839,8 +820,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         return Colors.orange;
       case OrderStatus.confirmed:
         return Colors.blue;
-      case OrderStatus.inProgress: // UPDATED: Use inProgress instead of old statuses
+      case OrderStatus.preparing:
         return Colors.purple;
+      case OrderStatus.outForDelivery:
+        return Colors.indigo;
       case OrderStatus.delivered:
         return AppColors.success;
       case OrderStatus.cancelled:
@@ -854,8 +837,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         return Icons.shopping_cart;
       case OrderStatus.confirmed:
         return Icons.check_circle;
-      case OrderStatus.inProgress: // UPDATED: Use inProgress
+      case OrderStatus.preparing:
         return Icons.restaurant;
+      case OrderStatus.outForDelivery:
+        return Icons.delivery_dining;
       case OrderStatus.delivered:
         return Icons.done_all;
       case OrderStatus.cancelled:
@@ -869,8 +854,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         return 'New order received';
       case OrderStatus.confirmed:
         return 'Order confirmed';
-      case OrderStatus.inProgress: // UPDATED: Use inProgress
+      case OrderStatus.preparing:
         return 'Order in preparation';
+      case OrderStatus.outForDelivery:
+        return 'Out for delivery';
       case OrderStatus.delivered:
         return 'Order delivered';
       case OrderStatus.cancelled:
@@ -887,10 +874,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         children: [
           _buildStatsCard(provider),
           
-          // UPDATED: Conditionally show chart section
           if (_showChart) _buildChartSection(),
 
-          // Quick Actions Section
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12),
             child: Row(
@@ -914,7 +899,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             ),
           ),
 
-          // Dashboard cards (simplified grid)
           Padding(
             padding: const EdgeInsets.all(16.0),
             child: GridView(
@@ -965,7 +949,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             ),
           ),
 
-          // Recent Activity Section
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16.0),
             child: Column(
@@ -1019,7 +1002,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                   color: AppColors.white,
                   onPressed: () => _openOrdersModal(context, orderProvider),
                 ),
-                // UPDATED: Show count from OrderProvider
                 if (pendingOrders.isNotEmpty)
                   Positioned(
                     right: 6,
@@ -1148,8 +1130,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       onTap: onTap,
     );
   }
-
-  // UPDATED: Fix async context usage
 }
 
 class _AdminCard extends StatelessWidget {
@@ -1252,8 +1232,10 @@ class _NotificationOrderCard extends StatelessWidget {
         return Colors.orange;
       case OrderStatus.confirmed:
         return Colors.blue;
-      case OrderStatus.inProgress: // UPDATED: Use inProgress
+      case OrderStatus.preparing:
         return Colors.purple;
+      case OrderStatus.outForDelivery:
+        return Colors.indigo;
       case OrderStatus.delivered:
         return AppColors.success;
       case OrderStatus.cancelled:
@@ -1267,8 +1249,10 @@ class _NotificationOrderCard extends StatelessWidget {
         return 'Pending';
       case OrderStatus.confirmed:
         return 'Confirmed';
-      case OrderStatus.inProgress: // UPDATED: Use inProgress
-        return 'In Progress';
+      case OrderStatus.preparing:
+        return 'Preparing';
+      case OrderStatus.outForDelivery:
+        return 'Out for Delivery';
       case OrderStatus.delivered:
         return 'Delivered';
       case OrderStatus.cancelled:
@@ -1371,7 +1355,7 @@ class _NotificationOrderCard extends StatelessWidget {
                     onPressed: onMarkHandled,
                     style: OutlinedButton.styleFrom(
                       foregroundColor: AppColors.success,
-                      side: BorderSide(color: AppColors.success),
+                      side: const BorderSide(color: AppColors.success),
                     ),
                     child: const Text('Confirm Order'),
                   ),
@@ -1394,12 +1378,4 @@ class _NotificationOrderCard extends StatelessWidget {
       ),
     );
   }
-}
-
-
-/// Models
-class ChartPoint {
-  final String label;
-  final double value;
-  const ChartPoint(this.label, this.value);
 }

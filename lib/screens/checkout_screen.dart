@@ -182,6 +182,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   Future<void> _payNow() async {
     // ADDED: Final availability check before processing payment
     final menuProvider = context.read<MenuProvider>();
+    final cartProvider = context.read<CartProvider>(); // ADDED: Get cart provider
+    final auth = context.read<AuthService>(); // ADDED: Get auth service
     
     final unavailableItems = widget.selectedItems.where(
       (item) => !menuProvider.isItemAvailable(item.mealTitle)
@@ -223,7 +225,17 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         return;
       }
 
-      // Navigate to confirmation screen
+      // UPDATED: Get actual user info from AuthService
+      final currentUser = auth.currentUser;
+      final customerId = currentUser?.id ?? 'guest';
+      final customerName = currentUser?.name ?? 'Guest User';
+
+      // FIXED: Clear cart items after successful checkout
+      for (final item in widget.selectedItems) {
+        cartProvider.removeItem(item.id);
+      }
+
+      // Navigate to confirmation screen with full customer info
       Navigator.pushReplacementNamed(
         context,
         '/confirmation',
@@ -231,8 +243,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           'items': widget.selectedItems,
           'deliveryType': _deliveryLatLng != null ? DeliveryType.delivery : DeliveryType.pickup,
           'totalAmount': totalAmount,
-          'customerId': 'customer_001', // TODO: Get from auth
-          'customerName': 'Customer', // TODO: Get from auth
+          'customerId': customerId, // UPDATED: Use actual customer ID
+          'customerName': customerName, // UPDATED: Use actual customer name
           'deliveryAddress': _deliveryAddressController.text.isNotEmpty 
               ? _deliveryAddressController.text 
               : null,
@@ -255,7 +267,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       );
       setState(() => _isProcessing = false);
     } finally {
-      // FIXED: Remove return statement from finally block
       if (mounted) {
         setState(() => _isProcessing = false);
       }

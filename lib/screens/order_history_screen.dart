@@ -6,6 +6,7 @@ import '../models/order.dart';
 import '../models/cart_item.dart';
 import '../providers/order_provider.dart';
 import '../providers/cart_provider.dart';
+import '../services/auth_service.dart';
 
 class OrderHistoryScreen extends StatefulWidget {
   // optional: pass the current customerId to show only their orders
@@ -38,6 +39,7 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> with SingleTick
     super.dispose();
   }
 
+  // KEPT: These methods are used in the order card actions
   bool _canOrderBeCancelled(Order order) {
     if (order.status == OrderStatus.cancelled || 
         order.status == OrderStatus.delivered) {
@@ -123,112 +125,199 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> with SingleTick
     );
   }
 
-  Widget _buildOrderCard(BuildContext context, Order order) {
-    final canCancel = _canOrderBeCancelled(order);
-
+  Widget _buildOrderCard(Order order) {
+    final auth = context.read<AuthService>();
+    final isAdmin = auth.currentUser?.role == 'admin';
+    
     return Card(
-        margin: const EdgeInsets.symmetric(vertical: 8),
-        elevation: 2,
-        child: InkWell(
-          onTap: () => _showOrderDetailsDialog(order),
-          child: Padding(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: ExpansionTile(
+        leading: Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: _getStatusColor(order.status).withOpacity(0.1),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(
+            _getStatusIcon(order.status), // FIXED: Added missing method call
+            color: _getStatusColor(order.status),
+            size: 20,
+          ),
+        ),
+        title: Text(
+          isAdmin ? 'Order #${order.id}' : order.customerName,
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '${order.date.day}/${order.date.month}/${order.date.year} ${order.date.hour.toString().padLeft(2, '0')}:${order.date.minute.toString().padLeft(2, '0')}',
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'KES ${order.totalAmount}',
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+                color: AppColors.primary,
+              ),
+            ),
+          ],
+        ),
+        trailing: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            color: _getStatusColor(order.status).withOpacity(0.1),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: _getStatusColor(order.status)),
+          ),
+          child: Text(
+            _getStatusText(order.status),
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.bold,
+              color: _getStatusColor(order.status),
+            ),
+          ),
+        ),
+        children: [
+          Padding(
             padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'Order #${order.id}',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                      ),
+                if (!isAdmin) ...[
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withOpacity(0.05),
+                      borderRadius: BorderRadius.circular(8),
                     ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: _getStatusColor(order.status).withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: _getStatusColor(order.status)),
-                      ),
-                      child: Text(
-                        _getStatusText(order.status),
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                          color: _getStatusColor(order.status),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.receipt, size: 14, color: AppColors.primary),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Reference: ${order.id}',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: AppColors.darkText.withOpacity(0.7),
+                          ),
                         ),
-                      ),
+                      ],
                     ),
-                  ],
+                  ),
+                  const SizedBox(height: 12),
+                ],
+                const Text(
+                  'Items:',
+                  style: TextStyle(fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 8),
-                Text(
-                  _formatDate(order.date),
-                  style: TextStyle(
-                    color: AppColors.darkText.withOpacity(0.6),
+                ...order.items.map((item) => Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text('${item.title} x${item.quantity}'),
+                      Text('KES ${item.price * item.quantity}'),
+                    ],
                   ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  order.items.map((item) => '${item.title} x${item.quantity}').join(', '),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: AppColors.darkText.withOpacity(0.8),
+                )),
+                const SizedBox(height: 12),
+                if (order.status == OrderStatus.cancelled && order.cancellationReason != null) ...[
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    margin: const EdgeInsets.only(bottom: 12),
+                    decoration: BoxDecoration(
+                      color: Colors.red.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.red.withOpacity(0.3)),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Icon(Icons.cancel, size: 20, color: Colors.red),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Cancellation Reason:',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.red,
+                                  fontSize: 12,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                order.cancellationReason!,
+                                style: const TextStyle(
+                                  color: Colors.red,
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Ksh ${order.totalAmount}',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                  ),
-                ),
+                ],
+                if (order.deliveryType == DeliveryType.delivery) ...[
+                  const Divider(),
+                  if (order.deliveryAddress != null)
+                    _buildDetailRow('Address', order.deliveryAddress!),
+                  if (order.deliveryPhone != null)
+                    _buildDetailRow('Phone', order.deliveryPhone!),
+                ],
+                // ADDED: Action buttons for reorder and view details
                 const SizedBox(height: 12),
                 Row(
                   children: [
-                    if (canCancel)
+                    if (order.status == OrderStatus.delivered) ...[
                       Expanded(
-                        child: OutlinedButton(
-                          onPressed: () => _cancelOrder(context, order),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: Colors.red,
-                            side: const BorderSide(color: Colors.red),
-                          ),
-                          child: const Text('Cancel Order'),
-                        ),
-                      ),
-                    if (canCancel) const SizedBox(width: 8),
-                    if (order.status == OrderStatus.delivered)
-                      Expanded(
-                        child: ElevatedButton(
+                        child: OutlinedButton.icon(
+                          icon: const Icon(Icons.replay, size: 16),
+                          label: const Text('Reorder'),
                           onPressed: () => _reorderItems(order, context),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppColors.primary,
-                            foregroundColor: Colors.white,
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: AppColors.primary,
                           ),
-                          child: const Text('Reorder'),
                         ),
                       ),
+                      const SizedBox(width: 8),
+                    ],
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        icon: const Icon(Icons.visibility, size: 16),
+                        label: const Text('Details'),
+                        onPressed: () => _showOrderDetailsDialog(order),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.primary,
+                          foregroundColor: Colors.white,
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ],
             ),
           ),
-        ),
-      );
+        ],
+      ),
+    );
   }
 
+  // KEPT: Used for cancel action in order details
   void _cancelOrder(BuildContext context, Order order) async {
     final reason = await _showCancellationReasonDialog(context, order);
 
     if (reason != null && reason.isNotEmpty) {
       final provider = Provider.of<OrderProvider>(context, listen: false);
-      provider.cancelOrder(order.id, reason); // UPDATED: Use cancelOrder with reason
+      provider.cancelOrder(order.id, reason);
       
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -426,7 +515,7 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> with SingleTick
     return result;
   }
 
-  // UPDATED: Show cancellation reason in order details
+  // KEPT: Used in order card action buttons
   void _showOrderDetailsDialog(Order order) {
     showDialog(
       context: context,
@@ -437,7 +526,6 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> with SingleTick
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // ADDED: Show cancellation reason if cancelled
               if (order.status == OrderStatus.cancelled && 
                   order.cancellationReason != null) ...[
                 Container(
@@ -557,6 +645,16 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> with SingleTick
           ),
         ),
         actions: [
+          // ADDED: Cancel button for pending orders
+          if (_canOrderBeCancelled(order))
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+                _cancelOrder(context, order);
+              },
+              style: TextButton.styleFrom(foregroundColor: Colors.red),
+              child: const Text('Cancel Order'),
+            ),
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: const Text('Close'),
@@ -606,14 +704,34 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> with SingleTick
     }
   }
 
+  // ADDED: Missing _getStatusIcon method
+  IconData _getStatusIcon(OrderStatus status) {
+    switch (status) {
+      case OrderStatus.pending:
+        return Icons.pending;
+      case OrderStatus.confirmed:
+        return Icons.check_circle;
+      case OrderStatus.preparing:
+        return Icons.restaurant;
+      case OrderStatus.outForDelivery:
+        return Icons.delivery_dining;
+      case OrderStatus.delivered:
+        return Icons.done_all;
+      case OrderStatus.cancelled:
+        return Icons.cancel;
+    }
+  }
+
   Color _getStatusColor(OrderStatus status) {
     switch (status) {
       case OrderStatus.pending:
         return Colors.orange;
       case OrderStatus.confirmed:
         return Colors.blue;
-      case OrderStatus.inProgress:
+      case OrderStatus.preparing: // UPDATED
         return Colors.purple;
+      case OrderStatus.outForDelivery: // ADDED
+        return Colors.indigo;
       case OrderStatus.delivered:
         return AppColors.success;
       case OrderStatus.cancelled:
@@ -627,8 +745,10 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> with SingleTick
         return 'Pending';
       case OrderStatus.confirmed:
         return 'Confirmed';
-      case OrderStatus.inProgress:
-        return 'In Progress';
+      case OrderStatus.preparing: // UPDATED
+        return 'Preparing';
+      case OrderStatus.outForDelivery: // ADDED
+        return 'Out for Delivery';
       case OrderStatus.delivered:
         return 'Delivered';
       case OrderStatus.cancelled:
@@ -714,7 +834,7 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> with SingleTick
       itemCount: orders.length,
       itemBuilder: (context, index) {
         final order = orders[index];
-        return _buildOrderCard(context, order);
+        return _buildOrderCard(order); // FIXED: Pass order, not context and order
       },
     );
   }

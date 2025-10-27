@@ -109,7 +109,7 @@ class _RiderOrdersScreenState extends State<RiderOrdersScreen> with SingleTicker
                 Text('Ksh ${order.totalAmount}'),
               ],
             ),
-            trailing: order.status == OrderStatus.inProgress
+            trailing: order.status == OrderStatus.outForDelivery // UPDATED: Use outForDelivery
                 ? IconButton(
                     icon: const Icon(Icons.check_circle, color: AppColors.success),
                     onPressed: () {
@@ -137,7 +137,7 @@ class _RiderOrdersScreenState extends State<RiderOrdersScreen> with SingleTicker
 
     // Get orders for this rider
     final allOrders = provider.orders.where((o) => o.riderId == riderId).toList();
-    final activeOrders = allOrders.where((o) => o.status == OrderStatus.inProgress).toList();
+    final activeOrders = allOrders.where((o) => o.status == OrderStatus.outForDelivery).toList(); // UPDATED
     final completedOrders = allOrders.where((o) => o.status == OrderStatus.delivered).toList();
 
     return Scaffold(

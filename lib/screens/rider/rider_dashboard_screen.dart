@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart'; // ADDED: Import for kDebugMode
 import 'package:provider/provider.dart';
 
 import '../../constants/colors.dart';
@@ -41,10 +42,22 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen> {
     final riderId = auth.currentUser?.id ?? '';
     final orderProvider = Provider.of<OrderProvider>(context);
     
-    // Get orders assigned to this rider that are in progress
-    final myOrders = orderProvider.orders.where((order) => 
-      order.riderId == riderId && order.status == OrderStatus.inProgress
-    ).toList();
+    debugPrint('🚴 Rider Dashboard - Rider ID: $riderId');
+    debugPrint('🚴 Total orders in system: ${orderProvider.orders.length}');
+    
+    // UPDATED: Get orders assigned to this rider that are out for delivery
+    final myOrders = orderProvider.orders.where((order) {
+      final isAssignedToMe = order.riderId == riderId;
+      final isOutForDelivery = order.status == OrderStatus.outForDelivery; // UPDATED
+      
+      if (order.riderId != null) {
+        debugPrint('📦 Order ${order.id}: riderId=${order.riderId}, status=${order.status}, match=$isAssignedToMe, outForDelivery=$isOutForDelivery');
+      }
+      
+      return isAssignedToMe && isOutForDelivery;
+    }).toList();
+
+    debugPrint('🚴 My active orders count: ${myOrders.length}');
 
     if (myOrders.isEmpty) {
       return Center(
@@ -68,12 +81,27 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen> {
             const SizedBox(height: 8),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 40),
-              child: Text(
-                'New delivery assignments will appear here',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: AppColors.darkText.withOpacity(0.4),
-                ),
+              child: Column(
+                children: [
+                  Text(
+                    'New delivery assignments will appear here',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: AppColors.darkText.withOpacity(0.4),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  // ADDED: Debug info in development
+                  if (kDebugMode)
+                    Text(
+                      'Rider ID: $riderId',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: AppColors.darkText.withOpacity(0.3),
+                        fontSize: 12,
+                      ),
+                    ),
+                ],
               ),
             ),
           ],
@@ -96,7 +124,7 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen> {
     final orderProvider = Provider.of<OrderProvider>(context);
     
     final myOrders = orderProvider.orders.where((order) => order.riderId == riderId).toList();
-    final activeCount = myOrders.where((o) => o.status == OrderStatus.inProgress).length;
+    final activeCount = myOrders.where((o) => o.status == OrderStatus.outForDelivery).length; // UPDATED
     final completedCount = myOrders.where((o) => o.status == OrderStatus.delivered).length;
 
     return Container(
@@ -265,16 +293,16 @@ class _OrderCard extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
-                    color: Colors.purple.withOpacity(0.1),
+                    color: Colors.indigo.withOpacity(0.1), // UPDATED
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.purple),
+                    border: Border.all(color: Colors.indigo), // UPDATED
                   ),
                   child: const Text(
-                    'IN PROGRESS',
+                    'OUT FOR DELIVERY', // UPDATED
                     style: TextStyle(
                       fontSize: 10,
                       fontWeight: FontWeight.bold,
-                      color: Colors.purple,
+                      color: Colors.indigo, // UPDATED
                     ),
                   ),
                 ),
@@ -285,10 +313,71 @@ class _OrderCard extends StatelessWidget {
               children: [
                 const Icon(Icons.person, size: 16, color: Colors.grey),
                 const SizedBox(width: 8),
-                Text(order.customerName),
+                Expanded(child: Text(order.customerName)),
               ],
             ),
             const SizedBox(height: 8),
+            
+            // ADDED: Customer phone with call button
+            if (order.deliveryPhone != null) ...[
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withOpacity(0.05),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: AppColors.primary.withOpacity(0.2)),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: AppColors.primary.withOpacity(0.1),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.phone, size: 16, color: AppColors.primary),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Customer Contact',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.darkText.withOpacity(0.6),
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            order.deliveryPhone!,
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.primary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    ElevatedButton.icon(
+                      onPressed: () => _callCustomer(context, order.deliveryPhone!),
+                      icon: const Icon(Icons.call, size: 16),
+                      label: const Text('Call'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.success,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 8),
+            ],
+            
             if (order.deliveryAddress != null) ...[
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -342,6 +431,101 @@ class _OrderCard extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  // ADDED: Call customer method
+  void _callCustomer(BuildContext context, String phoneNumber) {
+    // REMOVED: unused cleanNumber variable - we're just showing UI feedback
+    
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: AppColors.success.withOpacity(0.1),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.phone, color: AppColors.success, size: 20),
+            ),
+            const SizedBox(width: 12),
+            const Text('Call Customer', style: TextStyle(fontSize: 16)),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Call this number?'),
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.primary.withOpacity(0.05),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.phone, size: 16, color: AppColors.primary),
+                  const SizedBox(width: 8),
+                  Text(
+                    phoneNumber,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.primary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton.icon(
+            onPressed: () {
+              Navigator.pop(context);
+              // UPDATED: Directly show feedback without unused variable
+              try {
+                // In production, use url_launcher: launch('tel:$phoneNumber')
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Row(
+                      children: [
+                        const Icon(Icons.phone, color: Colors.white),
+                        const SizedBox(width: 12),
+                        Text('Opening dialer for $phoneNumber'),
+                      ],
+                    ),
+                    backgroundColor: AppColors.success,
+                  ),
+                );
+              } catch (e) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Could not open dialer: $e'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
+            },
+            icon: const Icon(Icons.call, size: 18),
+            label: const Text('Call Now'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.success,
+              foregroundColor: Colors.white,
+            ),
+          ),
+        ],
       ),
     );
   }

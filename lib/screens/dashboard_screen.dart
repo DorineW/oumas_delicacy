@@ -742,8 +742,10 @@ class _RecentOrderCard extends StatelessWidget {
         return Colors.orange;
       case OrderStatus.confirmed:
         return Colors.blue;
-      case OrderStatus.inProgress:
+      case OrderStatus.preparing: // UPDATED
         return Colors.purple;
+      case OrderStatus.outForDelivery: // ADDED
+        return Colors.indigo;
       case OrderStatus.delivered:
         return AppColors.success;
       case OrderStatus.cancelled:
@@ -757,8 +759,10 @@ class _RecentOrderCard extends StatelessWidget {
         return 'PENDING';
       case OrderStatus.confirmed:
         return 'CONFIRMED';
-      case OrderStatus.inProgress:
-        return 'IN PROGRESS';
+      case OrderStatus.preparing: // UPDATED
+        return 'PREPARING';
+      case OrderStatus.outForDelivery: // ADDED
+        return 'OUT FOR DELIVERY';
       case OrderStatus.delivered:
         return 'DELIVERED';
       case OrderStatus.cancelled:
@@ -768,6 +772,9 @@ class _RecentOrderCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // ADDED: Check if all items have been rated
+    final allItemsRated = order.items.every((item) => item.rating != null && item.rating! > 0);
+    
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(14),
@@ -788,7 +795,6 @@ class _RecentOrderCard extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              // UPDATED: Show time instead of Order#
               Row(
                 children: [
                   Icon(
@@ -826,7 +832,6 @@ class _RecentOrderCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 8),
-          // Show item names
           Text(
             order.items.map((item) => '${item.quantity}x ${item.title}').join(', '),
             style: TextStyle(
@@ -848,8 +853,8 @@ class _RecentOrderCard extends StatelessWidget {
                   color: AppColors.primary,
                 ),
               ),
-              // Rate button for delivered orders
-              if (order.status == OrderStatus.delivered)
+              // UPDATED: Hide rate button if already rated
+              if (order.status == OrderStatus.delivered && !allItemsRated)
                 TextButton.icon(
                   onPressed: () => _showRatingDialog(context, order),
                   icon: const Icon(Icons.star, size: 16),
@@ -857,6 +862,31 @@ class _RecentOrderCard extends StatelessWidget {
                   style: TextButton.styleFrom(
                     foregroundColor: Colors.amber,
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  ),
+                )
+              else if (allItemsRated)
+                // ADDED: Show rated indicator
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.amber.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.amber),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.star, color: Colors.amber, size: 14),
+                      const SizedBox(width: 4),
+                      const Text(
+                        'Rated',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.amber,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
             ],

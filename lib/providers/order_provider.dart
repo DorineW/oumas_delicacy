@@ -10,6 +10,7 @@ class OrderProvider extends ChangeNotifier {
   final List<Order> _orders = [];
   NotificationProvider? _notificationProvider;
   final Map<String, Timer> _autoConfirmTimers = {}; // ADDED: Track auto-confirm timers
+  final Set<String> _viewedPendingOrders = {}; // ADDED: Track viewed orders
 
   // ADDED: Set notification provider reference
   void setNotificationProvider(NotificationProvider provider) {
@@ -95,8 +96,8 @@ class OrderProvider extends ChangeNotifier {
       ));
     }
 
-    // Send notification to admin
-    if (_notificationProvider != null) {
+    // UPDATED: Only send notification to admin if NOT cancelled
+    if (_notificationProvider != null && order.status != OrderStatus.cancelled) {
       _notificationProvider!.addNotification(AppNotification(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
         userId: 'admin',
@@ -127,7 +128,7 @@ class OrderProvider extends ChangeNotifier {
       // Only auto-confirm if still pending (not cancelled by customer)
       if (order.status == OrderStatus.pending) {
         debugPrint('⏰ Auto-confirming order $orderId after 5 minutes');
-        updateStatus(orderId, OrderStatus.confirmed);
+        updateStatus(orderId, OrderStatus.confirmed); // UPDATED: Set to confirmed
         
         // Send notification to customer
         if (_notificationProvider != null) {
@@ -135,7 +136,7 @@ class OrderProvider extends ChangeNotifier {
             id: DateTime.now().millisecondsSinceEpoch.toString(),
             userId: order.customerId,
             title: 'Order Confirmed',
-            message: 'Your order #$orderId has been confirmed and is being prepared',
+            message: 'Your order #$orderId has been confirmed and will be prepared soon',
             type: 'order_update',
             timestamp: DateTime.now(),
             data: {'orderId': orderId},
@@ -148,64 +149,88 @@ class OrderProvider extends ChangeNotifier {
     });
   }
 
-  void updateStatus(String orderId, OrderStatus newStatus) {
-    final index = _orders.indexWhere((o) => o.id == orderId);
-    if (index == -1) return;
-
-    final order = _orders[index];
-    final oldStatus = order.status;
-    
-    _orders[index] = order.copyWith(status: newStatus);
-    notifyListeners();
-
-    // UPDATED: Send notification when status changes
-    if (_notificationProvider != null && oldStatus != newStatus) {
-      _sendOrderStatusNotification(order, newStatus);
-    }
-  }
-
-  // UPDATED: More detailed status messages for simplified flow
-  void _sendOrderStatusNotification(Order order, OrderStatus newStatus) {
+  // UPDATED: Send order status notification helper
+  void _sendOrderStatusNotification(String orderId, OrderStatus newStatus) {
     if (_notificationProvider == null) return;
 
+    final order = _orders.firstWhere((o) => o.id == orderId, orElse: () => _orders.first);
+    
     String title = '';
     String message = '';
 
     switch (newStatus) {
-      case OrderStatus.pending:
-        title = 'Order Received';
-        message = 'Your order #${order.id} has been received and is pending confirmation.';
-        break;
       case OrderStatus.confirmed:
-        title = 'Order Confirmed!';
-        message = 'Your order #${order.id} has been confirmed and will be prepared shortly.';
+        title = 'Order Confirmed';
+        message = 'Your order #$orderId has been confirmed';
         break;
-      case OrderStatus.inProgress:
-        title = 'Order In Preparation!';
-        message = 'Your order #${order.id} is being prepared by our kitchen.';
+      case OrderStatus.preparing: // UPDATED
+        title = 'Order Being Prepared';
+        message = 'The kitchen is preparing your order #$orderId';
+        break;
+      case OrderStatus.outForDelivery: // UPDATED
+        title = 'Out for Delivery';
+        message = 'Your order #$orderId is on its way!';
         break;
       case OrderStatus.delivered:
-        title = 'Order Delivered!';
-        message = 'Your order #${order.id} has been delivered successfully. Enjoy your meal!';
+        title = 'Order Delivered';
+        message = 'Your order #$orderId has been delivered. Enjoy!';
         break;
       case OrderStatus.cancelled:
         title = 'Order Cancelled';
-        message = 'Your order #${order.id} has been cancelled.';
+        message = 'Your order #$orderId has been cancelled';
         break;
+      default:
+        return;
     }
 
-    final notification = AppNotification(
-      id: _notificationProvider!.generateNotificationId(),
+    _notificationProvider!.addNotification(AppNotification(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
       userId: order.customerId,
       title: title,
       message: message,
       type: 'order_update',
       timestamp: DateTime.now(),
-      isRead: false,
-      data: {'orderId': order.id, 'status': newStatus.toString()},
+      data: {'orderId': orderId},
+    ));
+  }
+
+  void updateStatus(String orderId, OrderStatus newStatus) {
+    final index = _orders.indexWhere((o) => o.id == orderId);
+    if (index == -1) {
+      debugPrint('❌ Order $orderId not found');
+      return;
+    }
+
+    final order = _orders[index];
+    final oldStatus = order.status;
+
+    // UPDATED: Handle preparing and outForDelivery statuses
+    if (oldStatus == OrderStatus.pending && newStatus != OrderStatus.confirmed && newStatus != OrderStatus.cancelled) {
+      debugPrint('❌ Cannot change from pending to $newStatus directly');
+      return;
+    }
+
+    _orders[index] = Order(
+      id: order.id,
+      customerId: order.customerId,
+      customerName: order.customerName,
+      deliveryPhone: order.deliveryPhone,
+      date: order.date,
+      items: order.items,
+      totalAmount: order.totalAmount,
+      status: newStatus,
+      deliveryType: order.deliveryType,
+      deliveryAddress: order.deliveryAddress,
+      riderId: order.riderId,
+      riderName: order.riderName,
+      cancellationReason: order.cancellationReason,
     );
 
-    _notificationProvider!.addNotification(notification);
+    debugPrint('✅ Order $orderId status updated: $oldStatus → $newStatus');
+    notifyListeners();
+
+    // UPDATED: Use the notification helper method
+    _sendOrderStatusNotification(orderId, newStatus);
   }
 
   // ADDED: Cancel order with reason
@@ -328,9 +353,7 @@ class OrderProvider extends ChangeNotifier {
 
     final order = _orders[index];
     
-    debugPrint('✅ Assigning rider $riderName (ID: $riderId) to order $orderId');
-    
-    // Create updated order with rider info and status changed to inProgress
+    // UPDATED: Change status to outForDelivery when assigned to rider
     _orders[index] = Order(
       id: order.id,
       customerId: order.customerId,
@@ -339,26 +362,25 @@ class OrderProvider extends ChangeNotifier {
       date: order.date,
       items: order.items,
       totalAmount: order.totalAmount,
-      status: OrderStatus.inProgress, // UPDATED: Change status to inProgress
+      status: OrderStatus.outForDelivery, // UPDATED: New status
       deliveryType: order.deliveryType,
       deliveryAddress: order.deliveryAddress,
-      riderId: riderId, // ADDED: Set rider ID
-      riderName: riderName, // ADDED: Set rider name
+      riderId: riderId,
+      riderName: riderName,
       cancellationReason: order.cancellationReason,
     );
 
-    notifyListeners(); // IMPORTANT: Notify listeners to update UI
-    
-    debugPrint('✅ Order $orderId status updated to inProgress with rider $riderName');
+    debugPrint('✅ Order $orderId assigned to rider $riderId ($riderName) - Status: outForDelivery');
+    notifyListeners();
 
     // Send notification to rider
     if (_notificationProvider != null) {
       _notificationProvider!.addNotification(AppNotification(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
-        userId: riderId,
+        userId: riderId, // FIXED: Send to correct rider ID
         title: 'New Delivery Assignment',
         message: 'Order #$orderId has been assigned to you',
-        type: 'order_update',
+        type: 'new_delivery',
         timestamp: DateTime.now(),
         data: {'orderId': orderId},
       ));
@@ -369,10 +391,8 @@ class OrderProvider extends ChangeNotifier {
       _notificationProvider!.addNotification(AppNotification(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
         userId: order.customerId,
-        title: 'Rider Assigned',
-        message: riderId == 'admin' 
-            ? 'Your order is being prepared for in-house delivery'
-            : 'Rider $riderName has been assigned to your order',
+        title: 'Order Out for Delivery',
+        message: 'Your order #$orderId is on its way!',
         type: 'order_update',
         timestamp: DateTime.now(),
         data: {'orderId': orderId},
@@ -388,5 +408,24 @@ class OrderProvider extends ChangeNotifier {
     }
     _autoConfirmTimers.clear();
     super.dispose();
+  }
+
+  // ADDED: Get unviewed pending orders count (excludes cancelled)
+  int get unviewedPendingOrdersCount {
+    return _orders
+        .where((o) => 
+            o.status == OrderStatus.pending && 
+            !_viewedPendingOrders.contains(o.id))
+        .length;
+  }
+
+  // ADDED: Mark all current pending orders as viewed
+  void markPendingOrdersAsViewed() {
+    final pendingOrders = _orders.where((o) => o.status == OrderStatus.pending);
+    for (final order in pendingOrders) {
+      _viewedPendingOrders.add(order.id);
+    }
+    debugPrint('✅ Marked ${pendingOrders.length} pending orders as viewed');
+    notifyListeners();
   }
 }

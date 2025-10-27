@@ -2,10 +2,11 @@
 
 
 enum OrderStatus {
-  pending,      // Order placed, awaiting confirmation
-  confirmed,    // Admin confirmed, ready for preparation
-  inProgress,   // Being prepared
-  delivered,    // Order completed
+  pending,      // Customer placed order
+  confirmed,    // Admin/auto-confirmed after 5 minutes
+  preparing,    // Kitchen is preparing 
+  outForDelivery, // Assigned to rider, on the way
+  delivered,    // Successfully delivered
   cancelled,    // Order cancelled
 }
 
@@ -57,7 +58,7 @@ class Order {
   final String id;
   final String customerId;
   final String customerName;
-  final String? deliveryPhone; // ADDED
+  final String? deliveryPhone; 
   final List<OrderItem> items;
   final int totalAmount;
   final DateTime date;
@@ -66,7 +67,7 @@ class Order {
   final String? deliveryAddress;
   final String? riderId;
   final String? riderName;
-  final String? cancellationReason; // ADDED: Cancellation reason
+  final String? cancellationReason; 
 
   Order({
     required this.id,
@@ -81,15 +82,15 @@ class Order {
     this.deliveryAddress,
     this.riderId,
     this.riderName,
-    this.cancellationReason, // ADDED
+    this.cancellationReason, 
   });
 
-  // ADDED: Copy with method for updates
+ 
   Order copyWith({
     String? id,
     String? customerId,
     String? customerName,
-    String? deliveryPhone, // ADDED
+    String? deliveryPhone, 
     DateTime? date,
     List<OrderItem>? items,
     int? totalAmount,
