@@ -1,3 +1,5 @@
+//lib/models/inventory_item.dart
+//the inventory item model representing items in stock
 class InventoryItem {
   final String id;
   final String name;

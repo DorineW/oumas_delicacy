@@ -3,9 +3,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:firebase_core/firebase_core.dart';
-// If you ran `flutterfire configure`, this file will exist:
-import 'firebase_options.dart' show DefaultFirebaseOptions;
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 // ADDED: All necessary screen imports
 import 'screens/login_screen.dart';
@@ -44,14 +42,11 @@ void main() async {
     );
   };
 
-  // Initialize Firebase
-  try {
-    await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform,
-    );
-  } catch (e) {
-    await Firebase.initializeApp();
-  }
+  // Initialize Supabase (replacing Firebase)
+  await Supabase.initialize(
+    url: 'https://hqfixpqwxmwftvhgdrxn.supabase.co',
+    anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhxZml4cHF3eG13ZnR2aGdkcnhuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE2Mzc4NTksImV4cCI6MjA3NzIxMzg1OX0.Mjgws9SddAbTYmZotPNRKf-Yz3DmzkzJRxdstXBx6Zs',
+  );
 
   runApp(const MyApp());
 }

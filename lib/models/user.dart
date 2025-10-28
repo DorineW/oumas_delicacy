@@ -1,3 +1,5 @@
+//lib/models/user.dart
+//the user model representing application users
 class User {
   final String id;
   final String email;

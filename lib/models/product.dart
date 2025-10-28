@@ -1,4 +1,5 @@
 // lib/models/product.dart
+//the product model representing items available in the store
 class Product {
   String id;
   String name;

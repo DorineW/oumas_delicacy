@@ -1,3 +1,5 @@
+//lib/models/cart_item.dart
+//the cart item model representing items in the shopping cart
 class CartItem {
   final String id;
   final String mealTitle;

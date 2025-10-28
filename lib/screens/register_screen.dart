@@ -1,8 +1,11 @@
+// ignore_for_file: unused_import
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../constants/colors.dart';
 import '../services/auth_service.dart';
 import 'home_screen.dart';
+import 'location.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -48,10 +51,134 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
       if (!mounted) return;
 
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => const HomeScreen()),
+      // UPDATED: Optional address prompt with better UX
+      final shouldAddAddress = await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withOpacity(0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.location_on, color: AppColors.primary, size: 20),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Text('Set Delivery Address?', style: TextStyle(fontSize: 16)),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Would you like to set your delivery address now?'),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.blue.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.blue.withOpacity(0.3)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.info, size: 16, color: Colors.blue),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'You can skip this now and add it later during checkout.',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: AppColors.darkText.withOpacity(0.7),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: Text(
+                'Skip for Now',
+                style: TextStyle(color: AppColors.darkText.withOpacity(0.6)),
+              ),
+            ),
+            ElevatedButton.icon(
+              onPressed: () => Navigator.pop(context, true),
+              icon: const Icon(Icons.map, size: 18),
+              label: const Text('Set Address'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              ),
+            ),
+          ],
+        ),
       );
+
+      if (!mounted) return;
+
+      if (shouldAddAddress == true) {
+        final result = await Navigator.push<Map<String, dynamic>>(
+          context,
+          MaterialPageRoute(builder: (_) => const LocationScreen()),
+        );
+        
+        if (!mounted) return;
+        
+        if (result != null) {
+          // Address selected successfully
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Row(
+                children: [
+                  const Icon(Icons.check_circle, color: Colors.white),
+                  const SizedBox(width: 12),
+                  const Expanded(child: Text('Address saved successfully!')),
+                ],
+              ),
+              backgroundColor: AppColors.success,
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              margin: const EdgeInsets.all(16),
+            ),
+          );
+        }
+        
+        Navigator.pushReplacementNamed(context, '/home');
+      } else {
+        // Skipped address - show helpful message
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.info, color: Colors.white),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Text('You can add your address later in checkout or profile.'),
+                ),
+              ],
+            ),
+            backgroundColor: Colors.blue,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            margin: const EdgeInsets.all(16),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+        
+        Navigator.pushReplacementNamed(context, '/home');
+      }
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

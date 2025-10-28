@@ -1,5 +1,5 @@
 // lib/models/order.dart
-
+//the order model representing customer orders
 
 enum OrderStatus {
   pending,      // Customer placed order

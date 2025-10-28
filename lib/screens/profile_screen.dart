@@ -27,7 +27,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   void initState() {
     super.initState();
-    // ADDED: Load profile data when screen is initialized
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         _loadProfile();
@@ -35,14 +34,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
     });
   }
 
-  // UPDATED: Load saved profile data from SharedPreferences and AuthService
   Future<void> _loadProfile() async {
     final prefs = await SharedPreferences.getInstance();
     final auth = Provider.of<AuthService>(context, listen: false);
     
     if (mounted) {
       setState(() {
-        // Load from auth service first, fallback to prefs
         _userName = auth.currentUser?.name ?? prefs.getString('name') ?? 'Guest';
         _userEmail = auth.currentUser?.email ?? prefs.getString('email') ?? 'guest@example.com';
         
@@ -63,13 +60,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
-  // UPDATED: Refresh profile when returning from edit screen
   Future<void> _navigateToEditProfile() async {
     await Navigator.push(
       context,
       MaterialPageRoute(builder: (context) => const EditProfileScreen()),
     );
-    // Reload profile after returning
     await _loadProfile();
   }
 
@@ -88,7 +83,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
             TextButton(
               onPressed: () {
                 Navigator.of(context).pop();
-                // Perform logout
                 Provider.of<AuthService>(context, listen: false).logout();
                 Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
               },
@@ -117,200 +111,129 @@ class _ProfileScreenState extends State<ProfileScreen> {
         appBar: AppBar(
           title: const Text("Profile"),
           backgroundColor: AppColors.primary,
-          elevation: 4,
+          elevation: 0,
           iconTheme: const IconThemeData(color: AppColors.white),
-          titleTextStyle: const TextStyle(
-            color: AppColors.white,
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-          ),
+          titleTextStyle: const TextStyle(color: AppColors.white, fontSize: 18, fontWeight: FontWeight.bold),
           automaticallyImplyLeading: false,
         ),
-        body: SafeArea(
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              return SingleChildScrollView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(
-                    minHeight: constraints.maxHeight,
-                  ),
-                  child: Padding(
-                    padding: EdgeInsets.fromLTRB(16, isLandscape ? 20 : 30, 16, 100),
-                    child: Column(
-                      children: [
-                        // Profile Header with gradient background
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.all(24),
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                              colors: [
-                                AppColors.primary,
-                                AppColors.primary.withOpacity(0.8),
-                              ],
-                            ),
-                            borderRadius: BorderRadius.circular(16),
-                            boxShadow: [
-                              BoxShadow(
-                                color: AppColors.primary.withOpacity(0.3),
-                                blurRadius: 10,
-                                offset: const Offset(0, 4),
-                              ),
-                            ],
-                          ),
-                          child: Column(
-                            children: [
-                              Stack(
-                                alignment: Alignment.center,
-                                children: [
-                                  Container(
-                                    width: isLandscape ? 80 : 100,
-                                    height: isLandscape ? 80 : 100,
-                                    decoration: BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      gradient: LinearGradient(
-                                        begin: Alignment.topLeft,
-                                        end: Alignment.bottomRight,
-                                        colors: [
-                                          Colors.white.withOpacity(0.3),
-                                          Colors.white.withOpacity(0.1),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                  CircleAvatar(
-                                    radius: isLandscape ? 35 : 45,
-                                    backgroundColor: Colors.white,
-                                    child: CircleAvatar(
-                                      radius: isLandscape ? 32 : 42,
-                                      backgroundColor: AppColors.primary.withOpacity(0.1),
-                                      backgroundImage: _profileImage != null
-                                          ? FileImage(_profileImage!) as ImageProvider
-                                          : null,
-                                      child: _profileImage == null
-                                          ? Icon(
-                                              Icons.person,
-                                              size: isLandscape ? 35 : 45,
-                                              color: AppColors.primary,
-                                            )
-                                          : null,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 16),
-                              Text(
-                                _userName,
-                                style: TextStyle(
-                                  fontSize: isLandscape ? 20 : 24,
-                                  fontWeight: FontWeight.bold,
-                                  color: AppColors.white,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                _userEmail,
-                                style: TextStyle(
-                                  fontSize: isLandscape ? 13 : 14,
-                                  color: AppColors.white.withOpacity(0.9),
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withOpacity(0.2),
-                                  borderRadius: BorderRadius.circular(20),
-                                ),
-                                child: Text(
-                                  auth.currentUser?.role.toUpperCase() ?? 'GUEST',
-                                  style: const TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.bold,
-                                    color: AppColors.white,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        SizedBox(height: isLandscape ? 20 : 30),
-
-                        // Profile Options
-                        _ProfileOption(
-                          icon: Icons.edit,
-                          title: "Edit Profile",
-                          onTap: _navigateToEditProfile,
-                        ),
-                        _ProfileOption(
-                          icon: Icons.history,
-                          title: "Order History",
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(builder: (context) => const OrderHistoryScreen()),
-                            );
-                          },
-                        ),
-                        _ProfileOption(
-                          icon: Icons.payment,
-                          title: "Payment Methods",
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(builder: (context) => const PaymentMethodsScreen()),
-                            );
-                          },
-                        ),
-                        Consumer<NotificationProvider>(
-                          builder: (context, notifProvider, child) {
-                            final unreadCount = notifProvider.unreadCountForUser(userId);
-                            
-                            return _ProfileOption(
-                              icon: Icons.notifications,
-                              title: "Notifications",
-                              trailing: unreadCount > 0
-                                  ? Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                      decoration: BoxDecoration(
-                                        color: Colors.red,
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                      child: Text(
-                                        unreadCount > 99 ? '99+' : '$unreadCount',
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                    )
-                                  : null,
-                              onTap: () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(builder: (context) => const NotificationsScreen()),
-                                );
-                              },
-                            );
-                          },
-                        ),
-                        _ProfileOption(
-                          icon: Icons.logout,
-                          title: "Logout",
-                          isDestructive: true,
-                          onTap: () => _showLogoutDialog(context),
-                        ),
-                      ],
+        body: LayoutBuilder(
+          builder: (context, constraints) {
+            return SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                child: Column(
+                  children: [
+                    SizedBox(height: isLandscape ? 20 : 30),
+                    // Profile picture
+                    CircleAvatar(
+                      radius: isLandscape ? 40 : 50,
+                      backgroundColor: AppColors.primary.withOpacity(0.1),
+                      backgroundImage: _profileImage != null
+                          ? FileImage(_profileImage!) as ImageProvider
+                          : null,
+                      child: _profileImage == null
+                          ? Icon(
+                              Icons.person,
+                              size: isLandscape ? 40 : 50,
+                              color: AppColors.primary,
+                            )
+                          : null,
                     ),
-                  ),
+                    SizedBox(height: isLandscape ? 12 : 16),
+                    // User name
+                    Text(
+                      _userName,
+                      style: TextStyle(
+                        fontSize: isLandscape ? 20 : 22,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    // User email
+                    Text(
+                      _userEmail,
+                      style: TextStyle(
+                        fontSize: isLandscape ? 14 : 16,
+                        color: Colors.grey,
+                      ),
+                    ),
+                    SizedBox(height: isLandscape ? 20 : 30),
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 100),
+                      child: Column(
+                        children: [
+                          _ProfileOption(
+                            icon: Icons.edit,
+                            title: "Edit Profile",
+                            onTap: _navigateToEditProfile,
+                          ),
+                          _ProfileOption(
+                            icon: Icons.history,
+                            title: "Order History",
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(builder: (context) => const OrderHistoryScreen()),
+                              );
+                            },
+                          ),
+                          _ProfileOption(
+                            icon: Icons.payment,
+                            title: "Payment Methods",
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(builder: (context) => const PaymentMethodsScreen()),
+                              );
+                            },
+                          ),
+                          Consumer<NotificationProvider>(
+                            builder: (context, notifProvider, child) {
+                              final unreadCount = notifProvider.unreadCountForUser(userId);
+                              
+                              return _ProfileOption(
+                                icon: Icons.notifications,
+                                title: "Notifications",
+                                trailing: unreadCount > 0
+                                    ? Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: Colors.red,
+                                          borderRadius: BorderRadius.circular(12),
+                                        ),
+                                        child: Text(
+                                          unreadCount > 99 ? '99+' : '$unreadCount',
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      )
+                                    : null,
+                                onTap: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(builder: (context) => const NotificationsScreen()),
+                                  );
+                                },
+                              );
+                            },
+                          ),
+                          _ProfileOption(
+                            icon: Icons.logout,
+                            title: "Logout",
+                            isDestructive: true,
+                            onTap: () => _showLogoutDialog(context),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-              );
-            },
-          ),
+              ),
+            );
+          },
         ),
       ),
     );

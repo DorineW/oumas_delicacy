@@ -1,3 +1,5 @@
+//lib/models/delivery_order.dart
+//the order model representing customer orders
 class DeliveryOrder {
   final String id;
   final String customerName;

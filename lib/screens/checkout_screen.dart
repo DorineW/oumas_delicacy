@@ -5,15 +5,17 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:geolocator/geolocator.dart' show Position;
 import 'package:google_maps_flutter/google_maps_flutter.dart' show LatLng;
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/cart_item.dart';
 import '../models/order.dart' show DeliveryType;
 import '../services/location_service.dart';
 import '../services/auth_service.dart';
-import '../constants/colors.dart';
-import 'location.dart';
 import '../providers/cart_provider.dart';
 import '../providers/menu_provider.dart';
+import '../constants/colors.dart';
+import 'location.dart'; // UPDATED: Use existing LocationScreen
+import '../providers/location_provider.dart'; // ADDED
 
 enum PaymentMethod { cash, mpesa }
 
@@ -49,6 +51,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     final defaultPhone = widget.defaultPhoneNumber ?? '712345678';
     _phoneController.text = defaultPhone;
     _mpesaPhoneController.text = defaultPhone;
+
+    // ADDED: Load default address and phone from profile
+    _loadDefaultAddress();
   }
 
   @override
@@ -179,11 +184,107 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     }
   }
 
+  // ADDED: Load default address from SharedPreferences
+  Future<void> _loadDefaultAddress() async {
+    final prefs = await SharedPreferences.getInstance();
+    
+    // Load phone number
+    final savedPhone = prefs.getString('phone') ?? '';
+    if (savedPhone.isNotEmpty) {
+      setState(() {
+        _phoneController.text = savedPhone;
+      });
+    }
+    
+    // Load default address
+    final addresses = prefs.getStringList('addresses') ?? [];
+    final defaultIndex = prefs.getInt('defaultAddressIndex');
+    
+    if (addresses.isNotEmpty && defaultIndex != null && defaultIndex < addresses.length) {
+      final defaultAddress = addresses[defaultIndex];
+      
+      setState(() {
+        _deliveryAddressController.text = defaultAddress;
+      });
+      
+      // UPDATED: Use LocationProvider to get coordinates
+      try {
+        final locationProvider = Provider.of<LocationProvider>(context, listen: false);
+        final results = await locationProvider.searchAddress(defaultAddress);
+        
+        if (results.isNotEmpty && mounted) {
+          final result = results[0];
+          setState(() {
+            _deliveryLatLng = LatLng(result['lat'], result['lon']);
+          });
+          
+          debugPrint('📍 Loaded default address: $defaultAddress');
+          debugPrint('📍 Coordinates: ${result['lat']}, ${result['lon']}');
+        }
+      } catch (e) {
+        debugPrint('⚠️ Could not get coordinates for default address: $e');
+        // Keep the address text even if coordinates fail
+      }
+    }
+  }
+
   Future<void> _payNow() async {
+    // UPDATED: Validate delivery address is required for delivery
+    if (_deliveryLatLng != null) {
+      // Delivery mode - address is REQUIRED
+      if (_deliveryAddressController.text.trim().isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.error, color: Colors.white),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Text('Please select your delivery address from the map'),
+                ),
+              ],
+            ),
+            backgroundColor: Colors.red,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            margin: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+            behavior: SnackBarBehavior.floating,
+            action: SnackBarAction(
+              label: 'Select Address',
+              textColor: Colors.white,
+              onPressed: _selectLocationOnMap,
+            ),
+          ),
+        );
+        return;
+      }
+    }
+
+    // ADDED: Validate phone number is required
+    if (_phoneController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.error, color: Colors.white),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Text('Please enter your phone number'),
+              ),
+            ],
+          ),
+          backgroundColor: Colors.red,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          margin: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
     // ADDED: Final availability check before processing payment
     final menuProvider = context.read<MenuProvider>();
-    final cartProvider = context.read<CartProvider>(); // ADDED: Get cart provider
-    final auth = context.read<AuthService>(); // ADDED: Get auth service
+    final cartProvider = context.read<CartProvider>();
+    final auth = context.read<AuthService>();
     
     final unavailableItems = widget.selectedItems.where(
       (item) => !menuProvider.isItemAvailable(item.mealTitle)
@@ -225,12 +326,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         return;
       }
 
-      // UPDATED: Get actual user info from AuthService
       final currentUser = auth.currentUser;
       final customerId = currentUser?.id ?? 'guest';
       final customerName = currentUser?.name ?? 'Guest User';
 
-      // FIXED: Clear cart items after successful checkout
+      // Clear cart items after successful checkout
       for (final item in widget.selectedItems) {
         cartProvider.removeItem(item.id);
       }
@@ -243,8 +343,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           'items': widget.selectedItems,
           'deliveryType': _deliveryLatLng != null ? DeliveryType.delivery : DeliveryType.pickup,
           'totalAmount': totalAmount,
-          'customerId': customerId, // UPDATED: Use actual customer ID
-          'customerName': customerName, // UPDATED: Use actual customer name
+          'customerId': customerId,
+          'customerName': customerName,
           'deliveryAddress': _deliveryAddressController.text.isNotEmpty 
               ? _deliveryAddressController.text 
               : null,

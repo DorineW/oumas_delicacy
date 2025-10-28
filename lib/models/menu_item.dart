@@ -1,3 +1,5 @@
+//lib/models/cart_provider.dart
+//the cart provider managing shopping cart state
 import 'package:flutter/material.dart';
 import '../models/cart_item.dart';
 

@@ -6,7 +6,6 @@ import '../models/order.dart';
 import '../models/cart_item.dart';
 import '../providers/order_provider.dart';
 import '../providers/cart_provider.dart';
-import '../services/auth_service.dart';
 
 class OrderHistoryScreen extends StatefulWidget {
   // optional: pass the current customerId to show only their orders
@@ -39,7 +38,7 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> with SingleTick
     super.dispose();
   }
 
-  // KEPT: These methods are used in the order card actions
+  // ADDED: Check if order can be cancelled (within 5 minutes)
   bool _canOrderBeCancelled(Order order) {
     if (order.status == OrderStatus.cancelled || 
         order.status == OrderStatus.delivered) {
@@ -50,268 +49,14 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> with SingleTick
     return timeSinceOrder < 5; // 5-minute cancellation window
   }
 
-  void _reorderItems(Order order, BuildContext context) {
-    final cartProvider = Provider.of<CartProvider>(context, listen: false);
-
-    cartProvider.clear();
-
-    for (final item in order.items) {
-      cartProvider.addItem(CartItem(
-        id: item.id,
-        mealTitle: item.title,
-        price: item.price,
-        quantity: item.quantity,
-        mealImage: '',
-      ));
-    }
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('${order.items.length} items added to cart'),
-        backgroundColor: AppColors.success,
-      ),
-    );
-
-    Navigator.popUntil(context, (route) => route.isFirst);
+  // ADDED: Get remaining cancellation time in seconds
+  int _getRemainingCancellationTime(Order order) {
+    final timeSinceOrder = DateTime.now().difference(order.date);
+    final remainingSeconds = (5 * 60) - timeSinceOrder.inSeconds;
+    return remainingSeconds > 0 ? remainingSeconds : 0;
   }
 
-  Widget _buildOrderStats(OrderProvider provider) {
-    final orders = widget.customerId != null 
-        ? provider.ordersForCustomer(widget.customerId!)
-        : provider.orders;
-    final totalOrders = orders.length;
-    final completedOrders = orders.where((o) => o.status == OrderStatus.delivered).length;
-    final totalSpent = orders.fold<double>(0, (sum, order) => sum + order.totalAmount.toDouble());
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.primary.withOpacity(0.05),
-        border: Border(
-          bottom: BorderSide(color: AppColors.primary.withOpacity(0.1)),
-        ),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
-        children: [
-          _buildStatItem('Total Orders', totalOrders.toString(), Icons.receipt),
-          _buildStatItem('Completed', completedOrders.toString(), Icons.check_circle),
-          _buildStatItem('Total Spent', 'Ksh ${totalSpent.toStringAsFixed(0)}', Icons.attach_money),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStatItem(String label, String value, IconData icon) {
-    return Column(
-      children: [
-        Icon(icon, size: 20, color: AppColors.primary),
-        const SizedBox(height: 4),
-        Text(
-          value,
-          style: const TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 12,
-            color: AppColors.darkText.withOpacity(0.6),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildOrderCard(Order order) {
-    final auth = context.read<AuthService>();
-    final isAdmin = auth.currentUser?.role == 'admin';
-    
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      child: ExpansionTile(
-        leading: Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: _getStatusColor(order.status).withOpacity(0.1),
-            shape: BoxShape.circle,
-          ),
-          child: Icon(
-            _getStatusIcon(order.status), // FIXED: Added missing method call
-            color: _getStatusColor(order.status),
-            size: 20,
-          ),
-        ),
-        title: Text(
-          isAdmin ? 'Order #${order.id}' : order.customerName,
-          style: const TextStyle(fontWeight: FontWeight.bold),
-        ),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              '${order.date.day}/${order.date.month}/${order.date.year} ${order.date.hour.toString().padLeft(2, '0')}:${order.date.minute.toString().padLeft(2, '0')}',
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'KES ${order.totalAmount}',
-              style: const TextStyle(
-                fontWeight: FontWeight.bold,
-                color: AppColors.primary,
-              ),
-            ),
-          ],
-        ),
-        trailing: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          decoration: BoxDecoration(
-            color: _getStatusColor(order.status).withOpacity(0.1),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: _getStatusColor(order.status)),
-          ),
-          child: Text(
-            _getStatusText(order.status),
-            style: TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.bold,
-              color: _getStatusColor(order.status),
-            ),
-          ),
-        ),
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (!isAdmin) ...[
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: AppColors.primary.withOpacity(0.05),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.receipt, size: 14, color: AppColors.primary),
-                        const SizedBox(width: 8),
-                        Text(
-                          'Reference: ${order.id}',
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: AppColors.darkText.withOpacity(0.7),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                ],
-                const Text(
-                  'Items:',
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 8),
-                ...order.items.map((item) => Padding(
-                  padding: const EdgeInsets.only(bottom: 4),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text('${item.title} x${item.quantity}'),
-                      Text('KES ${item.price * item.quantity}'),
-                    ],
-                  ),
-                )),
-                const SizedBox(height: 12),
-                if (order.status == OrderStatus.cancelled && order.cancellationReason != null) ...[
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    margin: const EdgeInsets.only(bottom: 12),
-                    decoration: BoxDecoration(
-                      color: Colors.red.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.red.withOpacity(0.3)),
-                    ),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Icon(Icons.cancel, size: 20, color: Colors.red),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                'Cancellation Reason:',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.red,
-                                  fontSize: 12,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                order.cancellationReason!,
-                                style: const TextStyle(
-                                  color: Colors.red,
-                                  fontSize: 13,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-                if (order.deliveryType == DeliveryType.delivery) ...[
-                  const Divider(),
-                  if (order.deliveryAddress != null)
-                    _buildDetailRow('Address', order.deliveryAddress!),
-                  if (order.deliveryPhone != null)
-                    _buildDetailRow('Phone', order.deliveryPhone!),
-                ],
-                // ADDED: Action buttons for reorder and view details
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    if (order.status == OrderStatus.delivered) ...[
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          icon: const Icon(Icons.replay, size: 16),
-                          label: const Text('Reorder'),
-                          onPressed: () => _reorderItems(order, context),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: AppColors.primary,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                    ],
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        icon: const Icon(Icons.visibility, size: 16),
-                        label: const Text('Details'),
-                        onPressed: () => _showOrderDetailsDialog(order),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.primary,
-                          foregroundColor: Colors.white,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // KEPT: Used for cancel action in order details
+  // ADDED: Cancel order with reason
   void _cancelOrder(BuildContext context, Order order) async {
     final reason = await _showCancellationReasonDialog(context, order);
 
@@ -319,23 +64,25 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> with SingleTick
       final provider = Provider.of<OrderProvider>(context, listen: false);
       provider.cancelOrder(order.id, reason);
       
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            children: [
-              const Icon(Icons.check_circle, color: Colors.white),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text('Order #${order.id} has been cancelled'),
-              ),
-            ],
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.check_circle, color: Colors.white),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text('Order #${order.id} has been cancelled'),
+                ),
+              ],
+            ),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            margin: const EdgeInsets.all(16),
           ),
-          backgroundColor: Colors.red,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          margin: const EdgeInsets.all(16),
-        ),
-      );
+        );
+      }
     }
   }
 
@@ -343,6 +90,7 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> with SingleTick
   Future<String?> _showCancellationReasonDialog(BuildContext context, Order order) async {
     String? selectedReason;
     final TextEditingController customController = TextEditingController();
+    final remainingTime = _getRemainingCancellationTime(order);
     
     final result = await showDialog<String>(
       context: context,
@@ -374,6 +122,7 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> with SingleTick
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // Order info and timer
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
@@ -381,19 +130,39 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> with SingleTick
                       borderRadius: BorderRadius.circular(8),
                       border: Border.all(color: Colors.orange.withOpacity(0.3)),
                     ),
-                    child: Row(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Icon(Icons.info, size: 16, color: Colors.orange),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            'Order #${order.id}',
-                            style: const TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.orange,
+                        Row(
+                          children: [
+                            const Icon(Icons.info, size: 16, color: Colors.orange),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Order #${order.id}',
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.orange,
+                                ),
+                              ),
                             ),
-                          ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            const Icon(Icons.timer, size: 16, color: Colors.orange),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Time remaining: ${_formatTimeLeft(remainingTime)}',
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.orange,
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
@@ -515,177 +284,338 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> with SingleTick
     return result;
   }
 
-  // KEPT: Used in order card action buttons
-  void _showOrderDetailsDialog(Order order) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Order ${order.id}'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (order.status == OrderStatus.cancelled && 
-                  order.cancellationReason != null) ...[
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  margin: const EdgeInsets.only(bottom: 12),
-                  decoration: BoxDecoration(
-                    color: Colors.red.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.red.withOpacity(0.3)),
-                  ),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Icon(Icons.cancel, size: 20, color: Colors.red),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'Cancellation Reason:',
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: Colors.red,
-                                fontSize: 12,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              order.cancellationReason!,
-                              style: const TextStyle(
-                                color: Colors.red,
-                                fontSize: 13,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-              
-              _buildDetailRow('Customer', order.customerName),
-              _buildDetailRow('Date', _formatDate(order.date)),
-              _buildDetailRow('Status', _getStatusText(order.status)),
-              _buildDetailRow('Delivery Type', order.deliveryType.toString().split('.').last),
-              const Divider(),
-              const Text('Items:', style: TextStyle(fontWeight: FontWeight.bold)),
-              const SizedBox(height: 8),
-              ...order.items.map((item) => Container(
-                margin: const EdgeInsets.only(bottom: 12),
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: AppColors.background,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Expanded(
-                          child: Text(
-                            '${item.quantity}x ${item.title}',
-                            style: const TextStyle(fontWeight: FontWeight.w600),
-                          ),
-                        ),
-                        Text('Ksh ${item.price * item.quantity}'),
-                      ],
-                    ),
-                    if (item.rating != null) ...[
-                      const SizedBox(height: 4),
-                      Row(
-                        children: [
-                          ...List.generate(5, (index) => Icon(
-                            index < item.rating! ? Icons.star : Icons.star_border,
-                            size: 14,
-                            color: Colors.amber,
-                          )),
-                          const SizedBox(width: 4),
-                          Text(
-                            '(${item.rating})',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: AppColors.darkText.withOpacity(0.6),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                    if (item.review != null && item.review!.isNotEmpty) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        item.review!,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: AppColors.darkText.withOpacity(0.7),
-                          fontStyle: FontStyle.italic,
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              )),
-              const Divider(),
-              _buildDetailRow('Total', 'Ksh ${order.totalAmount}', isBold: true),
-              if (order.deliveryType == DeliveryType.delivery) ...[
-                const Divider(),
-                if (order.deliveryAddress != null)
-                  _buildDetailRow('Address', order.deliveryAddress!),
-                if (order.deliveryPhone != null)
-                  _buildDetailRow('Phone', order.deliveryPhone!),
-              ],
-            ],
-          ),
+  // ADDED: Format time left
+  String _formatTimeLeft(int seconds) {
+    final minutes = seconds ~/ 60;
+    final remainingSeconds = seconds % 60;
+    return '${minutes.toString().padLeft(2, '0')}:${remainingSeconds.toString().padLeft(2, '0')}';
+  }
+
+  void _reorderItems(Order order) {
+    final cartProvider = Provider.of<CartProvider>(context, listen: false);
+    cartProvider.clear();
+
+    for (final item in order.items) {
+      cartProvider.addItem(CartItem(
+        id: item.id,
+        mealTitle: item.title,
+        price: item.price,
+        quantity: item.quantity,
+        mealImage: '',
+      ));
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const Icon(Icons.check_circle, color: Colors.white),
+            const SizedBox(width: 12),
+            Text('${order.items.length} items added to cart'),
+          ],
         ),
-        actions: [
-          // ADDED: Cancel button for pending orders
-          if (_canOrderBeCancelled(order))
-            TextButton(
-              onPressed: () {
-                Navigator.pop(context);
-                _cancelOrder(context, order);
-              },
-              style: TextButton.styleFrom(foregroundColor: Colors.red),
-              child: const Text('Cancel Order'),
-            ),
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Close'),
-          ),
+        backgroundColor: AppColors.success,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        margin: const EdgeInsets.all(16),
+      ),
+    );
+
+    Navigator.popUntil(context, (route) => route.isFirst);
+  }
+
+  Widget _buildOrderStats(OrderProvider provider) {
+    final orders = widget.customerId != null 
+        ? provider.ordersForCustomer(widget.customerId!)
+        : provider.orders;
+    final totalOrders = orders.length;
+    final completedOrders = orders.where((o) => o.status == OrderStatus.delivered).length;
+    final totalSpent = orders.fold<double>(0, (sum, order) => sum + order.totalAmount.toDouble());
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.primary.withOpacity(0.05),
+        border: Border(
+          bottom: BorderSide(color: AppColors.primary.withOpacity(0.1)),
+        ),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        children: [
+          _buildStatItem('Total Orders', totalOrders.toString(), Icons.receipt),
+          _buildStatItem('Completed', completedOrders.toString(), Icons.check_circle),
+          _buildStatItem('Total Spent', 'Ksh ${totalSpent.toStringAsFixed(0)}', Icons.attach_money),
         ],
       ),
     );
   }
 
-  Widget _buildDetailRow(String label, String value, {bool isBold = false}) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 100,
-            child: Text(
-              '$label:',
-              style: const TextStyle(fontWeight: FontWeight.w600),
-            ),
+  Widget _buildStatItem(String label, String value, IconData icon) {
+    return Column(
+      children: [
+        Icon(icon, size: 20, color: AppColors.primary),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          style: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
           ),
-          Expanded(
-            child: Text(
-              value,
-              style: TextStyle(
-                fontWeight: isBold ? FontWeight.bold : FontWeight.normal,
+        ),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            color: AppColors.darkText.withOpacity(0.6),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // SIMPLIFIED: Order card with only essential information
+  Widget _buildOrderCard(Order order) {
+    final deliveryFee = order.deliveryType == DeliveryType.delivery ? 100 : 0;
+    final canCancel = _canOrderBeCancelled(order);
+    final remainingTime = canCancel ? _getRemainingCancellationTime(order) : 0;
+    
+    return Card(
+      margin: const EdgeInsets.only(bottom: 16),
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Order status badge
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: _getStatusColor(order.status),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    _getStatusIcon(order.status),
+                    color: Colors.white,
+                    size: 16,
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    _getStatusText(order.status),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
               ),
             ),
-          ),
-        ],
+            const SizedBox(height: 12),
+            
+            // Order number & date
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Order #${order.id}',
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                Text(
+                  _formatDate(order.date),
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: AppColors.darkText.withOpacity(0.6),
+                  ),
+                ),
+              ],
+            ),
+            
+            // ADDED: Cancellation timer (only if can cancel)
+            if (canCancel) ...[
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.orange.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.timer, size: 16, color: Colors.orange),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Can cancel in: ${_formatTimeLeft(remainingTime)}',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.orange,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            
+            const SizedBox(height: 16),
+            
+            // Items with quantities and subtotals
+            ...order.items.map((item) => Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(
+                    child: Text(
+                      '${item.quantity}x ${item.title}',
+                      style: const TextStyle(fontSize: 14),
+                    ),
+                  ),
+                  Text(
+                    'KES ${item.price * item.quantity}',
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            )),
+            
+            const Divider(height: 24),
+            
+            // Delivery fee (if applicable)
+            if (order.deliveryType == DeliveryType.delivery) ...[
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Delivery Fee',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: AppColors.darkText.withOpacity(0.7),
+                    ),
+                  ),
+                  Text(
+                    'KES $deliveryFee',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: AppColors.darkText.withOpacity(0.7),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+            ],
+            
+            // Grand total
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'Total',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                Text(
+                  'KES ${order.totalAmount}',
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.primary,
+                  ),
+                ),
+              ],
+            ),
+            
+            // Delivery address (if delivery)
+            if (order.deliveryType == DeliveryType.delivery && order.deliveryAddress != null) ...[
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withOpacity(0.05),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: AppColors.primary.withOpacity(0.2),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.location_on,
+                      size: 18,
+                      color: AppColors.primary,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        order.deliveryAddress!,
+                        style: const TextStyle(fontSize: 13),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            
+            // UPDATED: Action buttons (Reorder and Cancel)
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                // Cancel button (only if can cancel)
+                if (canCancel) ...[
+                  Expanded(
+                    flex: 2,
+                    child: OutlinedButton.icon(
+                      onPressed: () => _cancelOrder(context, order),
+                      icon: const Icon(Icons.cancel, size: 16, color: Colors.red),
+                      label: const Text('Cancel', style: TextStyle(color: Colors.red)),
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: Colors.red),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                ],
+                // Reorder button
+                Expanded(
+                  flex: 3,
+                  child: ElevatedButton.icon(
+                    onPressed: () => _reorderItems(order),
+                    icon: const Icon(Icons.replay, size: 18),
+                    label: const Text('Reorder'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -704,7 +634,6 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> with SingleTick
     }
   }
 
-  // ADDED: Missing _getStatusIcon method
   IconData _getStatusIcon(OrderStatus status) {
     switch (status) {
       case OrderStatus.pending:
@@ -779,9 +708,9 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> with SingleTick
           unselectedLabelColor: AppColors.white.withOpacity(0.7),
           indicatorColor: AppColors.white,
           tabs: const [
-            Tab(text: 'All Orders'),
+            Tab(text: 'All'),
             Tab(text: 'Active'),
-            Tab(text: 'Past Orders'),
+            Tab(text: 'Past'),
           ],
         ),
       ),
@@ -817,7 +746,7 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> with SingleTick
             ),
             const SizedBox(height: 16),
             Text(
-              'No Orders Found',
+              'No Orders',
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
@@ -832,10 +761,7 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> with SingleTick
     return ListView.builder(
       padding: const EdgeInsets.all(16),
       itemCount: orders.length,
-      itemBuilder: (context, index) {
-        final order = orders[index];
-        return _buildOrderCard(order); // FIXED: Pass order, not context and order
-      },
+      itemBuilder: (context, index) => _buildOrderCard(orders[index]), // FIXED: Removed extra 'context' parameter
     );
   }
 }

@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../constants/colors.dart';
+import 'location.dart'; // ADDED
 
 class EditProfileScreen extends StatefulWidget {
   const EditProfileScreen({super.key});
@@ -285,6 +286,40 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     return null;
   }
 
+  // ADDED: Navigate to location screen for address selection
+  Future<void> _selectAddressFromMap() async {
+    final result = await Navigator.push<Map<String, dynamic>>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const LocationScreen(),
+      ),
+    );
+
+    if (result != null && mounted) {
+      final address = result['address'] as String;
+      
+      // Add to addresses list
+      setState(() {
+        _addresses.add(address);
+        // Set as default if first address
+        _defaultAddressIndex ??= _addresses.length - 1;
+      });
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.check_circle, color: Colors.white),
+              const SizedBox(width: 8),
+              const Expanded(child: Text('Address added successfully')),
+            ],
+          ),
+          backgroundColor: AppColors.success,
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
@@ -454,13 +489,37 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                         Icon(Icons.location_off, size: 48, color: AppColors.darkText.withOpacity(0.3)),
                         const SizedBox(height: 8),
                         Text('No addresses yet', style: TextStyle(color: AppColors.darkText.withOpacity(0.5))),
-                        const SizedBox(height: 4),
-                        Text('Add one for faster checkout', style: TextStyle(fontSize: 12, color: AppColors.darkText.withOpacity(0.4))),
+                        const SizedBox(height: 12),
+                        OutlinedButton.icon(
+                          onPressed: _selectAddressFromMap,
+                          icon: const Icon(Icons.map),
+                          label: const Text('Select from Map'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: AppColors.primary,
+                            side: const BorderSide(color: AppColors.primary),
+                          ),
+                        ),
                       ],
                     ),
                   )
                 else
-                  ..._addresses.asMap().entries.map((e) => _buildAddressCard(e.key, e.value)),
+                  // ADDED: Add from map button
+                  Column(
+                    children: [
+                      ..._addresses.asMap().entries.map((e) => _buildAddressCard(e.key, e.value)),
+                      const SizedBox(height: 8),
+                      OutlinedButton.icon(
+                        onPressed: _selectAddressFromMap,
+                        icon: const Icon(Icons.map),
+                        label: const Text('Add from Map'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppColors.primary,
+                          side: const BorderSide(color: AppColors.primary),
+                          minimumSize: const Size(double.infinity, 48),
+                        ),
+                      ),
+                    ],
+                  ),
                 
                 SizedBox(height: isLandscape ? 16 : 20),
 

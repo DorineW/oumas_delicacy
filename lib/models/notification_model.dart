@@ -1,3 +1,5 @@
+//lib/models/notification_model.dart
+//the notification model representing app notifications
 class AppNotification {
   final String id;
   final String userId;

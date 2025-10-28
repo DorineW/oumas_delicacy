@@ -1,10 +1,9 @@
 // lib/screens/location.dart
-import 'dart:async'; // ADDED: For Timer
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
-// ignore: unused_import
 import 'package:geolocator/geolocator.dart';
 import '../providers/location_provider.dart';
 import '../constants/colors.dart';
@@ -18,13 +17,19 @@ class LocationScreen extends StatefulWidget {
   State<LocationScreen> createState() => _LocationScreenState();
 }
 
-class _LocationScreenState extends State<LocationScreen> {
+// FIXED: Changed to TickerProviderStateMixin instead of SingleTickerProviderStateMixin
+class _LocationScreenState extends State<LocationScreen> with TickerProviderStateMixin {
   LatLng? _selectedPoint;
   MapController mapController = MapController();
   bool _isMapReady = false;
-  final TextEditingController _searchController = TextEditingController(); // ADDED
-  List<Map<String, dynamic>> _searchResults = []; // ADDED
-  Timer? _debounceTimer; // ADDED: Timer for debouncing search
+  bool _isLoadingLocation = false;
+  final TextEditingController _searchController = TextEditingController();
+  List<Map<String, dynamic>> _searchResults = [];
+  Timer? _debounceTimer;
+  
+  // Store current address locally
+  String? _currentAddress;
+  bool _isLoadingAddress = false;
 
   @override
   void initState() {
@@ -36,135 +41,425 @@ class _LocationScreenState extends State<LocationScreen> {
 
   @override
   void dispose() {
-    _searchController.dispose(); // ADDED
-    _debounceTimer?.cancel(); // ADDED: Cancel debounce timer
+    _searchController.dispose();
+    _debounceTimer?.cancel();
     super.dispose();
   }
 
+  // UPDATED: Better location initialization with permission handling
   void _initializeMap() async {
-    // FIXED: Check if widget is still mounted
     if (!mounted) return;
+    
+    setState(() => _isLoadingLocation = true);
     
     final locationProvider = context.read<LocationProvider>();
     
-    // If no initial position, get current location
-    if (widget.initialPosition == null) {
-      await locationProvider.initializeLocation();
-      
-      // FIXED: Check mounted again after async operation
-      if (!mounted) return;
-      
-      if (locationProvider.latitude != null && locationProvider.longitude != null) {
-        setState(() {
-          _selectedPoint = LatLng(locationProvider.latitude!, locationProvider.longitude!);
-        });
+    try {
+      // If no initial position, get current location with better error handling
+      if (widget.initialPosition == null) {
+        // ADDED: Force fresh location fetch
+        await locationProvider.initializeLocation();
         
-        // Center map on current location
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) {
-            mapController.move(_selectedPoint!, 15.0);
-          }
+        if (!mounted) return;
+        
+        if (locationProvider.latitude != null && locationProvider.longitude != null) {
+          final newPoint = LatLng(locationProvider.latitude!, locationProvider.longitude!);
+          
+          setState(() {
+            _selectedPoint = newPoint;
+          });
+          
+          // UPDATED: Use animatedMapMove for smoother transition
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              _animatedMapMove(newPoint, 15.0);
+            }
+          });
+        } else {
+          // ADDED: Fallback to default location if permission denied or error
+          final defaultPoint = const LatLng(
+            LocationProvider.defaultLatitude,
+            LocationProvider.defaultLongitude,
+          );
+          
+          setState(() {
+            _selectedPoint = defaultPoint;
+          });
+          
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              mapController.move(defaultPoint, 15.0);
+            }
+          });
+        }
+      } else {
+        // Use provided initial position
+        setState(() {
+          _selectedPoint = LatLng(
+            widget.initialPosition.latitude ?? LocationProvider.defaultLatitude,
+            widget.initialPosition.longitude ?? LocationProvider.defaultLongitude,
+          );
         });
       }
-    } else {
-      // Use provided initial position
+      
       setState(() {
-        _selectedPoint = LatLng(
-          widget.initialPosition.latitude ?? LocationProvider.defaultLatitude,
-          widget.initialPosition.longitude ?? LocationProvider.defaultLongitude,
-        );
+        _isMapReady = true;
       });
+    } catch (e) {
+      debugPrint('❌ Error initializing map: $e');
+      
+      // ADDED: Show error and use default location
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.error, color: Colors.white),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text('Could not get location: $e'),
+                ),
+              ],
+            ),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            margin: const EdgeInsets.all(16),
+          ),
+        );
+        
+        setState(() {
+          _selectedPoint = const LatLng(
+            LocationProvider.defaultLatitude,
+            LocationProvider.defaultLongitude,
+          );
+          _isMapReady = true;
+        });
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoadingLocation = false);
+      }
     }
-    
-    setState(() {
-      _isMapReady = true;
-    });
   }
 
+  // ADDED: Animated map move for smoother transitions
+  void _animatedMapMove(LatLng destLocation, double destZoom) {
+    final camera = mapController.camera;
+    final latTween = Tween<double>(
+      begin: camera.center.latitude,
+      end: destLocation.latitude,
+    );
+    final lngTween = Tween<double>(
+      begin: camera.center.longitude,
+      end: destLocation.longitude,
+    );
+    final zoomTween = Tween<double>(
+      begin: camera.zoom,
+      end: destZoom,
+    );
+
+    final controller = AnimationController(
+      duration: const Duration(milliseconds: 500),
+      vsync: this,
+    );
+
+    final Animation<double> animation = CurvedAnimation(
+      parent: controller,
+      curve: Curves.fastOutSlowIn,
+    );
+
+    controller.addListener(() {
+      mapController.move(
+        LatLng(
+          latTween.evaluate(animation),
+          lngTween.evaluate(animation),
+        ),
+        zoomTween.evaluate(animation),
+      );
+    });
+
+    animation.addStatusListener((status) {
+      if (status == AnimationStatus.completed || status == AnimationStatus.dismissed) {
+        controller.dispose();
+      }
+    });
+
+    controller.forward();
+  }
+
+  // UPDATED: Improved onMapTap with better address handling
   void _onMapTap(BuildContext context, LatLng point) async {
     final locationProvider = context.read<LocationProvider>();
 
     setState(() {
       _selectedPoint = point;
+      _isLoadingAddress = true;
+      _currentAddress = null; // Clear old address
     });
 
+    // Show loading while getting address
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+              ),
+            ),
+            const SizedBox(width: 12),
+            const Expanded(child: Text('Getting address...')),
+          ],
+        ),
+        backgroundColor: AppColors.primary,
+        duration: const Duration(seconds: 3),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        margin: const EdgeInsets.all(16),
+      ),
+    );
+
     await locationProvider.setLocation(point.latitude, point.longitude);
+    
+    // UPDATED: Update local address from provider
+    if (mounted) {
+      setState(() {
+        _currentAddress = locationProvider.deliveryAddress;
+        _isLoadingAddress = false;
+      });
+      ScaffoldMessenger.of(context).clearSnackBars();
+      
+      debugPrint('📍 Map tap - Address: $_currentAddress');
+      debugPrint('📍 Coordinates: ${point.latitude}, ${point.longitude}');
+    }
   }
 
   void _confirmLocation(BuildContext context) {
-    final provider = context.read<LocationProvider>();
-    
-    if (provider.deliveryAddress == null) {
+    // FIXED: Check for both address and coordinates
+    if (_currentAddress == null || _currentAddress!.isEmpty || _selectedPoint == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Please select a location on the map'),
+          content: Row(
+            children: [
+              const Icon(Icons.warning, color: Colors.white),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Text('Please select a location on the map'),
+              ),
+            ],
+          ),
           backgroundColor: Colors.orange,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          margin: const EdgeInsets.all(16),
         ),
       );
       return;
     }
 
+    // FIXED: Return address with coordinates
+    debugPrint('✅ Confirming location: $_currentAddress');
+    debugPrint('✅ Coordinates: ${_selectedPoint!.latitude}, ${_selectedPoint!.longitude}');
+    
     Navigator.pop(context, {
-      'address': provider.deliveryAddress!,
-      'latitude': provider.latitude,
-      'longitude': provider.longitude,
+      'address': _currentAddress!,
+      'latitude': _selectedPoint!.latitude,
+      'longitude': _selectedPoint!.longitude,
     });
   }
 
-  void _currentLocationButtonPressed() async {
-    final locationProvider = context.read<LocationProvider>();
-    await locationProvider.initializeLocation();
+  // UPDATED: Refresh current location with better feedback
+  Future<void> _currentLocationButtonPressed() async {
+    setState(() => _isLoadingLocation = true);
     
-    if (locationProvider.latitude != null && locationProvider.longitude != null) {
-      setState(() {
-        _selectedPoint = LatLng(locationProvider.latitude!, locationProvider.longitude!);
-      });
-      
-      mapController.move(_selectedPoint!, 15.0);
-    }
-  }
+    try {
+      // ADDED: Check location permissions first
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
 
-  // ADDED: Search address and update map with debouncing
-  void _searchAddress(String query) {
-    if (_debounceTimer?.isActive ?? false) {
-      _debounceTimer?.cancel();
-    }
-    
-    _debounceTimer = Timer(const Duration(milliseconds: 500), () async {
-      if (query.isEmpty) {
-        setState(() => _searchResults = []);
+      if (permission == LocationPermission.deniedForever) {
+        if (!mounted) return;
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.error, color: Colors.white),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Text('Location permissions are permanently denied. Please enable in settings.'),
+                ),
+              ],
+            ),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            margin: const EdgeInsets.all(16),
+            duration: const Duration(seconds: 4),
+          ),
+        );
+        setState(() => _isLoadingLocation = false);
         return;
       }
 
       final locationProvider = context.read<LocationProvider>();
-      final results = await locationProvider.searchAddress(query);
       
-      if (mounted) {
+      // ADDED: Clear any cached location and force fresh fetch
+      locationProvider.clearLocation();
+      await locationProvider.initializeLocation();
+      
+      if (!mounted) return;
+      
+      if (locationProvider.latitude != null && locationProvider.longitude != null) {
+        final newPoint = LatLng(locationProvider.latitude!, locationProvider.longitude!);
+        
         setState(() {
-          _searchResults = results;
+          _selectedPoint = newPoint;
         });
+        
+        _animatedMapMove(newPoint, 16.0); // UPDATED: Zoom in more on current location
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.check_circle, color: Colors.white),
+                const SizedBox(width: 12),
+                const Expanded(child: Text('Location updated!')),
+              ],
+            ),
+            backgroundColor: AppColors.success,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            margin: const EdgeInsets.all(16),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      } else {
+        if (!mounted) return;
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.error, color: Colors.white),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Text('Could not get current location. Using default.'),
+                ),
+              ],
+            ),
+            backgroundColor: Colors.orange,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            margin: const EdgeInsets.all(16),
+          ),
+        );
       }
+    } catch (e) {
+      if (!mounted) return;
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.error, color: Colors.white),
+              const SizedBox(width: 12),
+              Expanded(child: Text('Error: $e')),
+            ],
+          ),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          margin: const EdgeInsets.all(16),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isLoadingLocation = false);
+      }
+    }
+  }
+
+  // UPDATED: Faster search with immediate results on Enter/Done
+  Future<void> _searchAddress(String query, {bool immediate = false}) async {
+    if (_debounceTimer?.isActive ?? false) {
+      _debounceTimer?.cancel();
+    }
+    
+    if (query.isEmpty) {
+      setState(() => _searchResults = []);
+      return;
+    }
+
+    // ADDED: If immediate (from Enter/Done), search right away
+    if (immediate) {
+      await _performSearch(query);
+      return;
+    }
+    
+    // Otherwise, debounce for typing
+    _debounceTimer = Timer(const Duration(milliseconds: 300), () async { // REDUCED: from 500ms to 300ms
+      await _performSearch(query);
     });
   }
 
-  // ADDED: Select search result
-  void _selectSearchResult(Map<String, dynamic> result) async {
+  // ADDED: Extracted search logic
+  Future<void> _performSearch(String query) async {
+    final locationProvider = context.read<LocationProvider>();
+    final results = await locationProvider.searchAddress(query);
+    
+    if (mounted) {
+      setState(() {
+        _searchResults = results;
+      });
+    }
+  }
+
+  // UPDATED: Better result selection with immediate address update
+  Future<void> _selectSearchResult(Map<String, dynamic> result) async {
     final locationProvider = context.read<LocationProvider>();
     
     final lat = result['lat'] as double;
     final lon = result['lon'] as double;
+    final displayName = result['display_name'] as String;
     
-    await locationProvider.setLocation(lat, lon);
+    debugPrint('🔍 Search result selected: $displayName');
+    debugPrint('🔍 Coordinates: $lat, $lon');
     
-    if (mounted) {
-      setState(() {
-        _selectedPoint = LatLng(lat, lon);
-        _searchResults = [];
-        _searchController.clear();
-      });
-      
-      mapController.move(_selectedPoint!, 15.0);
-    }
+    // UPDATED: Immediately set everything
+    setState(() {
+      _searchResults = [];
+      _searchController.clear();
+      _selectedPoint = LatLng(lat, lon);
+      _currentAddress = displayName; // FIXED: Set address immediately
+      _isLoadingAddress = false;
+    });
+    
+    // Move map to location
+    _animatedMapMove(_selectedPoint!, 16.0);
+    
+    // UPDATED: Set location in background for delivery zone check
+    locationProvider.setLocation(lat, lon).then((_) {
+      if (mounted && locationProvider.deliveryAddress != null) {
+        final reverseAddress = locationProvider.deliveryAddress!;
+        // FIXED: Only update if reverse address is significantly better/shorter
+        if (reverseAddress.length < displayName.length && reverseAddress.isNotEmpty) {
+          setState(() {
+            _currentAddress = reverseAddress;
+          });
+          debugPrint('📍 Updated to reverse geocoded address: $reverseAddress');
+        }
+      }
+    });
+    
+    debugPrint('✅ Search result applied - Address: $_currentAddress');
   }
 
   Widget _buildAddressCard(LocationProvider provider) {
@@ -201,16 +496,16 @@ class _LocationScreenState extends State<LocationScreen> {
           
           const SizedBox(height: 12),
           
-          // Address Text
+          // UPDATED: Address Text using local state
           Text(
-            provider.isLoading
+            _isLoadingAddress
                 ? "🔄 Getting address..."
-                : (provider.deliveryAddress ?? "📍 Tap on map to select location"),
+                : (_currentAddress ?? "📍 Tap on map to select location"),
             textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w500,
-              color: provider.deliveryAddress == null 
+              color: _currentAddress == null 
                   ? Colors.grey 
                   : AppColors.darkText,
             ),
@@ -238,9 +533,15 @@ class _LocationScreenState extends State<LocationScreen> {
               Expanded(
                 flex: 2,
                 child: OutlinedButton.icon(
-                  onPressed: _currentLocationButtonPressed,
-                  icon: const Icon(Icons.my_location, size: 18),
-                  label: const Text('Current'),
+                  onPressed: _isLoadingLocation ? null : _currentLocationButtonPressed,
+                  icon: _isLoadingLocation
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.my_location, size: 18),
+                  label: Text(_isLoadingLocation ? 'Loading...' : 'Current'),
                   style: OutlinedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 12),
                     side: BorderSide(color: AppColors.primary),
@@ -254,7 +555,7 @@ class _LocationScreenState extends State<LocationScreen> {
               Expanded(
                 flex: 3,
                 child: ElevatedButton(
-                  onPressed: provider.deliveryAddress == null || provider.isLoading
+                  onPressed: (_currentAddress == null || _currentAddress!.isEmpty || _isLoadingAddress || _selectedPoint == null)
                       ? null
                       : () => _confirmLocation(context),
                   style: ElevatedButton.styleFrom(
@@ -265,7 +566,7 @@ class _LocationScreenState extends State<LocationScreen> {
                       borderRadius: BorderRadius.circular(8),
                     ),
                   ),
-                  child: provider.isLoading
+                  child: _isLoadingAddress
                       ? const SizedBox(
                           width: 20,
                           height: 20,
@@ -298,6 +599,21 @@ class _LocationScreenState extends State<LocationScreen> {
         backgroundColor: AppColors.primary,
         foregroundColor: AppColors.white,
         actions: [
+          // Refresh button
+          IconButton(
+            icon: _isLoadingLocation 
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                    ),
+                  )
+                : const Icon(Icons.refresh),
+            onPressed: _isLoadingLocation ? null : _currentLocationButtonPressed,
+            tooltip: 'Refresh Location',
+          ),
           IconButton(
             icon: const Icon(Icons.help_outline),
             onPressed: () {
@@ -307,7 +623,7 @@ class _LocationScreenState extends State<LocationScreen> {
                   title: const Text('Delivery Area'),
                   content: const Text(
                     'We deliver within 5km radius from Madaraka, Nairobi. '
-                    'Tap on the map to select your exact delivery location.',
+                    'Tap on the map to select your exact delivery location or search for an address.',
                   ),
                   actions: [
                     TextButton(
@@ -323,7 +639,7 @@ class _LocationScreenState extends State<LocationScreen> {
       ),
       body: Stack(
         children: [
-          // ADDED: Search field at top
+          // Search field at top
           if (_isMapReady)
             Positioned(
               top: 0,
@@ -335,21 +651,35 @@ class _LocationScreenState extends State<LocationScreen> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    // Search field with Enter/Done button support
                     TextField(
                       controller: _searchController,
-                      onChanged: _searchAddress,
+                      onChanged: (value) => _searchAddress(value),
+                      onSubmitted: (value) => _searchAddress(value, immediate: true),
+                      textInputAction: TextInputAction.search,
                       decoration: InputDecoration(
-                        hintText: 'Search location (e.g. Moi Avenue)',
+                        hintText: 'Search location (e.g. Moi Avenue, Nairobi)',
+                        hintStyle: const TextStyle(fontSize: 14),
                         prefixIcon: const Icon(Icons.search, color: AppColors.primary),
                         suffixIcon: _searchController.text.isNotEmpty
-                            ? IconButton(
-                                icon: const Icon(Icons.clear),
-                                onPressed: () {
-                                  setState(() {
-                                    _searchController.clear();
-                                    _searchResults = [];
-                                  });
-                                },
+                            ? Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  IconButton(
+                                    icon: const Icon(Icons.arrow_forward, color: AppColors.primary),
+                                    onPressed: () => _searchAddress(_searchController.text, immediate: true),
+                                    tooltip: 'Search',
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(Icons.clear),
+                                    onPressed: () {
+                                      setState(() {
+                                        _searchController.clear();
+                                        _searchResults = [];
+                                      });
+                                    },
+                                  ),
+                                ],
                               )
                             : null,
                         filled: true,
@@ -362,7 +692,7 @@ class _LocationScreenState extends State<LocationScreen> {
                       ),
                     ),
                     
-                    // ADDED: Search results dropdown with max height
+                    // Search results dropdown
                     if (_searchResults.isNotEmpty)
                       Container(
                         margin: const EdgeInsets.only(top: 8),
@@ -387,7 +717,7 @@ class _LocationScreenState extends State<LocationScreen> {
                             return ListTile(
                               leading: const Icon(Icons.location_on, color: AppColors.primary, size: 20),
                               title: Text(
-                                result['name'],
+                                result['display_name'],
                                 style: const TextStyle(fontSize: 13),
                                 maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
@@ -402,7 +732,7 @@ class _LocationScreenState extends State<LocationScreen> {
               ),
             ),
 
-          // ADDED: Outside delivery zone warning with dynamic positioning
+          // Outside delivery zone warning
           if (_isMapReady && provider.outsideDeliveryArea)
             Positioned(
               top: _searchResults.isNotEmpty ? 220 : 80,
@@ -439,7 +769,7 @@ class _LocationScreenState extends State<LocationScreen> {
               ),
             ),
 
-          // Map - FIXED: Dynamic top positioning
+          // Map
           Positioned.fill(
             top: _searchResults.isNotEmpty ? 220 : 80,
             child: _isMapReady
@@ -476,7 +806,7 @@ class _LocationScreenState extends State<LocationScreen> {
                             borderColor: AppColors.primary.withOpacity(0.5),
                             borderStrokeWidth: 2,
                             useRadiusInMeter: true,
-                            radius: 5000, // 5km in meters
+                            radius: 5000,
                           ),
                         ],
                       ),
@@ -536,17 +866,23 @@ class _LocationScreenState extends State<LocationScreen> {
                   ),
           ),
           
-          // Current Location FAB - FIXED: Better positioning
+          // Current Location FAB
           if (_isMapReady)
             Positioned(
               right: 16,
               bottom: 140,
               child: FloatingActionButton(
-                onPressed: _currentLocationButtonPressed,
+                onPressed: _isLoadingLocation ? null : _currentLocationButtonPressed,
                 backgroundColor: Colors.white,
                 foregroundColor: AppColors.primary,
                 mini: true,
-                child: const Icon(Icons.my_location),
+                child: _isLoadingLocation
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.my_location),
               ),
             ),
           
