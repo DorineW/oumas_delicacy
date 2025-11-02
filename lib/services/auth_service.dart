@@ -7,7 +7,6 @@ import '../models/user.dart' as app;
 class AuthService extends ChangeNotifier {
   final _supabase = Supabase.instance.client;
 
-  // ADDED: Compatibility with previous API
   app.User? _currentUser;
   bool _isLoading = false;
 
@@ -17,7 +16,27 @@ class AuthService extends ChangeNotifier {
   bool get isRider => _currentUser?.role == 'rider';
   bool get isLoading => _isLoading;
 
-  // ADDED: Refresh cached User model from profiles table
+  // In-memory cooldown to reduce Supabase 429s (no persistence)
+  static const Duration _rateLimitWindow = Duration(seconds: 60);
+  final Map<String, DateTime> _lastRequest = {};
+
+  Future<void> _enforceEmailRateLimit(String action, String email) async {
+    final key = '${action}:${email.toLowerCase()}';
+    final last = _lastRequest[key];
+    if (last != null) {
+      final elapsed = DateTime.now().difference(last);
+      final remaining = _rateLimitWindow - elapsed;
+      if (remaining > Duration.zero) {
+        throw Exception('Please wait ${remaining.inSeconds}s before trying again.');
+      }
+    }
+  }
+
+  void _recordEmailRequest(String action, String email) {
+    final key = '${action}:${email.toLowerCase()}';
+    _lastRequest[key] = DateTime.now();
+  }
+
   Future<void> _refreshCurrentUserFromProfile() async {
     try {
       final authUser = _supabase.auth.currentUser;
@@ -26,8 +45,9 @@ class AuthService extends ChangeNotifier {
         notifyListeners();
         return;
       }
+
       final profile = await _supabase
-          .from('profiles')
+          .from('users')
           .select()
           .eq('auth_id', authUser.id)
           .maybeSingle();
@@ -41,7 +61,6 @@ class AuthService extends ChangeNotifier {
           phone: profile['phone'] as String?,
         );
       } else {
-        // Fallback to minimal info from auth
         _currentUser = app.User(
           id: authUser.id,
           email: authUser.email ?? '',
@@ -52,11 +71,11 @@ class AuthService extends ChangeNotifier {
       }
       notifyListeners();
     } catch (_) {
-      // Keep silent; UI can still rely on session
+      // silent
     }
   }
 
-  /// Sign up with email/password and ensures a profiles row exists.
+  /// Sign up with email/password and ensure a users row exists when session is active.
   Future<AuthResponse> signUpWithEmail({
     required String email,
     required String password,
@@ -64,70 +83,105 @@ class AuthService extends ChangeNotifier {
     String? phone,
     String role = 'customer',
   }) async {
-    final res = await _supabase.auth.signUp(
-      email: email,
-      password: password,
-      data: {'name': name, 'phone': phone, 'role': role}, // CHANGED
-    );
+    await _enforceEmailRateLimit('signup', email);
 
-    final user = res.user;
-    if (user != null) {
-      await createProfileIfNotExists(
-        authId: user.id,
+    try {
+      final res = await _supabase.auth.signUp(
         email: email,
-        name: name ?? '',
-        phone: phone,
-        role: role,
+        password: password,
       );
-      await _refreshCurrentUserFromProfile(); // ADDED
-      notifyListeners();
-    }
 
-    return res;
+      _recordEmailRequest('signup', email);
+
+      final user = res.user;
+
+      if (user != null && res.session != null) {
+        await Future.delayed(const Duration(seconds: 1));
+        await createProfileIfNotExists(
+          authId: user.id,
+          email: email,
+          name: name ?? '',
+          phone: phone,
+          role: role,
+        );
+        await _refreshCurrentUserFromProfile();
+        notifyListeners();
+      }
+      return res;
+    } on AuthException catch (e) {
+      final msg = e.message.toLowerCase();
+      if (e.statusCode == 429 ||
+          msg.contains('over_email_send_rate_limit') ||
+          msg.contains('for security purposes')) {
+        throw Exception('Too many requests. Please wait ~60s and check your email for the confirmation link.');
+      }
+      rethrow;
+    }
   }
 
-  /// Sign in with email/password
   Future<AuthResponse> signInWithEmail({
     required String email,
     required String password,
   }) async {
-    final resp = await _supabase.auth.signInWithPassword(
-      email: email,
-      password: password,
-    );
-    await _refreshCurrentUserFromProfile(); // ADDED
-    notifyListeners();
-    return resp;
+    try {
+      final resp = await _supabase.auth.signInWithPassword(
+        email: email,
+        password: password,
+      );
+      await _refreshCurrentUserFromProfile();
+      notifyListeners();
+      return resp;
+    } on AuthException catch (e) {
+      final msg = e.message.toLowerCase();
+      // ADDED: Friendly message for unconfirmed email
+      if ((e.statusCode == 400) && (msg.contains('email not confirmed'))) {
+        throw Exception('Email not confirmed. Please verify your email, then try logging in.');
+      }
+      rethrow;
+    }
   }
 
-  /// Sign in with Google (opens browser for OAuth)
-  Future<void> signInWithGoogle({required String redirectTo}) async {
-    await _supabase.auth.signInWithOAuth(
-      OAuthProvider.google, // CHANGED
-      redirectTo: redirectTo,
-    );
-    // OAuth flow notifies via onAuthStateChange; consumers should listen to the stream.
+  static const String oauthRedirectUri = 'com.oumasdelicacy.app://login-callback';
+
+  Future<void> signInWithGoogle({String? redirectTo}) async {
+    try {
+      await _supabase.auth.signInWithOAuth(
+        OAuthProvider.google,
+        redirectTo: redirectTo ?? oauthRedirectUri,
+      );
+    } on AuthException catch (e) {
+      final msg = e.message.toLowerCase();
+      if (e.statusCode == 400 || msg.contains('provider is not enabled')) {
+        throw Exception('Google sign-in is not enabled in Supabase. Enable the provider and add com.oumasdelicacy.app://login-callback to Redirect URLs.');
+      }
+      rethrow;
+    }
   }
 
-  /// Sign in with Facebook
-  Future<void> signInWithFacebook({required String redirectTo}) async {
-    await _supabase.auth.signInWithOAuth(
-      OAuthProvider.facebook, // CHANGED
-      redirectTo: redirectTo,
-    );
+  Future<void> signInWithFacebook({String? redirectTo}) async {
+    try {
+      await _supabase.auth.signInWithOAuth(
+        OAuthProvider.facebook,
+        redirectTo: redirectTo ?? oauthRedirectUri,
+      );
+    } on AuthException catch (e) {
+      final msg = e.message.toLowerCase();
+      if (e.statusCode == 400 || msg.contains('provider is not enabled')) {
+        throw Exception('Facebook sign-in is not enabled in Supabase. Enable the provider and add com.oumasdelicacy.app://login-callback to Redirect URLs.');
+      }
+      rethrow;
+    }
   }
 
-  /// Sign out
   Future<void> signOut() async {
     await _supabase.auth.signOut();
-    _currentUser = null; // ADDED
+    _currentUser = null;
     notifyListeners();
   }
 
-  // ADDED: Backwards-compatible alias
+  // ADDED: Backwards-compatible alias used across screens
   Future<void> logout() => signOut();
 
-  /// Create a profiles entry if not already present
   Future<void> createProfileIfNotExists({
     required String authId,
     required String email,
@@ -135,56 +189,54 @@ class AuthService extends ChangeNotifier {
     String? phone,
     String role = 'customer',
   }) async {
-    final p = await _supabase
-        .from('profiles')
-        .select('id')
-        .eq('auth_id', authId)
-        .maybeSingle();
-
-    if (p == null) {
-      await _supabase.from('profiles').insert({
-        'auth_id': authId,
-        'email': email,
-        'name': name,
-        'phone': phone,
-        'role': role,
-      });
-    }
+    await _supabase.from('users').upsert({
+      'auth_id': authId,
+      'email': email,
+      'name': name,
+      'phone': phone,
+      'role': role,
+    }, onConflict: 'auth_id', ignoreDuplicates: true);
   }
 
-  /// Fetch current user's profile (null if no session / profile)
   Future<Map<String, dynamic>?> getCurrentProfile() async {
     final user = _supabase.auth.currentUser;
     if (user == null) return null;
 
     final resp = await _supabase
-        .from('profiles')
+        .from('users')
         .select()
         .eq('auth_id', user.id)
         .maybeSingle();
     return resp;
   }
 
-  /// Listen to auth state changes (UI can subscribe)
   Stream<AuthState> authStateChanges() {
     final controller = StreamController<AuthState>();
     final sub = _supabase.auth.onAuthStateChange.listen((data) async {
+      final u = data.session?.user;
+      if (u != null) {
+        await createProfileIfNotExists(
+          authId: u.id,
+          email: u.email ?? '',
+          name: '',
+          phone: null,
+          role: 'customer',
+        );
+      }
       controller.add(AuthState(event: data.event, session: data.session));
-      await _refreshCurrentUserFromProfile(); // ADDED
+      await _refreshCurrentUserFromProfile();
       notifyListeners();
     });
     controller.onCancel = () => sub.cancel();
     return controller.stream;
   }
 
-  /// Backwards-compatible login wrapper
   Future<void> login(String email, String password) async {
     await signInWithEmail(email: email, password: password);
     await _refreshCurrentUserFromProfile();
     notifyListeners();
   }
 
-  /// Backwards-compatible register wrapper
   Future<void> register({
     required String email,
     required String password,
@@ -202,12 +254,34 @@ class AuthService extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Backwards-compatible reset password wrapper
   Future<void> resetPassword(String email, {String? redirectTo}) async {
-    await _supabase.auth.resetPasswordForEmail(
-      email,
-      redirectTo: redirectTo,
-    );
+    await _enforceEmailRateLimit('reset', email);
+    try {
+      await _supabase.auth.resetPasswordForEmail(
+        email,
+        redirectTo: redirectTo,
+      );
+      _recordEmailRequest('reset', email);
+    } on AuthException catch (e) {
+      final msg = e.message.toLowerCase();
+      if (e.statusCode == 429 ||
+          msg.contains('over_email_send_rate_limit') ||
+          msg.contains('for security purposes')) {
+        throw Exception('Too many requests. Please wait ~60s and check your inbox for the reset email.');
+      }
+      rethrow;
+    }
+  }
+
+  Future<void> resendConfirmationEmail(String email) async {
+    try {
+      await _supabase.auth.resend(
+        type: OtpType.signup,
+        email: email,
+      );
+    } on AuthException catch (e) {
+      throw Exception(e.message);
+    }
   }
 }
 

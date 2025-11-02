@@ -2,6 +2,8 @@
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../constants/colors.dart';
 import '../services/auth_service.dart';
 import 'home_screen.dart';
@@ -50,6 +52,88 @@ class _RegisterScreenState extends State<RegisterScreen> {
       );
 
       if (!mounted) return;
+
+      // ADDED: Check if session exists (if not, user must confirm email)
+      final hasSession = Supabase.instance.client.auth.currentSession != null;
+      if (!hasSession) {
+        final outerContext = context; // ADDED: use outer context for snackbars/providers
+        await showDialog<void>(
+          context: context,
+          barrierDismissible: false,
+          builder: (ctx) => AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withOpacity(0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.mark_email_unread, color: AppColors.primary, size: 20),
+                ),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Text('Verify Your Email', style: TextStyle(fontSize: 16)),
+                ),
+              ],
+            ),
+            content: Text(
+              'We sent a verification link to ${_emailController.text.trim()}.\nPlease verify your email, then log in.',
+              style: TextStyle(color: AppColors.darkText.withOpacity(0.8)),
+            ),
+            actions: [
+              // ADDED: Open email app
+              OutlinedButton(
+                onPressed: () async {
+                  try {
+                    final uri = Uri(scheme: 'mailto');
+                    final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+                    if (!ok && mounted) {
+                      ScaffoldMessenger.of(outerContext).showSnackBar(
+                        const SnackBar(content: Text('Could not open email app')),
+                      );
+                    }
+                  } catch (_) {
+                    if (mounted) {
+                      ScaffoldMessenger.of(outerContext).showSnackBar(
+                        const SnackBar(content: Text('Could not open email app')),
+                      );
+                    }
+                  }
+                },
+                child: const Text('Open Email App'),
+              ),
+              // ADDED: Resend confirmation email
+              TextButton(
+                onPressed: () async {
+                  try {
+                    await Provider.of<AuthService>(outerContext, listen: false)
+                        .resendConfirmationEmail(_emailController.text.trim());
+                    Navigator.of(ctx).pop();
+                    ScaffoldMessenger.of(outerContext).showSnackBar(
+                      const SnackBar(content: Text('Confirmation email resent. Check your inbox.')),
+                    );
+                  } catch (e) {
+                    Navigator.of(ctx).pop();
+                    ScaffoldMessenger.of(outerContext).showSnackBar(
+                      SnackBar(content: Text('Failed to resend confirmation: $e')),
+                    );
+                  }
+                },
+                child: const Text('Resend Email'),
+              ),
+              TextButton(
+                onPressed: () {
+                  Navigator.of(outerContext).pushNamedAndRemoveUntil('/login', (route) => false);
+                },
+                child: const Text('Go to Login'),
+              ),
+            ],
+          ),
+        );
+        return; // Stop further navigation until email is confirmed
+      }
 
       // UPDATED: Optional address prompt with better UX
       final shouldAddAddress = await showDialog<bool>(

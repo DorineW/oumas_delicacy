@@ -31,21 +31,11 @@ import 'constants/colors.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // TEMP: show exception text in UI during debugging (remove in production)
-  ErrorWidget.builder = (FlutterErrorDetails details) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Build error')),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Text(details.exceptionAsString(), style: const TextStyle(color: Colors.red)),
-      ),
-    );
-  };
-
-  // Initialize Supabase (replacing Firebase)
   await Supabase.initialize(
     url: 'https://hqfixpqwxmwftvhgdrxn.supabase.co',
     anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhxZml4cHF3eG13ZnR2aGdkcnhuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE2Mzc4NTksImV4cCI6MjA3NzIxMzg1OX0.Mjgws9SddAbTYmZotPNRKf-Yz3DmzkzJRxdstXBx6Zs',
+    // removed: authCallbackUrl (not supported in supabase_flutter v2)
+    // authFlowType: AuthFlowType.pkce, // optional
   );
 
   runApp(const MyApp());

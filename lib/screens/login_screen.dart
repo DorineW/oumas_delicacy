@@ -1,10 +1,13 @@
 // login_screen.dart
 // ignore_for_file: unused_import
 
+import 'dart:async'; // ADDED
+
 import 'package:flutter/material.dart';
 import 'package:sign_in_button/sign_in_button.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter/foundation.dart'; // add near other imports
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../constants/colors.dart';
 import '../services/auth_service.dart';
 import 'home_screen.dart';
@@ -30,6 +33,9 @@ class _LoginScreenState extends State<LoginScreen>
   late AnimationController _slideController;
   late Animation<Offset> _slideAnimation;
 
+  // ADDED: OAuth auth state listener subscription
+  StreamSubscription? _oauthListener;
+
   @override
   void initState() {
     super.initState();
@@ -47,6 +53,14 @@ class _LoginScreenState extends State<LoginScreen>
       parent: _slideController,
       curve: Curves.easeInOut,
     ));
+
+    // ADDED: Handle deep links when app is opened from OAuth redirect
+    _oauthListener = Supabase.instance.client.auth.onAuthStateChange.listen((data) {
+      if (data.event == AuthChangeEvent.signedIn) {
+        if (!mounted) return;
+        Navigator.of(context).pushReplacementNamed('/home');
+      }
+    });
   }
 
   @override
@@ -54,6 +68,7 @@ class _LoginScreenState extends State<LoginScreen>
     _emailController.dispose();
     _passwordController.dispose();
     _slideController.dispose();
+    _oauthListener?.cancel(); // ADDED
     super.dispose();
   }
 
@@ -89,14 +104,83 @@ class _LoginScreenState extends State<LoginScreen>
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Login failed: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      final msg = e.toString();
+      if (msg.contains('Email not confirmed')) {
+        final shouldResend = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Email not confirmed'),
+            content: Text(
+              'We sent a verification link to ${_emailController.text.trim()}. Resend confirmation email?',
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancel')),
+              TextButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Resend')),
+            ],
+          ),
+        );
+        if (shouldResend == true) {
+          try {
+            await Provider.of<AuthService>(context, listen: false)
+                .resendConfirmationEmail(_emailController.text.trim());
+            if (!mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Confirmation email resent. Check your inbox.')),
+            );
+          } catch (err) {
+            if (!mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Failed to resend confirmation: $err')),
+            );
+          }
+        }
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Login failed: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     } finally {
       setState(() => _isLoading = false);
+    }
+  }
+
+  // ADDED/UPDATED: OAuth handlers with consistent loading and error handling
+  Future<void> _signInWithGoogle() async {
+    final auth = Provider.of<AuthService>(context, listen: false);
+    try {
+      setState(() => _isLoading = true);
+      await auth.signInWithGoogle(
+        redirectTo: 'com.oumasdelicacy.app://login-callback',
+      );
+    } catch (e) {
+      if (!mounted) return;
+      debugPrint('Google login error: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$e')), // CHANGED
+      );
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _signInWithFacebook() async {
+    final auth = Provider.of<AuthService>(context, listen: false);
+    try {
+      setState(() => _isLoading = true);
+      await auth.signInWithFacebook(
+        redirectTo: 'com.oumasdelicacy.app://login-callback',
+      );
+    } catch (e) {
+      if (!mounted) return;
+      debugPrint('Facebook login error: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$e')), // CHANGED
+      );
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -260,6 +344,34 @@ class _LoginScreenState extends State<LoginScreen>
 
                 const SizedBox(height: 12),
 
+                // ADDED: Email verification hint
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.blue.withOpacity(0.25)),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Icon(Icons.mark_email_unread, color: Colors.blue),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'New here? After creating an account, check your email for a verification link before logging in.',
+                          style: TextStyle(
+                            color: AppColors.darkText.withOpacity(0.8),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 12),
+
                 // Divider with "or continue with"
                 Row(
                   children: [
@@ -282,23 +394,26 @@ class _LoginScreenState extends State<LoginScreen>
                     SignInButton(
                       Buttons.facebook,
                       onPressed: () {
-                        // TODO: Facebook login
-                      },
+                        if (_isLoading) return;
+                        _signInWithFacebook();
+                      }, // CHANGED
                     ),
                     const SizedBox(height: 10),
                     SignInButton(
                       Buttons.google,
                       onPressed: () {
-                        // TODO: Google login
-                      },
+                        if (_isLoading) return;
+                        _signInWithGoogle();
+                      }, // CHANGED
                     ),
                     const SizedBox(height: 10),
-                    SignInButton(
-                      Buttons.apple,
-                      onPressed: () {
-                        // TODO: Apple login
-                      },
-                    ),
+                    // REMOVED: Apple sign-in button
+                    // SignInButton(
+                    //   Buttons.apple,
+                    //   onPressed: () {
+                    //     // TODO: Apple login
+                    //   },
+                    // ),
                   ],
                 ),
 
