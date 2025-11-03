@@ -10,8 +10,12 @@ class AuthService extends ChangeNotifier {
   app.User? _currentUser;
   bool _isLoading = false;
 
+  // ADDED: Demo mode toggle to bypass Supabase for presentations
+  static const bool demoMode = true;
+
   app.User? get currentUser => _currentUser;
-  bool get isLoggedIn => _supabase.auth.currentUser != null;
+  // CHANGED: Reflect demo user as logged in
+  bool get isLoggedIn => _currentUser != null || _supabase.auth.currentUser != null;
   bool get isAdmin => _currentUser?.role == 'admin';
   bool get isRider => _currentUser?.role == 'rider';
   bool get isLoading => _isLoading;
@@ -85,44 +89,85 @@ class AuthService extends ChangeNotifier {
   }) async {
     await _enforceEmailRateLimit('signup', email);
 
-    try {
-      final res = await _supabase.auth.signUp(
-        email: email,
-        password: password,
-      );
-
-      _recordEmailRequest('signup', email);
-
-      final user = res.user;
-
-      if (user != null && res.session != null) {
-        await Future.delayed(const Duration(seconds: 1));
-        await createProfileIfNotExists(
-          authId: user.id,
+    int attempt = 0;
+    while (true) {
+      try {
+        final res = await _supabase.auth.signUp(
           email: email,
-          name: name ?? '',
-          phone: phone,
-          role: role,
+          password: password,
+          emailRedirectTo: oauthRedirectUri, // deep link for email confirmation
         );
-        await _refreshCurrentUserFromProfile();
-        notifyListeners();
+
+        _recordEmailRequest('signup', email);
+
+        final user = res.user;
+        if (user != null && res.session != null) {
+          await Future.delayed(const Duration(seconds: 1));
+          await createProfileIfNotExists(
+            authId: user.id,
+            email: email,
+            name: name ?? '',
+            phone: phone,
+            role: role,
+          );
+          await _refreshCurrentUserFromProfile();
+          notifyListeners();
+        }
+        return res;
+      } on AuthException catch (e) {
+        final msg = e.message.toLowerCase();
+
+        // Friendly message for Supabase rate limit
+        if (e.statusCode == 429 ||
+            msg.contains('over_email_send_rate_limit') ||
+            msg.contains('for security purposes')) {
+          throw Exception('Too many requests. Please wait ~60s and check your email for the confirmation link.');
+        }
+
+        // Retry on transient 500 errors from auth ("unexpected_failure", "database error saving new user")
+        final isTransient = (e.statusCode == 500) ||
+            msg.contains('unexpected_failure') ||
+            msg.contains('database error saving new user');
+
+        if (isTransient && attempt < 2) {
+          attempt += 1;
+          // exponential backoff: 400ms, 800ms
+          await Future.delayed(Duration(milliseconds: 400 * (1 << (attempt - 1))));
+          continue;
+        }
+
+        if (isTransient) {
+          throw Exception('Temporary error creating account. Please try again in a moment.');
+        }
+
+        // Other auth errors
+        rethrow;
       }
-      return res;
-    } on AuthException catch (e) {
-      final msg = e.message.toLowerCase();
-      if (e.statusCode == 429 ||
-          msg.contains('over_email_send_rate_limit') ||
-          msg.contains('for security purposes')) {
-        throw Exception('Too many requests. Please wait ~60s and check your email for the confirmation link.');
-      }
-      rethrow;
     }
+  }
+
+  // ADDED: Fabricate a session user for demo
+  Future<void> demoLogin({String role = 'customer', String? name}) async {
+    _currentUser = app.User(
+      id: 'demo-$role',
+      email: '$role@example.com',
+      name: name?.trim().isNotEmpty == true ? name!.trim() : 'Demo ${role[0].toUpperCase()}${role.substring(1)}',
+      role: role,
+      phone: null,
+    );
+    notifyListeners();
   }
 
   Future<AuthResponse> signInWithEmail({
     required String email,
     required String password,
   }) async {
+    if (demoMode) {
+      // ADDED: Short-circuit in demo
+      await demoLogin(role: _inferRoleFromEmail(email));
+      // Return a placeholder response
+      return AuthResponse(user: null, session: null);
+    }
     try {
       final resp = await _supabase.auth.signInWithPassword(
         email: email,
@@ -139,6 +184,14 @@ class AuthService extends ChangeNotifier {
       }
       rethrow;
     }
+  }
+
+  // ADDED: Helper to pick a role by email keyword for demo
+  String _inferRoleFromEmail(String email) {
+    final e = email.toLowerCase();
+    if (e.contains('admin')) return 'admin';
+    if (e.contains('rider')) return 'rider';
+    return 'customer';
   }
 
   static const String oauthRedirectUri = 'com.oumasdelicacy.app://login-callback';
@@ -174,6 +227,12 @@ class AuthService extends ChangeNotifier {
   }
 
   Future<void> signOut() async {
+    if (demoMode) {
+      // ADDED: Short-circuit in demo
+      _currentUser = null;
+      notifyListeners();
+      return;
+    }
     await _supabase.auth.signOut();
     _currentUser = null;
     notifyListeners();
@@ -232,6 +291,12 @@ class AuthService extends ChangeNotifier {
   }
 
   Future<void> login(String email, String password) async {
+    if (demoMode) {
+      // ADDED: Short-circuit in demo
+      await demoLogin(role: _inferRoleFromEmail(email));
+      notifyListeners();
+      return;
+    }
     await signInWithEmail(email: email, password: password);
     await _refreshCurrentUserFromProfile();
     notifyListeners();
@@ -243,6 +308,12 @@ class AuthService extends ChangeNotifier {
     required String name,
     required String phone,
   }) async {
+    if (demoMode) {
+      // ADDED: Short-circuit in demo
+      await demoLogin(role: 'customer', name: name);
+      notifyListeners();
+      return;
+    }
     await signUpWithEmail(
       email: email,
       password: password,

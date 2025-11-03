@@ -446,3 +446,161 @@ DROP TRIGGER IF EXISTS trg_profiles_updated_at ON profiles;
 CREATE TRIGGER trg_profiles_updated_at
 BEFORE UPDATE ON profiles
 FOR EACH ROW EXECUTE FUNCTION set_profiles_updated_at();
+
+-- ============================================
+-- Supabase (Postgres) block: users table, RLS, and auth trigger
+-- Fixes "record NEW has no field user_metadata" by using NEW.raw_user_meta_data
+-- ============================================
+DO $$
+BEGIN
+  -- 1) Create app-visible users table (if not exists)
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.tables
+    WHERE table_schema = 'public' AND table_name = 'users'
+  ) THEN
+    CREATE TABLE public.users (
+      auth_id UUID PRIMARY KEY REFERENCES auth.users (id) ON DELETE CASCADE,
+      email   TEXT,
+      name    TEXT,
+      phone   TEXT,
+      role    TEXT NOT NULL DEFAULT 'customer',
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    );
+  END IF;
+
+  -- 2) Enable RLS and add self-access policies (idempotent)
+  EXECUTE 'ALTER TABLE public.users ENABLE ROW LEVEL SECURITY';
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies WHERE schemaname='public' AND tablename='users' AND policyname='Users Select Own'
+  ) THEN
+    CREATE POLICY "Users Select Own"
+      ON public.users FOR SELECT
+      USING (auth_id = auth.uid());
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies WHERE schemaname='public' AND tablename='users' AND policyname='Users Insert Own'
+  ) THEN
+    CREATE POLICY "Users Insert Own"
+      ON public.users FOR INSERT
+      WITH CHECK (auth_id = auth.uid());
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies WHERE schemaname='public' AND tablename='users' AND policyname='Users Update Own'
+  ) THEN
+    CREATE POLICY "Users Update Own"
+      ON public.users FOR UPDATE
+      USING (auth_id = auth.uid())
+      WITH CHECK (auth_id = auth.uid());
+  END IF;
+
+  -- ALLOW service_role full access so the auth trigger can upsert without JWT context
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname='public' AND tablename='users' AND policyname='Users Service Role All'
+  ) THEN
+    CREATE POLICY "Users Service Role All"
+      ON public.users
+      FOR ALL
+      TO service_role
+      USING (true)
+      WITH CHECK (true);
+  END IF;
+
+  -- 3) Keep updated_at current
+  CREATE OR REPLACE FUNCTION public.set_users_updated_at()
+  RETURNS TRIGGER AS $f$
+  BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+  END
+  $f$ LANGUAGE plpgsql;
+
+  -- Recreate trigger to avoid duplicates
+  IF EXISTS (
+    SELECT 1 FROM pg_trigger WHERE tgname = 'trg_users_updated_at'
+  ) THEN
+    EXECUTE 'DROP TRIGGER trg_users_updated_at ON public.users';
+  END IF;
+
+  EXECUTE 'CREATE TRIGGER trg_users_updated_at
+           BEFORE UPDATE ON public.users
+           FOR EACH ROW EXECUTE FUNCTION public.set_users_updated_at()';
+
+  -- 4) Fix the auth.users INSERT trigger
+  -- Drop the old trigger if present (the common name from docs)
+  IF EXISTS (
+    SELECT 1 FROM pg_trigger WHERE tgname = 'on_auth_user_created'
+  ) THEN
+    EXECUTE 'DROP TRIGGER on_auth_user_created ON auth.users';
+  END IF;
+
+  -- Replace the function to use NEW.raw_user_meta_data (correct field)
+  CREATE OR REPLACE FUNCTION public.handle_new_user()
+  RETURNS TRIGGER AS $fn$
+  DECLARE
+    meta JSONB;
+    first_name TEXT;
+    last_name  TEXT;
+    full_name  TEXT;
+    phone      TEXT;
+    role_val   TEXT;
+  BEGIN
+    meta := NEW.raw_user_meta_data;
+
+    -- Extract metadata safely
+    first_name := COALESCE(meta->>'first_name', NULL);
+    last_name  := COALESCE(meta->>'last_name', NULL);
+    full_name  := COALESCE(
+                    NULLIF(CONCAT(COALESCE(first_name, ''), ' ', COALESCE(last_name, '')), ' '),
+                    meta->>'name',
+                    NULL
+                  );
+    phone      := COALESCE(meta->>'phone', NULL);
+    role_val   := COALESCE(meta->>'role', 'customer');
+
+    INSERT INTO public.users AS u (auth_id, email, name, phone, role)
+    VALUES (NEW.id, NEW.email, full_name, phone, role_val)
+    ON CONFLICT (auth_id)
+    DO UPDATE SET
+      email = EXCLUDED.email,
+      name  = COALESCE(EXCLUDED.name, u.name),
+      phone = COALESCE(EXCLUDED.phone, u.phone),
+      role  = COALESCE(EXCLUDED.role, u.role);
+
+    RETURN NEW;
+  END
+  $fn$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;  -- ADDED: ensure correct schema
+
+  -- Recreate the trigger that calls the fixed function
+  EXECUTE 'CREATE TRIGGER on_auth_user_created
+           AFTER INSERT ON auth.users
+           FOR EACH ROW EXECUTE FUNCTION public.handle_new_user()';
+
+  -- Optional: keep email in sync when auth.users changes
+  CREATE OR REPLACE FUNCTION public.sync_user_email_on_update()
+  RETURNS TRIGGER AS $fe$
+  BEGIN
+    UPDATE public.users
+       SET email = NEW.email,
+           updated_at = NOW()
+     WHERE auth_id = NEW.id;
+    RETURN NEW;
+  END
+  $fe$ LANGUAGE plpgsql SET search_path = public; -- ADDED: ensure correct schema
+
+  IF EXISTS (
+    SELECT 1 FROM pg_trigger WHERE tgname = 'on_auth_user_updated'
+  ) THEN
+    EXECUTE 'DROP TRIGGER on_auth_user_updated ON auth.users';
+  END IF;
+
+  EXECUTE 'CREATE TRIGGER on_auth_user_updated
+           AFTER UPDATE OF email ON auth.users
+           FOR EACH ROW EXECUTE FUNCTION public.sync_user_email_on_update()';
+
+END
+$$;

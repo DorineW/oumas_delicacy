@@ -1,12 +1,11 @@
 // login_screen.dart
 // ignore_for_file: unused_import
 
-import 'dart:async'; // ADDED
+import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:sign_in_button/sign_in_button.dart';
 import 'package:provider/provider.dart';
-import 'package:flutter/foundation.dart'; // add near other imports
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../constants/colors.dart';
 import '../services/auth_service.dart';
@@ -54,7 +53,7 @@ class _LoginScreenState extends State<LoginScreen>
       curve: Curves.easeInOut,
     ));
 
-    // ADDED: Handle deep links when app is opened from OAuth redirect
+    // ADDED: Handle deep links when app is opened from email confirmation
     _oauthListener = Supabase.instance.client.auth.onAuthStateChange.listen((data) {
       if (data.event == AuthChangeEvent.signedIn) {
         if (!mounted) return;
@@ -147,41 +146,20 @@ class _LoginScreenState extends State<LoginScreen>
     }
   }
 
-  // ADDED/UPDATED: OAuth handlers with consistent loading and error handling
-  Future<void> _signInWithGoogle() async {
+  // ADDED: Demo continue helper
+  Future<void> _continueAs(String role) async {
     final auth = Provider.of<AuthService>(context, listen: false);
-    try {
-      setState(() => _isLoading = true);
-      await auth.signInWithGoogle(
-        redirectTo: 'com.oumasdelicacy.app://login-callback',
-      );
-    } catch (e) {
-      if (!mounted) return;
-      debugPrint('Google login error: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('$e')), // CHANGED
-      );
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
+    await auth.demoLogin(role: role);
+    if (!mounted) return;
+    Widget next;
+    if (role == 'admin') {
+      next = const AdminDashboardScreen();
+    } else if (role == 'rider') {
+      next = const RiderDashboardScreen();
+    } else {
+      next = const HomeScreen();
     }
-  }
-
-  Future<void> _signInWithFacebook() async {
-    final auth = Provider.of<AuthService>(context, listen: false);
-    try {
-      setState(() => _isLoading = true);
-      await auth.signInWithFacebook(
-        redirectTo: 'com.oumasdelicacy.app://login-callback',
-      );
-    } catch (e) {
-      if (!mounted) return;
-      debugPrint('Facebook login error: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('$e')), // CHANGED
-      );
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
+    Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => next));
   }
 
   @override
@@ -360,7 +338,7 @@ class _LoginScreenState extends State<LoginScreen>
                       const SizedBox(width: 10),
                       Expanded(
                         child: Text(
-                          'New here? After creating an account, check your email for a verification link before logging in.',
+                          'After creating an account, open the verification link sent to your email. The app will sign you in automatically.',
                           style: TextStyle(
                             color: AppColors.darkText.withOpacity(0.8),
                           ),
@@ -372,136 +350,69 @@ class _LoginScreenState extends State<LoginScreen>
 
                 const SizedBox(height: 12),
 
-                // Divider with "or continue with"
-                Row(
-                  children: [
-                    const Expanded(child: Divider(thickness: 1)),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                      child: Text(
-                        "or continue with",
-                        style: TextStyle(color: AppColors.lightGray),
-                      ),
-                    ),
-                    const Expanded(child: Divider(thickness: 1)),
-                  ],
-                ),
-                const SizedBox(height: 16),
-
-                // Social login buttons (using sign_in_button)
-                Column(
-                  children: [
-                    SignInButton(
-                      Buttons.facebook,
-                      onPressed: () {
-                        if (_isLoading) return;
-                        _signInWithFacebook();
-                      }, // CHANGED
-                    ),
-                    const SizedBox(height: 10),
-                    SignInButton(
-                      Buttons.google,
-                      onPressed: () {
-                        if (_isLoading) return;
-                        _signInWithGoogle();
-                      }, // CHANGED
-                    ),
-                    const SizedBox(height: 10),
-                    // REMOVED: Apple sign-in button
-                    // SignInButton(
-                    //   Buttons.apple,
-                    //   onPressed: () {
-                    //     // TODO: Apple login
-                    //   },
-                    // ),
-                  ],
-                ),
-
-                const SizedBox(height: 30),
-
-                // Demo admin login
-                if (kDebugMode) ...[
-                  const SizedBox(height: 24),
+                // ADDED: Demo shortcuts (no credentials required)
+                if (AuthService.demoMode) ...[
+                  const SizedBox(height: 8),
                   Container(
-                    padding: const EdgeInsets.all(16),
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: Colors.blue.withOpacity(0.1),
+                      color: Colors.green.withOpacity(0.08),
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.blue.withOpacity(0.3)),
+                      border: Border.all(color: Colors.green.withOpacity(0.25)),
                     ),
-                    child: Column(
+                    child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Row(
-                          children: [
-                            Icon(Icons.info, color: Colors.blue, size: 18),
-                            const SizedBox(width: 8),
-                            const Text(
-                              'Demo Accounts (Testing Only)',
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 14,
-                                color: Colors.blue,
-                              ),
+                        const Icon(Icons.play_circle_fill, color: Colors.green),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            'Demo mode is ON. Continue without signing in:',
+                            style: TextStyle(
+                              color: AppColors.darkText.withOpacity(0.8),
                             ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        _demoAccountButton(
-                          'Rider',
-                          'rider@example.com',
-                          'rider123',
-                          Icons.delivery_dining,
-                          Colors.orange,
-                        ),
-                        const SizedBox(height: 8),
-                        _demoAccountButton(
-                          'Admin',
-                          'admin@example.com',
-                          'admin123',
-                          Icons.admin_panel_settings,
-                          Colors.red,
+                          ),
                         ),
                       ],
                     ),
                   ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: _isLoading ? null : () => _continueAs('customer'),
+                          child: const Text('Continue as Customer'),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: _isLoading ? null : () => _continueAs('rider'),
+                          child: const Text('Continue as Rider'),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: _isLoading ? null : () => _continueAs('admin'),
+                          child: const Text('Continue as Admin'),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
                 ],
-              ],
+                ],
+              ),
             ),
           ),
         ),
-      ),
-    );
+      );
+    }
   }
-
-  Widget _demoAccountButton(
-    String role,
-    String email,
-    String password,
-    IconData icon,
-    Color color,
-  ) {
-    return ElevatedButton.icon(
-      onPressed: () async {
-        // set demo credentials and trigger the login flow (debug only)
-        _emailController.text = email;
-        _passwordController.text = password;
-
-        // call the same login function you already use
-        await _login();
-      },
-      icon: Icon(icon, size: 20, color: Colors.white),
-      label: Text(
-        'Login as $role',
-        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-      ),
-      style: ElevatedButton.styleFrom(
-        backgroundColor: color,
-        padding: const EdgeInsets.symmetric(vertical: 16),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
-      ),
-    );
-  }
-}
