@@ -95,7 +95,13 @@ class AuthService extends ChangeNotifier {
         final res = await _supabase.auth.signUp(
           email: email,
           password: password,
-          emailRedirectTo: oauthRedirectUri, // deep link for email confirmation
+          emailRedirectTo: oauthRedirectUri,
+          // ADDED: Pass metadata so trigger can read it
+          data: {
+            'name': name ?? '',
+            'phone': phone,
+            'role': role,
+          },
         );
 
         _recordEmailRequest('signup', email);

@@ -5,6 +5,7 @@ import 'dart:math';
 import 'notification_provider.dart';
 import '../models/notification_model.dart'; // ADDED: Import AppNotification model
 import 'dart:async'; // ADDED: Import async for Timer
+import 'package:supabase_flutter/supabase_flutter.dart'; // ADDED: Import Supabase
 
 class OrderProvider extends ChangeNotifier {
   final List<Order> _orders = [];
@@ -427,5 +428,39 @@ class OrderProvider extends ChangeNotifier {
     }
     debugPrint('✅ Marked ${pendingOrders.length} pending orders as viewed');
     notifyListeners();
+  }
+
+  Future<void> createOrder({
+    required List<OrderItem> items,
+    required DeliveryType deliveryType,
+    required int totalAmount,
+    required String customerId, // This should be auth_id
+    required String customerName,
+    String? deliveryAddress,
+    String? specialInstructions,
+  }) async {
+    try {
+      // VERIFY: customerId is the UUID from auth.users.id (not email)
+      final orderId = 'ORD-${DateTime.now().millisecondsSinceEpoch}';
+      
+      // Insert into Supabase orders table
+      await Supabase.instance.client.from('orders').insert({
+        'id': orderId,
+        'user_auth_id': customerId, // CHANGED: use user_auth_id (FK to public.users.auth_id)
+        'customer_name': customerName,
+        'total_amount': totalAmount,
+        'status': 'pending',
+        'delivery_type': deliveryType.name,
+        'delivery_address': deliveryAddress,
+        'special_instructions': specialInstructions,
+        'created_at': DateTime.now().toIso8601String(),
+      });
+
+      // ...existing order items insertion...
+      
+    } catch (e) {
+      debugPrint('❌ Order creation failed: $e');
+      rethrow;
+    }
   }
 }
