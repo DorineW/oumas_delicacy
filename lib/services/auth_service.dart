@@ -10,8 +10,8 @@ class AuthService extends ChangeNotifier {
   app.User? _currentUser;
   bool _isLoading = false;
 
-  // ADDED: Demo mode toggle to bypass Supabase for presentations
-  static const bool demoMode = true;
+  // CHANGED: Turn off demo mode to re-enable Supabase
+  static const bool demoMode = false;
 
   app.User? get currentUser => _currentUser;
   // CHANGED: Reflect demo user as logged in
@@ -281,9 +281,12 @@ class AuthService extends ChangeNotifier {
           phone: null,
           role: 'customer',
         );
+        // ADDED: Wait for trigger to complete, then refresh
+        await Future.delayed(const Duration(milliseconds: 500));
+        await _refreshCurrentUserFromProfile();
       }
       controller.add(AuthState(event: data.event, session: data.session));
-      await _refreshCurrentUserFromProfile();
+      // REMOVED: duplicate refresh here (already done above when u != null)
       notifyListeners();
     });
     controller.onCancel = () => sub.cancel();

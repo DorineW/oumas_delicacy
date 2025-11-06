@@ -50,6 +50,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     super.initState();
     final defaultPhone = widget.defaultPhoneNumber ?? '712345678';
     _phoneController.text = defaultPhone;
+    // CHANGED: Pre-fill M-Pesa with same phone
     _mpesaPhoneController.text = defaultPhone;
 
     // ADDED: Load default address and phone from profile
@@ -188,11 +189,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   Future<void> _loadDefaultAddress() async {
     final prefs = await SharedPreferences.getInstance();
     
-    // Load phone number
+    // Load phone number and update both controllers
     final savedPhone = prefs.getString('phone') ?? '';
     if (savedPhone.isNotEmpty) {
       setState(() {
         _phoneController.text = savedPhone;
+        _mpesaPhoneController.text = savedPhone; // ADDED: Sync M-Pesa phone too
       });
     }
     

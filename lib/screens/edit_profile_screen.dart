@@ -3,9 +3,12 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart'; // ADDED
 
 import '../constants/colors.dart';
+import '../services/auth_service.dart';
 import 'location.dart'; // ADDED
 
 class EditProfileScreen extends StatefulWidget {
@@ -98,44 +101,72 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     setState(() => _isSaving = true);
 
     try {
-      // Simulate API save with a short delay.
-      await Future.delayed(const Duration(seconds: 1));
+      final auth = Provider.of<AuthService>(context, listen: false);
+      final userId = auth.currentUser?.id;
+      
+      if (userId == null) throw Exception('Not logged in');
 
+      // Update in Supabase
+      await Supabase.instance.client
+          .from('users')
+          .update({
+            'name': _nameController.text.trim(),
+            'phone': _phoneCont.text.trim(),
+            'updated_at': DateTime.now().toIso8601String(),
+          })
+          .eq('auth_id', userId);
+
+      // ADDED: Save to SharedPreferences for offline access and checkout screen
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('name', _nameController.text.trim());
       await prefs.setString('email', _emailCont.text.trim());
       await prefs.setString('phone', _phoneCont.text.trim());
       await prefs.setBool('notifications', _notificationsEnabled);
+      
+      // Save addresses
       await prefs.setStringList('addresses', _addresses);
       if (_defaultAddressIndex != null) {
         await prefs.setInt('defaultAddressIndex', _defaultAddressIndex!);
-      } else {
-        await prefs.remove('defaultAddressIndex');
       }
+      
+      // Save payment method
       if (_paymentMethod != null) {
-        await prefs.setString('paymentMethod', jsonEncode(_paymentMethod));
+        await prefs.setString('paymentMethod', jsonEncode(_paymentMethod!));
       } else {
         await prefs.remove('paymentMethod');
       }
-
+      
+      // Save profile image path
       if (_profileImageFile != null) {
-        // store path for persistence; in a real app you'd upload to a server
         await prefs.setString('profileImagePath', _profileImageFile!.path);
+      } else {
+        await prefs.remove('profileImagePath');
       }
 
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Profile saved successfully')),
-        );
-      }
+      // Force refresh from DB
+      await Future.delayed(const Duration(milliseconds: 300));
+      await auth.getCurrentProfile(); // refetch and update currentUser
+      
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Profile updated successfully'),
+          backgroundColor: AppColors.success,
+        ),
+      );
+
+      Navigator.pop(context); // go back to profile screen
     } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error saving profile: $e')),
-        );
-      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to update profile: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
     } finally {
-      setState(() => _isSaving = false);
+      if (mounted) setState(() => _isSaving = false);
     }
   }
 

@@ -34,6 +34,7 @@ class _LoginScreenState extends State<LoginScreen>
 
   // ADDED: OAuth auth state listener subscription
   StreamSubscription? _oauthListener;
+  bool _deepLinkProcessed = false; // ADDED: Prevent re-processing the same token
 
   @override
   void initState() {
@@ -54,8 +55,16 @@ class _LoginScreenState extends State<LoginScreen>
     ));
 
     // ADDED: Handle deep links when app is opened from email confirmation
-    _oauthListener = Supabase.instance.client.auth.onAuthStateChange.listen((data) {
-      if (data.event == AuthChangeEvent.signedIn) {
+    _oauthListener = Supabase.instance.client.auth.onAuthStateChange.listen((data) async {
+      if (data.event == AuthChangeEvent.signedIn && !_deepLinkProcessed) {
+        _deepLinkProcessed = true;
+        if (!mounted) return;
+        
+        // ADDED: Refresh profile before navigating
+        final auth = Provider.of<AuthService>(context, listen: false);
+        await Future.delayed(const Duration(milliseconds: 800)); // let trigger finish
+        await auth.getCurrentProfile(); // force refresh from DB
+        
         if (!mounted) return;
         Navigator.of(context).pushReplacementNamed('/home');
       }
