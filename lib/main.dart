@@ -11,6 +11,7 @@ import 'screens/home_screen.dart';
 import 'screens/order_confirmation_screen.dart';
 import 'screens/rider/rider_dashboard_screen.dart';
 import 'screens/admin/admin_dashboard_screen.dart';
+import 'screens/order_history_screen.dart'; // ADDED
 
 // ADDED: All necessary service and provider imports
 import 'services/auth_service.dart';
@@ -104,6 +105,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           '/home': (context) => const HomeScreen(),
           '/rider': (context) => const RiderDashboardScreen(),
           '/admin': (context) => const AdminDashboardScreen(),
+          '/order-history': (context) => const OrderHistoryScreen(), // ADDED
         },
         onGenerateRoute: (settings) {
           if (settings.name == '/confirmation') {

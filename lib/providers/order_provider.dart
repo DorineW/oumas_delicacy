@@ -1,11 +1,11 @@
 // lib/providers/order_provider.dart
 import 'package:flutter/material.dart';
-import '../models/order.dart';
+import '../models/order.dart'; // CHANGED: Import Order from model
 import 'dart:math';
 import 'notification_provider.dart';
-import '../models/notification_model.dart'; // ADDED: Import AppNotification model
-import 'dart:async'; // ADDED: Import async for Timer
-import 'package:supabase_flutter/supabase_flutter.dart'; // ADDED: Import Supabase
+import '../models/notification_model.dart';
+import 'dart:async';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class OrderProvider extends ChangeNotifier {
   final List<Order> _orders = [];
@@ -463,4 +463,25 @@ class OrderProvider extends ChangeNotifier {
       rethrow;
     }
   }
+
+  Future<void> loadOrders(String userId) async {
+    try {
+      // Load from Supabase filtered by current user
+      final data = await Supabase.instance.client
+          .from('orders')
+          .select('*')
+          .eq('user_auth_id', userId)
+          .order('created_at', ascending: false);
+
+      _orders.clear();
+      for (final json in data as List) {
+        _orders.add(Order.fromJson(json));
+      }
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Failed to load orders: $e');
+    }
+  }
+
+  // REMOVED: Order class definition (now imported from models/order.dart)
 }

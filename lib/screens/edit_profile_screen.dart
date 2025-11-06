@@ -44,23 +44,34 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     _loadSavedProfile();
   }
 
-  @override
-  void dispose() {
-    _nameController.dispose();
-    _emailCont.dispose();
-    _phoneCont.dispose();
-    _oldPasswordCont.dispose();
-    _newPasswordCont.dispose();
-    super.dispose();
-  }
-
   Future<void> _loadSavedProfile() async {
+    // Load from Supabase FIRST (source of truth)
+    final auth = Provider.of<AuthService>(context, listen: false);
+    final currentUser = auth.currentUser;
+    
+    if (currentUser != null) {
+      setState(() {
+        _nameController.text = currentUser.name; // FIXED: Removed ?? ''
+        _emailCont.text = currentUser.email; // FIXED: Removed ?? ''
+        _phoneCont.text = currentUser.phone ?? '';
+      });
+    }
+    
+    // THEN load local preferences (addresses, payment, image)
     final prefs = await SharedPreferences.getInstance();
 
     setState(() {
-      _nameController.text = prefs.getString('name') ?? _nameController.text;
-      _emailCont.text = prefs.getString('email') ?? _emailCont.text;
-      _phoneCont.text = prefs.getString('phone') ?? '';
+      // Don't override name/email/phone from SharedPreferences if we got them from Supabase
+      if (_nameController.text.isEmpty) {
+        _nameController.text = prefs.getString('name') ?? 'Guest User';
+      }
+      if (_emailCont.text.isEmpty) {
+        _emailCont.text = prefs.getString('email') ?? 'guest@example.com';
+      }
+      if (_phoneCont.text.isEmpty) {
+        _phoneCont.text = prefs.getString('phone') ?? '';
+      }
+      
       _notificationsEnabled = prefs.getBool('notifications') ?? true;
 
       final addressesJson = prefs.getStringList('addresses') ?? [];
@@ -78,6 +89,16 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         if (f.existsSync()) _profileImageFile = f;
       }
     });
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _emailCont.dispose();
+    _phoneCont.dispose();
+    _oldPasswordCont.dispose();
+    _newPasswordCont.dispose();
+    super.dispose();
   }
 
   Future<void> _pickImage(ImageSource source) async {

@@ -131,4 +131,29 @@ class Order {
     final remaining = 5 - timeSinceOrder;
     return remaining > 0 ? remaining : 0;
   }
+
+  // ADDED: fromJson factory constructor
+  factory Order.fromJson(Map<String, dynamic> json) {
+    return Order(
+      id: json['id'] as String,
+      customerId: json['user_auth_id'] as String,
+      customerName: json['customer_name'] as String,
+      deliveryPhone: json['delivery_phone'] as String?,
+      date: DateTime.parse(json['created_at'] as String),
+      items: [], // Load items separately if needed
+      totalAmount: json['total_amount'] as int,
+      status: OrderStatus.values.firstWhere(
+        (e) => e.name == json['status'],
+        orElse: () => OrderStatus.pending,
+      ),
+      deliveryType: DeliveryType.values.firstWhere(
+        (e) => e.name == json['delivery_type'],
+        orElse: () => DeliveryType.delivery,
+      ),
+      deliveryAddress: json['delivery_address'] as String?,
+      riderId: json['rider_id'] as String?,
+      riderName: json['rider_name'] as String?,
+      cancellationReason: json['cancellation_reason'] as String?,
+    );
+  }
 }

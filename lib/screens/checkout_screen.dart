@@ -50,10 +50,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     super.initState();
     final defaultPhone = widget.defaultPhoneNumber ?? '712345678';
     _phoneController.text = defaultPhone;
-    // CHANGED: Pre-fill M-Pesa with same phone
     _mpesaPhoneController.text = defaultPhone;
 
-    // ADDED: Load default address and phone from profile
     _loadDefaultAddress();
   }
 
@@ -187,18 +185,20 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   // ADDED: Load default address from SharedPreferences
   Future<void> _loadDefaultAddress() async {
-    final prefs = await SharedPreferences.getInstance();
+    // ADDED: Load from Supabase currentUser FIRST
+    final auth = Provider.of<AuthService>(context, listen: false);
+    final currentUser = auth.currentUser;
     
-    // Load phone number and update both controllers
-    final savedPhone = prefs.getString('phone') ?? '';
-    if (savedPhone.isNotEmpty) {
+    if (currentUser != null && currentUser.phone != null && currentUser.phone!.isNotEmpty) {
       setState(() {
-        _phoneController.text = savedPhone;
-        _mpesaPhoneController.text = savedPhone; // ADDED: Sync M-Pesa phone too
+        _phoneController.text = currentUser.phone!;
+        _mpesaPhoneController.text = currentUser.phone!;
       });
     }
     
-    // Load default address
+    // Load addresses from SharedPreferences (these are user-specific)
+    final prefs = await SharedPreferences.getInstance();
+    
     final addresses = prefs.getStringList('addresses') ?? [];
     final defaultIndex = prefs.getInt('defaultAddressIndex');
     

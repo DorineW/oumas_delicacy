@@ -5,7 +5,6 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../constants/colors.dart';
 import '../utils/responsive_helper.dart';
-import 'order_history_screen.dart';
 import 'edit_profile_screen.dart';
 import 'payment_methods_screen.dart';
 import 'notifications_screen.dart';
@@ -168,13 +167,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             onTap: _navigateToEditProfile,
                           ),
                           _ProfileOption(
-                            icon: Icons.history,
+                            icon: Icons.receipt_long,
                             title: "Order History",
                             onTap: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(builder: (context) => const OrderHistoryScreen()),
-                              );
+                              Navigator.pushNamed(context, '/order-history');
                             },
                           ),
                           _ProfileOption(

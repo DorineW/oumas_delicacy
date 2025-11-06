@@ -2,6 +2,7 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart'; // ADDED
 import '../models/user.dart' as app;
 
 class AuthService extends ChangeNotifier {
@@ -10,11 +11,7 @@ class AuthService extends ChangeNotifier {
   app.User? _currentUser;
   bool _isLoading = false;
 
-  // CHANGED: Turn off demo mode to re-enable Supabase
-  static const bool demoMode = false;
-
   app.User? get currentUser => _currentUser;
-  // CHANGED: Reflect demo user as logged in
   bool get isLoggedIn => _currentUser != null || _supabase.auth.currentUser != null;
   bool get isAdmin => _currentUser?.role == 'admin';
   bool get isRider => _currentUser?.role == 'rider';
@@ -152,28 +149,10 @@ class AuthService extends ChangeNotifier {
     }
   }
 
-  // ADDED: Fabricate a session user for demo
-  Future<void> demoLogin({String role = 'customer', String? name}) async {
-    _currentUser = app.User(
-      id: 'demo-$role',
-      email: '$role@example.com',
-      name: name?.trim().isNotEmpty == true ? name!.trim() : 'Demo ${role[0].toUpperCase()}${role.substring(1)}',
-      role: role,
-      phone: null,
-    );
-    notifyListeners();
-  }
-
   Future<AuthResponse> signInWithEmail({
     required String email,
     required String password,
   }) async {
-    if (demoMode) {
-      // ADDED: Short-circuit in demo
-      await demoLogin(role: _inferRoleFromEmail(email));
-      // Return a placeholder response
-      return AuthResponse(user: null, session: null);
-    }
     try {
       final resp = await _supabase.auth.signInWithPassword(
         email: email,
@@ -190,14 +169,6 @@ class AuthService extends ChangeNotifier {
       }
       rethrow;
     }
-  }
-
-  // ADDED: Helper to pick a role by email keyword for demo
-  String _inferRoleFromEmail(String email) {
-    final e = email.toLowerCase();
-    if (e.contains('admin')) return 'admin';
-    if (e.contains('rider')) return 'rider';
-    return 'customer';
   }
 
   static const String oauthRedirectUri = 'com.oumasdelicacy.app://login-callback';
@@ -233,12 +204,21 @@ class AuthService extends ChangeNotifier {
   }
 
   Future<void> signOut() async {
-    if (demoMode) {
-      // ADDED: Short-circuit in demo
-      _currentUser = null;
-      notifyListeners();
-      return;
-    }
+    // Clear cached profile data on logout
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('name');
+    await prefs.remove('email');
+    await prefs.remove('phone');
+    await prefs.remove('addresses');
+    await prefs.remove('defaultAddressIndex');
+    await prefs.remove('paymentMethod');
+    await prefs.remove('profileImagePath');
+    
+    // ADDED: Clear order history and cart
+    await prefs.remove('orders'); // if you store orders locally
+    await prefs.remove('cart_items');
+    await prefs.remove('order_history');
+    
     await _supabase.auth.signOut();
     _currentUser = null;
     notifyListeners();
@@ -300,12 +280,6 @@ class AuthService extends ChangeNotifier {
   }
 
   Future<void> login(String email, String password) async {
-    if (demoMode) {
-      // ADDED: Short-circuit in demo
-      await demoLogin(role: _inferRoleFromEmail(email));
-      notifyListeners();
-      return;
-    }
     await signInWithEmail(email: email, password: password);
     await _refreshCurrentUserFromProfile();
     notifyListeners();
@@ -317,12 +291,6 @@ class AuthService extends ChangeNotifier {
     required String name,
     required String phone,
   }) async {
-    if (demoMode) {
-      // ADDED: Short-circuit in demo
-      await demoLogin(role: 'customer', name: name);
-      notifyListeners();
-      return;
-    }
     await signUpWithEmail(
       email: email,
       password: password,

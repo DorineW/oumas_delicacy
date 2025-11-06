@@ -155,22 +155,6 @@ class _LoginScreenState extends State<LoginScreen>
     }
   }
 
-  // ADDED: Demo continue helper
-  Future<void> _continueAs(String role) async {
-    final auth = Provider.of<AuthService>(context, listen: false);
-    await auth.demoLogin(role: role);
-    if (!mounted) return;
-    Widget next;
-    if (role == 'admin') {
-      next = const AdminDashboardScreen();
-    } else if (role == 'rider') {
-      next = const RiderDashboardScreen();
-    } else {
-      next = const HomeScreen();
-    }
-    Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => next));
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -358,67 +342,8 @@ class _LoginScreenState extends State<LoginScreen>
                 ),
 
                 const SizedBox(height: 12),
-
-                // ADDED: Demo shortcuts (no credentials required)
-                if (AuthService.demoMode) ...[
-                  const SizedBox(height: 8),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.green.withOpacity(0.08),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.green.withOpacity(0.25)),
-                    ),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Icon(Icons.play_circle_fill, color: Colors.green),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            'Demo mode is ON. Continue without signing in:',
-                            style: TextStyle(
-                              color: AppColors.darkText.withOpacity(0.8),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton(
-                          onPressed: _isLoading ? null : () => _continueAs('customer'),
-                          child: const Text('Continue as Customer'),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton(
-                          onPressed: _isLoading ? null : () => _continueAs('rider'),
-                          child: const Text('Continue as Rider'),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: OutlinedButton(
-                          onPressed: _isLoading ? null : () => _continueAs('admin'),
-                          child: const Text('Continue as Admin'),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                ],
-                ],
-              ),
+              ],
+            ),
             ),
           ),
         ),
