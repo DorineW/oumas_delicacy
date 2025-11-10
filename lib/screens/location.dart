@@ -31,6 +31,10 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
   String? _currentAddress;
   bool _isLoadingAddress = false;
 
+  // ADDED: Local state for delivery fee and zone status
+  int? _localDeliveryFee; 
+  bool _localOutsideZone = false;
+
   @override
   void initState() {
     super.initState();
@@ -49,66 +53,63 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
   // UPDATED: Better location initialization with permission handling
   void _initializeMap() async {
     if (!mounted) return;
-    
+
     setState(() => _isLoadingLocation = true);
-    
+
     final locationProvider = context.read<LocationProvider>();
-    
+
     try {
-      // If no initial position, get current location with better error handling
+      LatLng initialPoint;
+      bool locationFound = false;
+
       if (widget.initialPosition == null) {
-        // ADDED: Force fresh location fetch
+        // Force fresh location fetch
         await locationProvider.initializeLocation();
-        
+
         if (!mounted) return;
-        
+
         if (locationProvider.latitude != null && locationProvider.longitude != null) {
-          final newPoint = LatLng(locationProvider.latitude!, locationProvider.longitude!);
-          
-          setState(() {
-            _selectedPoint = newPoint;
-          });
-          
-          // UPDATED: Use animatedMapMove for smoother transition
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) {
-              _animatedMapMove(newPoint, 15.0);
-            }
-          });
+          initialPoint = LatLng(locationProvider.latitude!, locationProvider.longitude!);
+          _currentAddress = locationProvider.deliveryAddress;
+          locationFound = true;
         } else {
-          // ADDED: Fallback to default location if permission denied or error
-          final defaultPoint = const LatLng(
+          initialPoint = const LatLng(
             LocationProvider.defaultLatitude,
             LocationProvider.defaultLongitude,
           );
-          
-          setState(() {
-            _selectedPoint = defaultPoint;
-          });
-          
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) {
-              mapController.move(defaultPoint, 15.0);
-            }
-          });
         }
       } else {
-        // Use provided initial position
-        setState(() {
-          _selectedPoint = LatLng(
-            widget.initialPosition.latitude ?? LocationProvider.defaultLatitude,
-            widget.initialPosition.longitude ?? LocationProvider.defaultLongitude,
-          );
-        });
+        // Use provided initial position and reverse geocode it
+        initialPoint = LatLng(
+          widget.initialPosition.latitude ?? LocationProvider.defaultLatitude,
+          widget.initialPosition.longitude ?? LocationProvider.defaultLongitude,
+        );
+        
+        // Get address for initial position
+        await locationProvider.setLocation(initialPoint.latitude, initialPoint.longitude);
+        _currentAddress = locationProvider.deliveryAddress;
+        locationFound = true;
       }
+
+      // ADDED: Sync delivery fee and zone status
+      _localDeliveryFee = locationProvider.deliveryFee;
+      _localOutsideZone = locationProvider.outsideDeliveryArea;
       
       setState(() {
+        _selectedPoint = initialPoint;
         _isMapReady = true;
       });
+
+      if (locationFound) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            _animatedMapMove(initialPoint, 15.0);
+          }
+        });
+      }
     } catch (e) {
       debugPrint('❌ Error initializing map: $e');
-      
-      // ADDED: Show error and use default location
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -127,7 +128,7 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
             margin: const EdgeInsets.all(16),
           ),
         );
-        
+
         setState(() {
           _selectedPoint = const LatLng(
             LocationProvider.defaultLatitude,
@@ -195,10 +196,12 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
     setState(() {
       _selectedPoint = point;
       _isLoadingAddress = true;
-      _currentAddress = null; // Clear old address
+      _currentAddress = null;
     });
 
-    // Show loading while getting address
+    // Remove any existing snackbar before showing new one
+    ScaffoldMessenger.of(context).clearSnackBars();
+    
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Row(
@@ -224,17 +227,17 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
     );
 
     await locationProvider.setLocation(point.latitude, point.longitude);
-    
-    // UPDATED: Update local address from provider
+
     if (mounted) {
+      ScaffoldMessenger.of(context).clearSnackBars();
       setState(() {
         _currentAddress = locationProvider.deliveryAddress;
+        _localDeliveryFee = locationProvider.deliveryFee; // ADDED: Update fee
+        _localOutsideZone = locationProvider.outsideDeliveryArea; // ADDED: Update zone
         _isLoadingAddress = false;
       });
-      ScaffoldMessenger.of(context).clearSnackBars();
-      
-      debugPrint('📍 Map tap - Address: $_currentAddress');
-      debugPrint('📍 Coordinates: ${point.latitude}, ${point.longitude}');
+
+      debugPrint('📍 Map tap - Address: $_currentAddress, Fee: $_localDeliveryFee');
     }
   }
 
@@ -269,6 +272,8 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
       'address': _currentAddress!,
       'latitude': _selectedPoint!.latitude,
       'longitude': _selectedPoint!.longitude,
+      'outsideZone': _localOutsideZone, // ADDED
+      'deliveryFee': _localDeliveryFee ?? 0, // ADDED
     });
   }
 
@@ -277,7 +282,6 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
     setState(() => _isLoadingLocation = true);
     
     try {
-      // ADDED: Check location permissions first
       LocationPermission permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
@@ -285,7 +289,7 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
 
       if (permission == LocationPermission.deniedForever) {
         if (!mounted) return;
-        
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Row(
@@ -310,7 +314,7 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
 
       final locationProvider = context.read<LocationProvider>();
       
-      // ADDED: Clear any cached location and force fresh fetch
+      // Clear cached location and force fresh fetch with reverse geocoding
       locationProvider.clearLocation();
       await locationProvider.initializeLocation();
       
@@ -321,6 +325,9 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
         
         setState(() {
           _selectedPoint = newPoint;
+          _currentAddress = locationProvider.deliveryAddress; // Sync address from provider
+          _localDeliveryFee = locationProvider.deliveryFee; // ADDED
+          _localOutsideZone = locationProvider.outsideDeliveryArea; // ADDED
         });
         
         _animatedMapMove(newPoint, 16.0); // UPDATED: Zoom in more on current location
@@ -331,19 +338,25 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
               children: [
                 const Icon(Icons.check_circle, color: Colors.white),
                 const SizedBox(width: 12),
-                const Expanded(child: Text('Location updated!')),
+                Expanded(
+                  child: Text(
+                    _currentAddress != null && _currentAddress!.isNotEmpty
+                        ? 'Location: $_currentAddress'
+                        : 'Location updated!',
+                  ),
+                ),
               ],
             ),
             backgroundColor: AppColors.success,
             behavior: SnackBarBehavior.floating,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             margin: const EdgeInsets.all(16),
-            duration: const Duration(seconds: 2),
+            duration: const Duration(seconds: 3),
           ),
         );
       } else {
         if (!mounted) return;
-        
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Row(
@@ -364,7 +377,7 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
       }
     } catch (e) {
       if (!mounted) return;
-      
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Row(
@@ -428,38 +441,33 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
     
     final lat = result['lat'] as double;
     final lon = result['lon'] as double;
-    final displayName = result['display_name'] as String;
-    
-    debugPrint('🔍 Search result selected: $displayName');
-    debugPrint('🔍 Coordinates: $lat, $lon');
-    
-    // UPDATED: Immediately set everything
+    final displayName = result['name'] as String;
+
     setState(() {
       _searchResults = [];
       _searchController.clear();
       _selectedPoint = LatLng(lat, lon);
-      _currentAddress = displayName; // FIXED: Set address immediately
+      _currentAddress = displayName;
       _isLoadingAddress = false;
     });
     
-    // Move map to location
     _animatedMapMove(_selectedPoint!, 16.0);
     
-    // UPDATED: Set location in background for delivery zone check
     locationProvider.setLocation(lat, lon).then((_) {
-      if (mounted && locationProvider.deliveryAddress != null) {
-        final reverseAddress = locationProvider.deliveryAddress!;
-        // FIXED: Only update if reverse address is significantly better/shorter
-        if (reverseAddress.length < displayName.length && reverseAddress.isNotEmpty) {
+      if (mounted) {
+        setState(() {
+          _localDeliveryFee = locationProvider.deliveryFee; // ADDED
+          _localOutsideZone = locationProvider.outsideDeliveryArea; // ADDED
+        });
+
+        final reverseAddress = locationProvider.deliveryAddress;
+        if (reverseAddress != null && reverseAddress.length < displayName.length && reverseAddress.isNotEmpty) {
           setState(() {
             _currentAddress = reverseAddress;
           });
-          debugPrint('📍 Updated to reverse geocoded address: $reverseAddress');
         }
       }
     });
-    
-    debugPrint('✅ Search result applied - Address: $_currentAddress');
   }
 
   Widget _buildAddressCard(LocationProvider provider) {
@@ -511,6 +519,30 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
             ),
           ),
           
+          // ADDED: Display Delivery Fee or Warning
+          if (_selectedPoint != null && !_isLoadingAddress) ...[
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: _localOutsideZone 
+                    ? Colors.red.withOpacity(0.1) 
+                    : AppColors.success.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text(
+                _localOutsideZone 
+                    ? '🚫 Outside ${LocationProvider.maxDeliveryDistanceKm.toStringAsFixed(1)}km Delivery Zone'
+                    : '🚚 Delivery Fee: KES ${_localDeliveryFee ?? 0}',
+                style: TextStyle(
+                  color: _localOutsideZone ? Colors.red : AppColors.success,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 12,
+                ),
+              ),
+            ),
+          ],
+
           // Error message if any
           if (provider.error != null) ...[
             const SizedBox(height: 8),

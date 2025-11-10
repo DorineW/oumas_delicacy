@@ -246,32 +246,6 @@ CREATE TABLE IF NOT EXISTS rider_earnings (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================
--- SAMPLE DATA INSERTS (Optional - for testing)
--- ============================================
-
--- Insert sample admin user
-INSERT INTO users (id, name, email, password, role, phone) VALUES
-('admin-001', 'Admin User', 'admin@oumasdelicacy.com', '$2a$10$hashed_password_here', 'admin', '+254700000001'),
-('rider-001', 'John Rider', 'rider@oumasdelicacy.com', '$2a$10$hashed_password_here', 'rider', '+254700000002'),
-('customer-001', 'Jane Customer', 'customer@example.com', '$2a$10$hashed_password_here', 'customer', '+254700000003');
-
--- Insert sample menu items
-INSERT INTO menu_items (title, price, rating, category, meal_weight, description, image_url, is_available) VALUES
-('Ugali & Sukuma Wiki', 250, 4.8, 'Traditional', 'Heavy', 'Traditional Kenyan meal with sukuma wiki', 'assets/images/ugali_sukuma.jpg', TRUE),
-('Beef Stew', 350, 4.6, 'Main Course', 'Heavy', 'Tender beef stew with rich gravy', 'assets/images/beef_stew.jpg', TRUE),
-('Pilau Rice', 300, 4.7, 'Rice Dishes', 'Medium', 'Fragrant spiced rice', 'assets/images/pilau.jpg', TRUE),
-('Chapati (3 pcs)', 150, 4.5, 'Sides', 'Light', 'Soft homemade chapatis', 'assets/images/chapati.jpg', TRUE),
-('Chicken Curry', 400, 4.9, 'Main Course', 'Heavy', 'Spicy chicken curry with coconut', 'assets/images/chicken_curry.jpg', TRUE);
-
--- Insert sample inventory items
-INSERT INTO inventory (id, name, category, current_stock, unit, low_stock_threshold, cost_price) VALUES
-('inv-001', 'Ugali Flour', 'Grains', 25.5, 'kg', 10.0, 80.0),
-('inv-002', 'Beef (Prime Cut)', 'Meat', 8.5, 'kg', 10.0, 450.0),
-('inv-003', 'Rice (Pishori)', 'Grains', 45.0, 'kg', 20.0, 120.0),
-('inv-004', 'Cooking Oil', 'Oils', 15.0, 'liters', 8.0, 180.0),
-('inv-005', 'Tomatoes', 'Vegetables', 3.0, 'kg', 5.0, 50.0);
-
--- ============================================
 -- VIEWS (Optional - for reporting)
 -- ============================================
 

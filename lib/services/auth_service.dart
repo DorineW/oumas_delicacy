@@ -58,7 +58,7 @@ class AuthService extends ChangeNotifier {
           id: authUser.id,
           email: (profile['email'] as String?) ?? (authUser.email ?? ''),
           name: (profile['name'] as String?) ?? '',
-          role: (profile['role'] as String?) ?? 'customer',
+          role: (profile['role'] as String?) ?? 'customer', // ✅ Role is read here
           phone: profile['phone'] as String?,
         );
       } else {
@@ -279,10 +279,48 @@ class AuthService extends ChangeNotifier {
     return controller.stream;
   }
 
-  Future<void> login(String email, String password) async {
-    await signInWithEmail(email: email, password: password);
-    await _refreshCurrentUserFromProfile();
-    notifyListeners();
+  Future<String?> login(String email, String password) async {
+    try {
+      // FIXED: Use Supabase.instance.client instead of _client
+      debugPrint('🔐 Attempting login for: $email');
+      
+      final response = await Supabase.instance.client.auth.signInWithPassword(
+        email: email,
+        password: password,
+      );
+
+      if (response.user != null) {
+        debugPrint('✅ Login successful for: ${response.user!.email}');
+        // FIXED: Load user profile after login
+        final userId = response.user!.id;
+        try {
+          final userProfile = await Supabase.instance.client
+              .from('users')
+              .select()
+              .eq('auth_id', userId)
+              .single();
+          
+          // Store user data (implement your User model here)
+          debugPrint('✅ User profile loaded: ${userProfile['name']}');
+        } catch (e) {
+          debugPrint('⚠️ Could not load user profile: $e');
+        }
+        
+        notifyListeners();
+        return null;
+      }
+
+      debugPrint('⚠️ Login returned null user');
+      return 'Login failed: No user returned';
+    } on AuthException catch (e) {
+      debugPrint('❌ Auth error: ${e.message}');
+      debugPrint('   Status: ${e.statusCode}');
+      return 'Login failed: ${e.message}';
+    } catch (e, stackTrace) {
+      debugPrint('❌ Unexpected login error: $e');
+      debugPrint('Stack: $stackTrace');
+      return 'Login failed: $e';
+    }
   }
 
   Future<void> register({

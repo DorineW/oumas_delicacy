@@ -1,71 +1,171 @@
 // lib/providers/menu_provider.dart
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import '../models/menu_item.dart';
 
-class MenuProvider with ChangeNotifier {
-  final List<Map<String, dynamic>> _menuItems = [];
+class MenuProvider extends ChangeNotifier {
+  List<MenuItem> _menuItems = [];
+  bool _isLoading = false;
+  String? _error;
 
-  MenuProvider() {
-    // keep your existing code, just add this constructor
-    _menuItems.addAll(dummyMenuItems); // give UI something to show
+  List<MenuItem> get menuItems => _menuItems;
+  bool get isLoading => _isLoading;
+  String? get error => _error;
+
+  // Get items by category
+  List<MenuItem> getItemsByCategory(String category) {
+    return _menuItems.where((item) => item.category == category).toList();
   }
 
-  List<Map<String, dynamic>> get menuItems => _menuItems;
-
-  void addMenuItem(Map<String, dynamic> newItem) {
-    _menuItems.add(newItem);
-    notifyListeners();
+  // Get available categories
+  List<String> get categories {
+    return _menuItems.map((item) => item.category).toSet().toList();
   }
 
-  void updateMenuItem(int index, Map<String, dynamic> updatedItem) {
-    if (index >= 0 && index < _menuItems.length) {
-      _menuItems[index] = updatedItem;
-      notifyListeners();
-    }
-  }
-
-  void removeMenuItem(int index) {
-    if (index >= 0 && index < _menuItems.length) {
-      _menuItems.removeAt(index);
-      notifyListeners();
-    }
-  }
-
-  void clearMenu() {
-    _menuItems.clear();
-    notifyListeners();
-  }
-
-  // ADDED: Toggle availability of a menu item
-  void toggleAvailability(int index) {
-    if (index >= 0 && index < _menuItems.length) {
-      _menuItems[index]['isAvailable'] = !(_menuItems[index]['isAvailable'] ?? true);
-      notifyListeners();
-    }
-  }
-
-  // ADDED: Check if item is available
+  // Check if item is available
   bool isItemAvailable(String title) {
-    final item = _menuItems.firstWhere(
-      (item) => item['title'] == title,
-      orElse: () => {'isAvailable': true},
-    );
-    return item['isAvailable'] ?? true;
+    return _menuItems.any((item) => item.title == title && item.isAvailable);
   }
 
-  // ADDED: Mark item as unavailable
-  void markAsUnavailable(int index) {
-    if (index >= 0 && index < _menuItems.length) {
-      _menuItems[index]['isAvailable'] = false;
+  // MAIN: Load menu items with detailed debugging
+  Future<void> loadMenuItems() async {
+    _isLoading = true;
+    _error = null;
+    notifyListeners();
+
+    try {
+      debugPrint('🔄 Starting to load menu items from Supabase...');
+      
+      final supabase = Supabase.instance.client;
+      debugPrint('✅ Supabase client initialized');
+      
+      // Query with all columns explicitly
+      final response = await supabase
+          .from('menu_items')
+          .select('id, product_id, name, description, price, available, created_at, category, meal_weight, image_url')
+          .order('name', ascending: true);
+
+      debugPrint('✅ Query executed successfully');
+      debugPrint('📊 Response type: ${response.runtimeType}');
+      debugPrint('📏 Number of items fetched: ${response.length}');
+
+      if (response.isEmpty) {
+        debugPrint('⚠️ No menu items found in database');
+        _error = 'No menu items found';
+        _menuItems = [];
+        _isLoading = false;
+        notifyListeners();
+        return;
+      }
+
+      // Parse each item with error handling
+      final items = <MenuItem>[];
+      for (var i = 0; i < response.length; i++) {
+        try {
+          // FIXED: Removed unnecessary cast
+          final json = response[i];
+          debugPrint('--- Parsing item ${i + 1}/${response.length} ---');
+          debugPrint('Raw JSON: $json');
+          
+          final item = MenuItem.fromJson(json);
+          items.add(item);
+          debugPrint('✅ Successfully parsed: ${item.title} - KES ${item.price}');
+        } catch (e, stackTrace) {
+          debugPrint('❌ Error parsing item ${i + 1}: $e');
+          debugPrint('Failed JSON: ${response[i]}');
+          debugPrint('Stack: $stackTrace');
+        }
+      }
+
+      _menuItems = items;
+      _error = null;
+      debugPrint('🎉 Successfully loaded ${items.length} menu items');
+      debugPrint('Categories found: ${categories.join(", ")}');
+      
+    } catch (e, stackTrace) {
+      debugPrint('❌ Error loading menu items: $e');
+      debugPrint('Stack trace: $stackTrace');
+      _error = 'Failed to load menu items: $e';
+      _menuItems = [];
+    } finally {
+      _isLoading = false;
       notifyListeners();
     }
   }
 
-  // ADDED: Mark item as available
-  void markAsAvailable(int index) {
-    if (index >= 0 && index < _menuItems.length) {
-      _menuItems[index]['isAvailable'] = true;
+  // Refresh menu items
+  Future<void> refreshMenuItems() async {
+    await loadMenuItems();
+  }
+
+  // Add a new menu item
+  Future<bool> addMenuItem(MenuItem item) async {
+    try {
+      debugPrint('➕ Adding new menu item: ${item.title}');
+      
+      final response = await Supabase.instance.client
+          .from('menu_items')
+          .insert(item.toJson())
+          .select()
+          .single();
+
+      debugPrint('✅ Menu item added: $response');
+      await loadMenuItems(); // Reload to get fresh data
+      return true;
+    } catch (e) {
+      debugPrint('❌ Error adding menu item: $e');
+      _error = 'Failed to add menu item: $e';
       notifyListeners();
+      return false;
     }
+  }
+
+  // Update a menu item
+  Future<bool> updateMenuItem(MenuItem item) async {
+    try {
+      debugPrint('🔄 Updating menu item: ${item.title}');
+      
+      await Supabase.instance.client
+          .from('menu_items')
+          .update(item.toJson())
+          .eq('id', item.id!);
+
+      debugPrint('✅ Menu item updated');
+      await loadMenuItems(); // Reload to get fresh data
+      return true;
+    } catch (e) {
+      debugPrint('❌ Error updating menu item: $e');
+      _error = 'Failed to update menu item: $e';
+      notifyListeners();
+      return false;
+    }
+  }
+
+  // Delete a menu item
+  Future<bool> deleteMenuItem(String id) async {
+    try {
+      debugPrint('🗑️ Deleting menu item: $id');
+      
+      await Supabase.instance.client
+          .from('menu_items')
+          .delete()
+          .eq('id', id);
+
+      debugPrint('✅ Menu item deleted');
+      await loadMenuItems(); // Reload to get fresh data
+      return true;
+    } catch (e) {
+      debugPrint('❌ Error deleting menu item: $e');
+      _error = 'Failed to delete menu item: $e';
+      notifyListeners();
+      return false;
+    }
+  }
+
+  void clearError() {
+    _error = null;
+    notifyListeners();
   }
 }
 

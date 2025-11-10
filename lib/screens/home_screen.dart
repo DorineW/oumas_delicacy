@@ -11,6 +11,7 @@ import '../widgets/carousel.dart';
 
 import '../constants/colors.dart';
 import '../models/cart_item.dart';
+import '../models/menu_item.dart'; // ADDED
 import '../providers/cart_provider.dart';
 import '../providers/menu_provider.dart';
 import 'dashboard_screen.dart';
@@ -149,11 +150,28 @@ class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin 
   @override
   void initState() {
     super.initState();
-    final cats = context.read<MenuProvider>().menuItems
-                   .map((e) => e['category'])
-                   .toSet()
-                   .toList();
-    _tabController = TabController(length: cats.length + 1, vsync: this);
+    
+    // UPDATED: Initialize tab controller after getting categories
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final menuProvider = context.read<MenuProvider>();
+      
+      // Load menu items first
+      menuProvider.loadMenuItems().then((_) {
+        if (mounted) {
+          // Initialize tab controller after menu items are loaded
+          final cats = menuProvider.menuItems
+                       .map((e) => e.category)
+                       .toSet()
+                       .toList();
+          
+          _tabController = TabController(length: cats.length + 1, vsync: this);
+          
+          if (mounted) {
+            setState(() {}); // Trigger rebuild with loaded data
+          }
+        }
+      });
+    });
   }
 
   @override
@@ -171,12 +189,230 @@ class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin 
 
   @override
   Widget build(BuildContext context) {
-    final meals = context.watch<MenuProvider>().menuItems;
-    final cats = ['All', ...meals.map((e) => e['category']).toSet()];
+    final menuProvider = context.watch<MenuProvider>();
+    final meals = menuProvider.menuItems;
+    
+    // ADDED: Show loading state
+    if (menuProvider.isLoading && meals.isEmpty) {
+      return Scaffold(
+        backgroundColor: AppColors.background,
+        appBar: AppBar(
+          title: const Text("Ouma's Delicacy"),
+          backgroundColor: AppColors.primary,
+          elevation: 4,
+          iconTheme: const IconThemeData(color: AppColors.white),
+          titleTextStyle: const TextStyle(color: AppColors.white, fontSize: 18, fontWeight: FontWeight.bold),
+          actions: [
+            // ADDED: Refresh button
+            IconButton(
+              icon: menuProvider.isLoading 
+                  ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                    ),
+                  )
+                  : const Icon(Icons.refresh),
+              tooltip: 'Refresh Menu',
+              onPressed: menuProvider.isLoading ? null : () => menuProvider.refreshMenuItems(),
+            ),
+            IconButton(
+              icon: const Icon(Icons.logout),
+              tooltip: 'Logout',
+              onPressed: () async {
+                await Provider.of<AuthService>(context, listen: false).logout();
+                if (!mounted) return;
+                Navigator.of(context).pushAndRemoveUntil(
+                  MaterialPageRoute(builder: (_) => const LoginScreen()),
+                  (route) => false,
+                );
+              },
+            ),
+          ],
+        ),
+        body: const Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CircularProgressIndicator(color: AppColors.primary),
+              SizedBox(height: 16),
+              Text(
+                'Loading delicious meals...',
+                style: TextStyle(
+                  fontSize: 16,
+                  color: AppColors.darkText,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+    
+    // ADDED: Show error state
+    if (menuProvider.error != null && meals.isEmpty) {
+      return Scaffold(
+        backgroundColor: AppColors.background,
+        appBar: AppBar(
+          title: const Text("Ouma's Delicacy"),
+          backgroundColor: AppColors.primary,
+          elevation: 4,
+          iconTheme: const IconThemeData(color: AppColors.white),
+          titleTextStyle: const TextStyle(color: AppColors.white, fontSize: 18, fontWeight: FontWeight.bold),
+          actions: [
+            // ADDED: Refresh button
+            IconButton(
+              icon: menuProvider.isLoading 
+                  ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                    ),
+                  )
+                  : const Icon(Icons.refresh),
+              tooltip: 'Refresh Menu',
+              onPressed: menuProvider.isLoading ? null : () => menuProvider.refreshMenuItems(),
+            ),
+            IconButton(
+              icon: const Icon(Icons.logout),
+              tooltip: 'Logout',
+              onPressed: () async {
+                await Provider.of<AuthService>(context, listen: false).logout();
+                if (!mounted) return;
+                Navigator.of(context).pushAndRemoveUntil(
+                  MaterialPageRoute(builder: (_) => const LoginScreen()),
+                  (route) => false,
+                );
+              },
+            ),
+          ],
+        ),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.error_outline,
+                  size: 80,
+                  color: AppColors.darkText.withOpacity(0.3),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Failed to Load Menu',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.darkText,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  menuProvider.error ?? 'Unknown error',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: AppColors.darkText.withOpacity(0.6),
+                  ),
+                ),
+                const SizedBox(height: 24),
+                ElevatedButton.icon(
+                  onPressed: () => menuProvider.loadMenuItems(),
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Retry'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+    
+    // ADDED: Show empty state
+    if (meals.isEmpty) {
+      return Scaffold(
+        backgroundColor: AppColors.background,
+        appBar: AppBar(
+          title: const Text("Ouma's Delicacy"),
+          backgroundColor: AppColors.primary,
+          elevation: 4,
+          iconTheme: const IconThemeData(color: AppColors.white),
+          titleTextStyle: const TextStyle(color: AppColors.white, fontSize: 18, fontWeight: FontWeight.bold),
+          actions: [
+            // ADDED: Refresh button
+            IconButton(
+              icon: menuProvider.isLoading 
+                  ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                    ),
+                  )
+                  : const Icon(Icons.refresh),
+              tooltip: 'Refresh Menu',
+              onPressed: menuProvider.isLoading ? null : () => menuProvider.refreshMenuItems(),
+            ),
+            IconButton(
+              icon: const Icon(Icons.logout),
+              tooltip: 'Logout',
+              onPressed: () async {
+                await Provider.of<AuthService>(context, listen: false).logout();
+                if (!mounted) return;
+                Navigator.of(context).pushAndRemoveUntil(
+                  MaterialPageRoute(builder: (_) => const LoginScreen()),
+                  (route) => false,
+                );
+              },
+            ),
+          ],
+        ),
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.restaurant_menu,
+                size: 80,
+                color: AppColors.darkText.withOpacity(0.3),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'No Menu Items Yet',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.darkText,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Menu items will appear here once added',
+                style: TextStyle(
+                  color: AppColors.darkText.withOpacity(0.6),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+    
+    final cats = ['All', ...meals.map((e) => e.category).toSet()];
     final filtered = meals.where((m) {
-      final t = m['title'].toString().toLowerCase();
+      final t = m.title.toLowerCase();
       final s = _search.toLowerCase();
-      final c = _tabIndex == 0 ? true : m['category'] == cats[_tabIndex];
+      final c = _tabIndex == 0 ? true : m.category == cats[_tabIndex];
       return t.contains(s) && c;
     }).toList();
     
@@ -191,6 +427,21 @@ class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin 
         iconTheme: const IconThemeData(color: AppColors.white),
         titleTextStyle: const TextStyle(color: AppColors.white, fontSize: 18, fontWeight: FontWeight.bold),
         actions: [
+          // ADDED: Refresh button
+          IconButton(
+            icon: menuProvider.isLoading 
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                    ),
+                  )
+                : const Icon(Icons.refresh),
+            tooltip: 'Refresh Menu',
+            onPressed: menuProvider.isLoading ? null : () => menuProvider.refreshMenuItems(),
+          ),
           IconButton(
             icon: const Icon(Icons.logout),
             tooltip: 'Logout',
@@ -291,7 +542,7 @@ class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin 
                     ),
                   ),
                 ),
-                // UPDATED: Carousel with time-based meal selection
+                // FIXED: Carousel with time-based meal selection
                 Builder(builder: (context) {
                   final now = DateTime.now().hour;
                   final closed = now < 7 || now >= 21;
@@ -299,8 +550,35 @@ class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin 
                   if (closed) {
                     return _closedCard();
                   } else {
-                    // ADDED: Get time-appropriate meals
+                    // FIXED: Get time-appropriate meals (now returns MenuItem objects)
                     final carouselMeals = _getTimeBasedMeals(meals, now);
+                    
+                    // FIXED: Check if we have meals to show
+                    if (carouselMeals.isEmpty) {
+                      return Container(
+                        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        padding: const EdgeInsets.all(20),
+                        decoration: BoxDecoration(
+                          color: Colors.orange.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.info, color: Colors.orange),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                'No meals available at this time. Check back soon!',
+                                style: TextStyle(
+                                  color: AppColors.darkText.withOpacity(0.7),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }
                     
                     return Column(children: [
                       Carousel(
@@ -333,7 +611,7 @@ class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin 
                   child: TabBarView(
                     controller: _tabController,
                     children: cats.asMap().entries.map((e) {
-                      final list = e.key == 0 ? filtered : filtered.where((m) => m['category'] == cats[e.key]).toList();
+                      final list = e.key == 0 ? filtered : filtered.where((m) => m.category == cats[e.key]).toList();
                       if (list.isEmpty) {
                         return Center(
                           child: Column(
@@ -403,44 +681,35 @@ class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin 
     );
   }
 
-  // ADDED: Get time-based meals based on meal weight
-  List<Map<String, dynamic>> _getTimeBasedMeals(List<Map<String, dynamic>> meals, int hour) {
-    // Define time periods
-    // 7-10: Breakfast (Light meals)
-    // 10-12: Brunch (Light to Medium meals)
-    // 12-16: Lunch (Medium to Heavy meals)
-    // 16-21: Dinner (Heavy meals)
-    
+  // FIXED: Get time-based meals based on meal weight
+  List<MenuItem> _getTimeBasedMeals(List<MenuItem> meals, int hour) {
     String preferredWeight;
     
     if (hour >= 7 && hour < 10) {
-      // Breakfast - prefer light meals
       preferredWeight = 'Light';
     } else if (hour >= 10 && hour < 12) {
-      // Brunch - prefer light to medium
       preferredWeight = 'Medium';
     } else if (hour >= 12 && hour < 16) {
-      // Lunch - prefer medium to heavy
       preferredWeight = 'Heavy';
     } else {
-      // Dinner - prefer heavy meals
       preferredWeight = 'Heavy';
     }
     
-    // Filter meals by preferred weight
+    final menuProvider = context.read<MenuProvider>();
+    
+    // FIXED: Filter meals by preferred weight and availability
     final preferredMeals = meals.where((m) => 
-      (m['mealWeight'] == preferredWeight) && (m['isAvailable'] ?? true)
+      (m.mealWeight.name == preferredWeight) && menuProvider.isItemAvailable(m.title)
     ).toList();
     
-    // If we have enough preferred meals, use them
     if (preferredMeals.length >= 4) {
       preferredMeals.shuffle();
       return preferredMeals;
     }
     
-    // Otherwise, mix with other available meals
+    // Mix with other available meals if not enough preferred ones
     final otherMeals = meals.where((m) => 
-      (m['mealWeight'] != preferredWeight) && (m['isAvailable'] ?? true)
+      (m.mealWeight.name != preferredWeight) && menuProvider.isItemAvailable(m.title)
     ).toList();
     
     final combined = [...preferredMeals, ...otherMeals];
@@ -471,13 +740,13 @@ class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin 
   }
 
   // UPDATED: Carousel card with meal period name
-  Widget _carouselCard(BuildContext context, Map<String,dynamic> m, int hour) {
+  Widget _carouselCard(BuildContext context, MenuItem m, int hour) { // FIXED: MenuItem type
     final mealPeriod = _getMealPeriodName(hour);
     
     return GestureDetector(
       onTap: () => Navigator.push(
         context,
-        MaterialPageRoute(builder: (_) => MealDetailScreen(meal: m)),
+        MaterialPageRoute(builder: (_) => MealDetailScreen(meal: m)), // Already correct
       ),
       child: Container(
         margin: const EdgeInsets.symmetric(horizontal: 8),
@@ -531,7 +800,7 @@ class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin 
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          m['title'],
+                          m.title, // FIXED: Use m.title
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
@@ -542,7 +811,7 @@ class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin 
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          'Ksh ${m['price']}',
+                          'Ksh ${m.price}', // FIXED: Use m.price
                           style: TextStyle(
                             color: AppColors.white.withOpacity(0.9),
                             fontSize: 14,
@@ -576,8 +845,8 @@ class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin 
   }
 
   // UPDATED: Circular plate widget
-  Widget _circularPlate(BuildContext context, Map<String,dynamic> m) {
-    final imageValue = m['image'];
+  Widget _circularPlate(BuildContext context, MenuItem m) { // FIXED: MenuItem type
+    final imageValue = m.imageUrl; // FIXED: Use m.imageUrl
     
     return Material(
       elevation: 6,
@@ -595,32 +864,25 @@ class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin 
     );
   }
 
-  // ADDED: Helper to build image from Uint8List or String
-  Widget _buildImage(dynamic imageValue, double iconSize) {
-    if (imageValue is Uint8List) {
-      return Image.memory(
+  // UPDATED: Build image helper
+  Widget _buildImage(String? imageValue, double iconSize) { // FIXED: String? type
+    if (imageValue == null) {
+      return Icon(Icons.fastfood, size: iconSize, color: AppColors.primary);
+    }
+    
+    if (imageValue.startsWith('assets/')) {
+      return Image.asset(
         imageValue,
         fit: BoxFit.cover,
         errorBuilder: (_, __, ___) => Icon(Icons.fastfood, size: iconSize, color: AppColors.primary),
       );
     }
     
-    if (imageValue is String) {
-      if (imageValue.startsWith('assets/')) {
-        return Image.asset(
-          imageValue,
-          fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => Icon(Icons.fastfood, size: iconSize, color: AppColors.primary),
-        );
-      }
-      return Image.network(
-        imageValue,
-        fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => Icon(Icons.fastfood, size: iconSize, color: AppColors.primary),
-      );
-    }
-    
-    return Icon(Icons.fastfood, size: iconSize, color: AppColors.primary);
+    return Image.network(
+      imageValue,
+      fit: BoxFit.cover,
+      errorBuilder: (_, __, ___) => Icon(Icons.fastfood, size: iconSize, color: AppColors.primary),
+    );
   }
 
   // ADDED: Floating dots animation for carousel
@@ -814,10 +1076,10 @@ class _FlyingWidgetState extends State<_FlyingWidget>
 }
 
 /* ----------------------------------------------------------
-   FIXED MEAL CARD WITH PROPER CONSTRAINTS
+   UPDATED MEAL CARD
 ----------------------------------------------------------- */
 class _RiderStyleMealCard extends StatefulWidget {
-  final Map<String, dynamic> meal;
+  final MenuItem meal; // FIXED: MenuItem type
   const _RiderStyleMealCard({required this.meal});
 
   @override
@@ -845,8 +1107,10 @@ class _RiderStyleMealCardState extends State<_RiderStyleMealCard>
   Future<void> _addToCart() async {
     if (_qty <= 0) return;
 
-    // Check availability before adding to cart
-    final isAvailable = widget.meal['isAvailable'] ?? true;
+    // Check availability
+    final menuProvider = context.read<MenuProvider>();
+    final isAvailable = menuProvider.isItemAvailable(widget.meal.title); // FIXED
+    
     if (!isAvailable) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -855,7 +1119,7 @@ class _RiderStyleMealCardState extends State<_RiderStyleMealCard>
               const Icon(Icons.error, color: Colors.white),
               const SizedBox(width: 8),
               Expanded(
-                child: Text('${widget.meal['title']} is currently out of stock'),
+                child: Text('${widget.meal.title} is currently out of stock'), // FIXED
               ),
             ],
           ),
@@ -880,31 +1144,31 @@ class _RiderStyleMealCardState extends State<_RiderStyleMealCard>
 
     final cart = context.read<CartProvider>();
     cart.addItem(CartItem(
-      id: '${widget.meal['title']}_${DateTime.now().millisecondsSinceEpoch}',
-      mealTitle: widget.meal['title'],
-      price: (widget.meal['price'] as num).toInt(),
+      id: '${widget.meal.title}_${DateTime.now().millisecondsSinceEpoch}', // FIXED
+      mealTitle: widget.meal.title, // FIXED
+      price: widget.meal.price, // FIXED
       quantity: addedQuantity,
-      mealImage: widget.meal['image'] is String ? widget.meal['image'] : '', // FIXED: Only use string images
+      mealImage: widget.meal.imageUrl ?? '', // FIXED
     ));
 
-    // UPDATED: Build fly widget based on image type
-    final imageValue = widget.meal['image'];
+    // UPDATED: Build fly widget
+    final imageUrl = widget.meal.imageUrl; // FIXED
     Widget flyWidget;
     
-    if (imageValue is Uint8List) {
+    if (imageUrl != null && imageUrl.startsWith('assets/')) {
       flyWidget = ClipOval(
-        child: Image.memory(
-          imageValue,
+        child: Image.asset(
+          imageUrl,
           width: 50,
           height: 50,
           fit: BoxFit.cover,
           errorBuilder: (_, __, ___) => const Icon(Icons.fastfood, size: 40, color: AppColors.primary),
         ),
       );
-    } else if (imageValue is String && imageValue.startsWith('assets/')) {
+    } else if (imageUrl != null) {
       flyWidget = ClipOval(
-        child: Image.asset(
-          imageValue,
+        child: Image.network(
+          imageUrl,
           width: 50,
           height: 50,
           fit: BoxFit.cover,
@@ -912,9 +1176,7 @@ class _RiderStyleMealCardState extends State<_RiderStyleMealCard>
         ),
       );
     } else {
-      flyWidget = const ClipOval(
-        child: Icon(Icons.fastfood, size: 40, color: AppColors.primary),
-      );
+      flyWidget = const Icon(Icons.fastfood, size: 40, color: AppColors.primary);
     }
     
     setState(() => _qty = 0);
@@ -923,7 +1185,7 @@ class _RiderStyleMealCardState extends State<_RiderStyleMealCard>
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('$addedQuantity × ${widget.meal['title']} added to cart'),
+          content: Text('$addedQuantity × ${widget.meal.title} added to cart'), // FIXED
           backgroundColor: AppColors.primary,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           margin: const EdgeInsets.fromLTRB(16, 0, 16, 24),
@@ -934,43 +1196,37 @@ class _RiderStyleMealCardState extends State<_RiderStyleMealCard>
     });
   }
 
-  // UPDATED: Build image helper (moved outside build for reuse)
-  Widget _buildImageWidget(dynamic imageValue) {
+  // UPDATED: Build image widget
+  Widget _buildImageWidget(String? imageUrl) { // FIXED: String? type
     Widget errorWidget = const Icon(Icons.fastfood, size: 60, color: AppColors.primary);
     
-    if (imageValue is Uint8List) {
-      return Image.memory(
-        imageValue,
+    if (imageUrl == null) {
+      return errorWidget;
+    }
+    
+    if (imageUrl.startsWith('assets/')) {
+      return Image.asset(
+        imageUrl,
         fit: BoxFit.cover,
         errorBuilder: (_, __, ___) => errorWidget,
       );
     }
     
-    if (imageValue is String) {
-      if (imageValue.startsWith('assets/')) {
-        return Image.asset(
-          imageValue,
-          fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => errorWidget,
-        );
-      }
-      return Image.network(
-        imageValue,
-        fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => errorWidget,
-      );
-    }
-    
-    return errorWidget;
+    return Image.network(
+      imageUrl,
+      fit: BoxFit.cover,
+      errorBuilder: (_, __, ___) => errorWidget,
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final m = widget.meal;
     final isLandscape = ResponsiveHelper.isLandscape(context);
-    final isAvailable = m['isAvailable'] ?? true;
+    final menuProvider = context.watch<MenuProvider>();
+    final isAvailable = menuProvider.isItemAvailable(m.title);
     
-    return GestureDetector( // ADDED: Wrap entire card in GestureDetector
+    return GestureDetector(
       onTap: () {
         Navigator.push(
           context,
@@ -987,7 +1243,7 @@ class _RiderStyleMealCardState extends State<_RiderStyleMealCard>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // FIXED: Image section with fixed height
+            // Image section with fixed height
             Container(
               height: isLandscape ? 100 : 120,
               decoration: BoxDecoration(
@@ -1003,7 +1259,7 @@ class _RiderStyleMealCardState extends State<_RiderStyleMealCard>
                           ? const ColorFilter.mode(Colors.transparent, BlendMode.multiply)
                           : ColorFilter.mode(Colors.grey.withOpacity(0.5), BlendMode.saturation),
                       child: SizedBox.expand(
-                        child: _buildImageWidget(m['image']),
+                        child: _buildImageWidget(m.imageUrl),
                       ),
                     ),
                   ),
@@ -1034,7 +1290,7 @@ class _RiderStyleMealCardState extends State<_RiderStyleMealCard>
                 ],
               ),
             ),
-            // FIXED: Reduced padding and spacing
+            // Reduced padding and spacing
             Padding(
               padding: EdgeInsets.all(isLandscape ? 6 : 10),
               child: Column(
@@ -1043,7 +1299,7 @@ class _RiderStyleMealCardState extends State<_RiderStyleMealCard>
                 children: [
                   // Title
                   Text(
-                    m['title'],
+                    m.title,
                     style: TextStyle(
                       fontSize: isLandscape ? 12 : 14,
                       fontWeight: FontWeight.bold,
@@ -1056,7 +1312,7 @@ class _RiderStyleMealCardState extends State<_RiderStyleMealCard>
                   const SizedBox(height: 2),
                   // Price
                   Text(
-                    'Ksh ${m['price']}',
+                    'Ksh ${m.price}',
                     style: TextStyle(
                       fontSize: isLandscape ? 12 : 14,
                       fontWeight: FontWeight.bold,
@@ -1064,7 +1320,7 @@ class _RiderStyleMealCardState extends State<_RiderStyleMealCard>
                     ),
                   ),
                   const SizedBox(height: 6),
-                  // FIXED: Reduced button heights and sizes
+                  // Reduced button heights and sizes
                   Row(
                     children: [
                       Expanded(
@@ -1144,15 +1400,15 @@ class _RiderStyleMealCardState extends State<_RiderStyleMealCard>
           ],
         ),
       ),
-    ); // ADDED: Close GestureDetector
+    );
   }
 
   Widget _qtyButton(IconData icon, VoidCallback onTap) {
     final isLandscape = ResponsiveHelper.isLandscape(context);
     return IconButton(
       padding: EdgeInsets.zero,
-      iconSize: isLandscape ? 13 : 14, // REDUCED: from 14/16 to 13/14
-      onPressed: onTap,
+      iconSize: isLandscape ? 13 : 14,
+      onPressed: onTap, // Missing closing parenthesis here
       icon: Icon(icon, color: AppColors.primary),
     );
   }

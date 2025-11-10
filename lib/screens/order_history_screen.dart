@@ -761,7 +761,7 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> with SingleTick
     return ListView.builder(
       padding: const EdgeInsets.all(16),
       itemCount: orders.length,
-      itemBuilder: (context, index) => _buildOrderCard(orders[index]), // FIXED: Removed extra 'context' parameter
+      itemBuilder: (context, index) => _buildOrderCard(orders[index]), // FIXED: Removed extra 'context'
     );
   }
 }

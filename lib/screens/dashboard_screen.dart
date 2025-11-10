@@ -373,7 +373,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     final favoriteIds = favoritesProvider.getFavoritesForUser(userId);
     final favoriteMeals = menuProvider.menuItems.where((meal) => 
-      favoriteIds.contains(meal['title']) && (meal['isAvailable'] ?? true)
+      favoriteIds.contains(meal.title) && menuProvider.isItemAvailable(meal.title) // FIXED: Use meal.title
     ).toList();
 
     if (favoriteMeals.isEmpty) {
@@ -517,7 +517,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (_) => MealDetailScreen(meal: meal),
+                      builder: (_) => MealDetailScreen(meal: meal), // FIXED: Pass MenuItem directly
                     ),
                   );
                 },
@@ -535,7 +535,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         ),
                         child: ClipRRect(
                           borderRadius: BorderRadius.circular(8),
-                          child: _buildMealImage(meal['image']),
+                          child: _buildMealImage(meal.imageUrl), // FIXED: Use meal.imageUrl
                         ),
                       ),
                       const SizedBox(width: 12),
@@ -545,7 +545,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              meal['title'],
+                              meal.title, // FIXED: Use meal.title
                               style: const TextStyle(
                                 fontWeight: FontWeight.bold,
                                 fontSize: 14,
@@ -557,7 +557,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             Row(
                               children: [
                                 Text(
-                                  'Ksh ${meal['price']}',
+                                  'Ksh ${meal.price}', // FIXED: Use meal.price
                                   style: const TextStyle(
                                     fontSize: 12,
                                     fontWeight: FontWeight.w600,
@@ -568,7 +568,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                 const Icon(Icons.star, size: 12, color: Colors.amber),
                                 const SizedBox(width: 2),
                                 Text(
-                                  meal['rating'].toString(),
+                                  meal.rating.toString(), // FIXED: Use meal.rating
                                   style: const TextStyle(fontSize: 11),
                                 ),
                               ],
@@ -583,7 +583,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           IconButton(
                             icon: const Icon(Icons.favorite, color: Colors.red, size: 20),
                             onPressed: () {
-                              favoritesProvider.toggleFavorite(userId, meal['title']); // FIXED: Pass userId
+                              favoritesProvider.toggleFavorite(userId, meal.title); // FIXED: Use meal.title
                               HapticFeedback.lightImpact();
                             },
                             padding: EdgeInsets.zero,
@@ -608,27 +608,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  // ADDED: Helper method to build meal images
-  Widget _buildMealImage(dynamic imageValue) {
+  // UPDATED: Helper method to build meal images
+  Widget _buildMealImage(String? imageUrl) { // CHANGED: Accept String? instead of dynamic
     Widget errorWidget = Icon(Icons.fastfood, size: 24, color: AppColors.primary);
     
-    if (imageValue is Uint8List) {
-      return Image.memory(
-        imageValue,
-        fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => errorWidget,
-      );
+    if (imageUrl == null) {
+      return errorWidget;
     }
     
-    if (imageValue is String && imageValue.startsWith('assets/')) {
+    if (imageUrl.startsWith('assets/')) {
       return Image.asset(
-        imageValue,
+        imageUrl,
         fit: BoxFit.cover,
         errorBuilder: (_, __, ___) => errorWidget,
       );
     }
     
-    return errorWidget;
+    // Assume network image
+    return Image.network(
+      imageUrl,
+      fit: BoxFit.cover,
+      errorBuilder: (_, __, ___) => errorWidget,
+    );
   }
 }
 

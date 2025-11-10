@@ -23,8 +23,9 @@ class LocationProvider with ChangeNotifier {
   bool get outsideDeliveryArea => _outsideDeliveryArea; // ADDED
 
   // Nairobi, Madaraka coordinates as fallback
-  static const double defaultLatitude = -1.3076;
-  static const double defaultLongitude = 36.7811;
+  static const double defaultLatitude = -1.303960; 
+  static const double defaultLongitude = 36.790900;
+  static const double maxDeliveryDistanceKm = 2.0; // UPDATED: Max delivery radius 2km
 
   Future<void> initializeLocation() async {
     _isLoading = true;
@@ -162,10 +163,9 @@ class LocationProvider with ChangeNotifier {
 
   // ADDED: Check if location is within delivery area (5km from restaurant)
   void _checkDeliveryArea() {
-    const restaurantLat = defaultLatitude; // Restaurant location
+    const restaurantLat = defaultLatitude;
     const restaurantLon = defaultLongitude;
-    const deliveryRadius = 5.0; // 5km delivery radius
-
+    
     if (_latitude == null || _longitude == null) {
       _outsideDeliveryArea = false;
       return;
@@ -178,7 +178,7 @@ class LocationProvider with ChangeNotifier {
       _longitude!,
     );
     
-    _outsideDeliveryArea = distance > deliveryRadius;
+    _outsideDeliveryArea = distance > maxDeliveryDistanceKm; // UPDATED: 2km check
   }
 
   // ADDED: Calculate distance using Haversine formula
@@ -188,6 +188,30 @@ class LocationProvider with ChangeNotifier {
         cos((lat2 - lat1) * p) / 2 +
         cos(lat1 * p) * cos(lat2 * p) * (1 - cos((lon2 - lon1) * p)) / 2;
     return 12742 * asin(sqrt(a)); // Distance in km
+  }
+
+  // ADDED: Delivery Fee Logic with tiered pricing
+  int get deliveryFee {
+    if (_latitude == null || _longitude == null) {
+      return 0; // No location set, no delivery fee
+    }
+    
+    final distance = getDistanceFrom(defaultLatitude, defaultLongitude);
+    
+    if (distance > maxDeliveryDistanceKm) {
+      return 0; // Outside delivery area
+    }
+
+    // Tiered pricing for 2km radius (3 tiers)
+    final tierSize = maxDeliveryDistanceKm / 3.0; // ~0.667 km per tier
+
+    if (distance <= tierSize) {
+      return 50; // Tier 1: 0-0.667km
+    } else if (distance <= 2 * tierSize) {
+      return 100; // Tier 2: 0.667-1.334km
+    } else {
+      return 150; // Tier 3: 1.334-2.0km
+    }
   }
 
   String _parseAddress(Map<String, dynamic> data) {
@@ -223,7 +247,7 @@ class LocationProvider with ChangeNotifier {
     return distance <= 5000; // 5km in meters
   }
 
-  // Get distance from restaurant in km
+  // ADDED: Get distance from restaurant in km
   double getDistanceFrom(double restaurantLat, double restaurantLon) {
     if (_latitude == null || _longitude == null) return 0.0;
     

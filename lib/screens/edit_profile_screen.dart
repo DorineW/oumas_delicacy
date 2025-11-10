@@ -20,8 +20,8 @@ class EditProfileScreen extends StatefulWidget {
 
 class _EditProfileScreenState extends State<EditProfileScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _nameController = TextEditingController(text: 'Dorin N.');
-  final _emailCont = TextEditingController(text: 'dorin@example.com');
+  final _nameController = TextEditingController();
+  final _emailCont = TextEditingController();
   final _phoneCont = TextEditingController();
   final _oldPasswordCont = TextEditingController();
   final _newPasswordCont = TextEditingController();
@@ -51,8 +51,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     
     if (currentUser != null) {
       setState(() {
-        _nameController.text = currentUser.name; // FIXED: Removed ?? ''
-        _emailCont.text = currentUser.email; // FIXED: Removed ?? ''
+        _nameController.text = currentUser.name;
+        _emailCont.text = currentUser.email;
         _phoneCont.text = currentUser.phone ?? '';
       });
     }
@@ -63,10 +63,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     setState(() {
       // Don't override name/email/phone from SharedPreferences if we got them from Supabase
       if (_nameController.text.isEmpty) {
-        _nameController.text = prefs.getString('name') ?? 'Guest User';
+        _nameController.text = prefs.getString('name') ?? '';
       }
       if (_emailCont.text.isEmpty) {
-        _emailCont.text = prefs.getString('email') ?? 'guest@example.com';
+        _emailCont.text = prefs.getString('email') ?? '';
       }
       if (_phoneCont.text.isEmpty) {
         _phoneCont.text = prefs.getString('phone') ?? '';

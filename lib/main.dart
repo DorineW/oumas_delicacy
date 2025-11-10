@@ -1,9 +1,13 @@
 // lib/main.dart
 // ignore_for_file: unused_import
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart'; // ADDED: For kReleaseMode
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart'; // ADDED: Environment variables
 
 // ADDED: All necessary screen imports
 import 'screens/login_screen.dart';
@@ -29,16 +33,71 @@ import 'models/order.dart'; // ADDED for DeliveryType
 
 import 'constants/colors.dart';
 
-void main() async {
+// ADDED: Test function to verify Supabase connection
+Future<void> testSupabaseConnection() async {
+  try {
+    debugPrint('🧪 Testing Supabase connection...');
+    debugPrint('📍 Attempting to connect to: ${dotenv.env['SUPABASE_URL']}');
+    
+    final supabase = Supabase.instance.client;
+    
+    debugPrint('✅ Supabase client is initialized');
+    debugPrint('🔗 Environment: ${kReleaseMode ? 'PRODUCTION' : 'DEVELOPMENT'}');
+    
+    // ADDED: Test if the server is reachable
+    try {
+      final response = await supabase
+          .from('menu_items')
+          .select('*')
+          .limit(3)
+          .timeout(const Duration(seconds: 5)); // Add timeout
+      
+      debugPrint('✅ Query successful');
+      debugPrint('📊 Fetched ${response.length} items');
+      
+      if (response.isNotEmpty) {
+        debugPrint('📋 First item: ${response.first}');
+      } else {
+        debugPrint('⚠️ No items found in database');
+      }
+    } on TimeoutException {
+      debugPrint('❌ Connection timeout - Supabase server is not responding');
+      debugPrint('💡 Make sure Supabase is running: supabase start');
+    }
+  } catch (e, stackTrace) {
+    debugPrint('❌ Supabase test failed: $e');
+    debugPrint('Stack: $stackTrace');
+    debugPrint('');
+    debugPrint('🔧 Troubleshooting steps:');
+    debugPrint('1. Check if Supabase is running: supabase status');
+    debugPrint('2. If not running, start it: supabase start');
+    debugPrint('3. Verify the URL in .env.dev matches `supabase status` output');
+    debugPrint('4. Try using "localhost" instead of "127.0.0.1"');
+  }
+}
+
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // TEMPORARY FIX: Hardcode local Supabase values for testing
+  debugPrint('🔧 Using HARDCODED local Supabase credentials');
+  
+  final supabaseUrl = 'http://127.0.0.1:54321';
+  final supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0';
+
+  debugPrint('📍 Supabase URL: $supabaseUrl');
+  debugPrint('🔑 Anon Key: ${supabaseAnonKey.substring(0, 30)}...');
+
   await Supabase.initialize(
-    url: 'https://hqfixpqwxmwftvhgdrxn.supabase.co',
-    anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhxZml4cHF3eG13ZnR2aGdkcnhuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE2Mzc4NTksImV4cCI6MjA3NzIxMzg1OX0.Mjgws9SddAbTYmZotPNRKf-Yz3DmzkzJRxdstXBx6Zs',
-    // removed: authCallbackUrl (not supported in supabase_flutter v2)
-    // authFlowType: AuthFlowType.pkce, // optional
+    url: supabaseUrl,
+    anonKey: supabaseAnonKey,
   );
 
+  debugPrint('🔧 Supabase initialized with: LOCAL DOCKER');
+
+  // Test connection after initialization
+  await testSupabaseConnection();
+  
   runApp(const MyApp());
 }
 
@@ -54,6 +113,12 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    
+    // ADDED: Load menu items on app start
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final menuProvider = Provider.of<MenuProvider>(context, listen: false);
+      await menuProvider.loadMenuItems();
+    });
   }
 
   @override

@@ -9,15 +9,20 @@ import 'package:provider/provider.dart';
 
 import '../constants/colors.dart';
 import '../models/cart_item.dart';
+import '../models/menu_item.dart'; // ADDED
 import '../providers/cart_provider.dart';
 import '../providers/favorites_provider.dart';
 import '../providers/reviews_provider.dart'; // ADDED
 import '../services/auth_service.dart'; // ADDED
+import '../providers/menu_provider.dart'; // ADDED
 
 class MealDetailScreen extends StatefulWidget {
-  final Map<String, dynamic> meal;
+  final MenuItem meal; // CHANGED: from Map<String, dynamic>
 
-  const MealDetailScreen({super.key, required this.meal});
+  const MealDetailScreen({
+    super.key,
+    required this.meal,
+  });
 
   @override
   State<MealDetailScreen> createState() => _MealDetailScreenState();
@@ -26,43 +31,13 @@ class MealDetailScreen extends StatefulWidget {
 class _MealDetailScreenState extends State<MealDetailScreen> {
   int quantity = 1;
   bool showDetails = true;
-  // REMOVED: dummyReviews - now using ReviewsProvider
 
-  // Dummy similar meals
-  final List<Map<String, dynamic>> similarMeals = [
-    {
-      "id": "2",
-      "title": "Ugali Nyama Choma",
-      "price": 350,
-      "category": "Main Course",
-      "rating": 4.7,
-      "image": "assets/images/ugali.jpg",
-    },
-    {
-      "id": "3",
-      "title": "Pilau Beef Fry",
-      "price": 280,
-      "category": "Main Course",
-      "rating": 4.4,
-      "image": "assets/images/pilau.jpg",
-    },
-    {
-      "id": "4",
-      "title": "Chapati Beans",
-      "price": 180,
-      "category": "Breakfast",
-      "rating": 4.6,
-      "image": "assets/images/chapati.jpg",
-    },
-    {
-      "id": "5",
-      "title": "Samosa",
-      "price": 50,
-      "category": "Snack",
-      "rating": 4.3,
-      "image": "assets/images/samosa.jpg",
-    },
-  ];
+  // UPDATED: Convert to MenuItem objects (or fetch from MenuProvider)
+  List<MenuItem> get similarMeals {
+    // In a real app, you'd fetch these from MenuProvider based on category
+    // For now, we'll return an empty list or create dummy MenuItem objects
+    return [];
+  }
 
   @override
   void initState() {
@@ -122,13 +97,13 @@ class _MealDetailScreenState extends State<MealDetailScreen> {
     );
   }
 
-  Widget _buildSimilarMealCard(Map<String, dynamic> meal, BuildContext context) {
+  Widget _buildSimilarMealCard(MenuItem meal, BuildContext context) { // CHANGED: Accept MenuItem
     return GestureDetector(
       onTap: () {
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) => MealDetailScreen(meal: meal),
+            builder: (context) => MealDetailScreen(meal: meal), // Already correct type
           ),
         );
       },
@@ -158,7 +133,7 @@ class _MealDetailScreenState extends State<MealDetailScreen> {
               ),
               child: ClipRRect(
                 borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-                child: _buildMealImage(meal['image']),
+                child: _buildMealImage(meal.imageUrl), // FIXED: Use meal.imageUrl
               ),
             ),
 
@@ -172,7 +147,7 @@ class _MealDetailScreenState extends State<MealDetailScreen> {
                   children: [
                     // Title
                     Text(
-                      meal['title'],
+                      meal.title, // FIXED
                       style: const TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 13,
@@ -184,7 +159,7 @@ class _MealDetailScreenState extends State<MealDetailScreen> {
                     const SizedBox(height: 2),
                     // Category
                     Text(
-                      meal['category'],
+                      meal.category, // FIXED
                       style: TextStyle(
                         color: AppColors.darkText.withOpacity(0.6),
                         fontSize: 11,
@@ -202,14 +177,14 @@ class _MealDetailScreenState extends State<MealDetailScreen> {
                             const Icon(Icons.star, size: 14, color: Colors.amber),
                             const SizedBox(width: 2),
                             Text(
-                              meal['rating'].toString(),
+                              meal.rating.toString(), // FIXED
                               style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
                             ),
                           ],
                         ),
                         Flexible(
                           child: Text(
-                            'Ksh ${meal['price']}',
+                            'Ksh ${meal.price}', // FIXED
                             style: const TextStyle(
                               fontSize: 13,
                               fontWeight: FontWeight.bold,
@@ -233,21 +208,15 @@ class _MealDetailScreenState extends State<MealDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final meal = widget.meal;
-    final cartProvider = Provider.of<CartProvider>(context, listen: false);
-    final favoritesProvider = Provider.of<FavoritesProvider>(context);
-    final reviewsProvider = Provider.of<ReviewsProvider>(context); // ADDED
-    final auth = Provider.of<AuthService>(context); // ADDED
+    final cart = context.watch<CartProvider>();
+    final auth = context.watch<AuthService>();
+    final favoritesProvider = context.watch<FavoritesProvider>();
+    final reviewsProvider = context.watch<ReviewsProvider>();
+    final userId = auth.currentUser?.id ?? 'guest';
 
-    final userId = auth.currentUser?.id ?? 'guest'; // ADDED
-    final isFavorite = favoritesProvider.isFavorite(userId, meal['title']); // ADDED
-
-    final String title = (meal['title'] ?? 'Untitled').toString();
-    final int price = (meal['price'] ?? 0) is int ? meal['price'] : int.tryParse(meal['price'].toString()) ?? 0;
-    final String category = (meal['category'] ?? '').toString();
-    final double rating = reviewsProvider.getAverageRating(title); // UPDATED: Get from provider
-    final String description = (meal['description'] ?? 'Delicious and freshly made.').toString();
-    final reviews = reviewsProvider.getReviewsForMeal(title); // ADDED: Get reviews for this meal
+    // FIXED: Use MenuItem properties directly
+    final isFavorite = favoritesProvider.isFavorite(userId, widget.meal.title);
+    final reviews = reviewsProvider.getReviewsForMeal(widget.meal.title);
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -263,7 +232,7 @@ class _MealDetailScreenState extends State<MealDetailScreen> {
                 fit: StackFit.expand,
                 children: [
                   // Background image with gradient overlay
-                  _buildMealImage(meal['image']),
+                  _buildMealImage(widget.meal.imageUrl),
                   Container(
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
@@ -300,7 +269,7 @@ class _MealDetailScreenState extends State<MealDetailScreen> {
                   color: isFavorite ? Colors.red : Colors.white,
                 ),
                 onPressed: () {
-                  favoritesProvider.toggleFavorite(userId, widget.meal['title']);
+                  favoritesProvider.toggleFavorite(userId, widget.meal.title);
                   HapticFeedback.lightImpact();
                   
                   ScaffoldMessenger.of(context).showSnackBar(
@@ -340,7 +309,7 @@ class _MealDetailScreenState extends State<MealDetailScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                title,
+                                widget.meal.title, // FIXED
                                 style: const TextStyle(
                                   fontSize: 24,
                                   fontWeight: FontWeight.bold,
@@ -355,7 +324,7 @@ class _MealDetailScreenState extends State<MealDetailScreen> {
                                   borderRadius: BorderRadius.circular(12),
                                 ),
                                 child: Text(
-                                  category,
+                                  widget.meal.category, // FIXED
                                   style: TextStyle(
                                     color: AppColors.primary,
                                     fontWeight: FontWeight.w600,
@@ -371,7 +340,7 @@ class _MealDetailScreenState extends State<MealDetailScreen> {
                           crossAxisAlignment: CrossAxisAlignment.end,
                           children: [
                             Text(
-                              "Ksh $price",
+                              "Ksh ${widget.meal.price}", // FIXED
                               style: const TextStyle(
                                 fontSize: 24,
                                 fontWeight: FontWeight.bold,
@@ -384,7 +353,7 @@ class _MealDetailScreenState extends State<MealDetailScreen> {
                                 const Icon(Icons.star, size: 16, color: Colors.amber),
                                 const SizedBox(width: 4),
                                 Text(
-                                  rating.toStringAsFixed(1),
+                                  widget.meal.rating.toString(), // FIXED
                                   style: const TextStyle(fontWeight: FontWeight.w600),
                                 ),
                                 Text(
@@ -458,8 +427,8 @@ class _MealDetailScreenState extends State<MealDetailScreen> {
                     const SizedBox(height: 24),
 
                     // Content based on tab selection
-                    if (showDetails) _buildAboutSection(description),
-                    if (!showDetails) _buildReviewsSection(title, reviewsProvider), // UPDATED: Pass provider
+                    if (showDetails) _buildAboutSection(widget.meal.description ?? ''),
+                    if (!showDetails) _buildReviewsSection(widget.meal.title, reviewsProvider), // UPDATED: Pass provider
                   ],
                 ),
               ),
@@ -533,15 +502,15 @@ class _MealDetailScreenState extends State<MealDetailScreen> {
 
                     final cartItem = CartItem(
                       id: DateTime.now().millisecondsSinceEpoch.toString(),
-                      mealTitle: title,
-                      mealImage: meal['image'] is String ? meal['image'] : '',
-                      price: price,
+                      mealTitle: widget.meal.title, // FIXED
+                      mealImage: widget.meal.imageUrl ?? '', // FIXED
+                      price: widget.meal.price, // FIXED
                       quantity: quantity,
                     );
 
                     bool added = false;
                     try {
-                      cartProvider.addItem(cartItem);
+                      cart.addItem(cartItem);
                       added = true;
                     } catch (e) {
                       debugPrint('Error adding to cart: $e');
@@ -549,7 +518,7 @@ class _MealDetailScreenState extends State<MealDetailScreen> {
 
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
-                        content: Text(added ? "✅ $title added to cart" : "❌ Could not add to cart"),
+                        content: Text(added ? "✅ ${widget.meal.title} added to cart" : "❌ Could not add to cart"),
                         backgroundColor: added ? AppColors.success : Colors.red,
                         behavior: SnackBarBehavior.floating,
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -570,7 +539,7 @@ class _MealDetailScreenState extends State<MealDetailScreen> {
                       const Icon(Icons.add_shopping_cart, size: 20),
                       const SizedBox(width: 8),
                       Text(
-                        'Add • Ksh ${price * quantity}',
+                        'Add • Ksh ${widget.meal.price * quantity}',
                         style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                       ),
                     ],
@@ -585,6 +554,17 @@ class _MealDetailScreenState extends State<MealDetailScreen> {
   }
 
   Widget _buildAboutSection(String description) {
+    final menuProvider = context.read<MenuProvider>(); // ADDED
+    
+    // ADDED: Get similar meals from same category
+    final sameCategoryMeals = menuProvider.menuItems
+        .where((item) => 
+            item.category == widget.meal.category && 
+            item.title != widget.meal.title &&
+            menuProvider.isItemAvailable(item.title))
+        .take(5)
+        .toList();
+    
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -597,42 +577,42 @@ class _MealDetailScreenState extends State<MealDetailScreen> {
             color: AppColors.darkText.withOpacity(0.8),
           ),
         ),
-        const SizedBox(height: 32),
-
-        // Others You Might Like
-        Row(
-          children: [
-            const Text(
-              "Others You Might Like",
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: AppColors.darkText,
+        
+        // UPDATED: Only show similar meals section if we have items
+        if (sameCategoryMeals.isNotEmpty) ...[
+          const SizedBox(height: 32),
+          Row(
+            children: [
+              const Text(
+                "Others You Might Like",
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.darkText,
+                ),
               ),
-            ),
-            const Spacer(),
-            Text(
-              "See all",
-              style: TextStyle(
-                color: AppColors.primary,
-                fontWeight: FontWeight.w600,
+              const Spacer(),
+              Text(
+                "See all",
+                style: TextStyle(
+                  color: AppColors.primary,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 16),
-
-        // Horizontal scroll of similar meals
-        SizedBox(
-          height: 200,
-          child: ListView.builder(
-            scrollDirection: Axis.horizontal,
-            itemCount: similarMeals.length,
-            itemBuilder: (context, index) {
-              return _buildSimilarMealCard(similarMeals[index], context);
-            },
+            ],
           ),
-        ),
+          const SizedBox(height: 16),
+          SizedBox(
+            height: 200,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              itemCount: sameCategoryMeals.length,
+              itemBuilder: (context, index) {
+                return _buildSimilarMealCard(sameCategoryMeals[index], context);
+              },
+            ),
+          ),
+        ],
       ],
     );
   }
