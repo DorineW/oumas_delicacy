@@ -21,6 +21,7 @@ import 'screens/order_history_screen.dart'; // ADDED
 import 'services/auth_service.dart';
 import 'providers/cart_provider.dart';
 import 'providers/menu_provider.dart';
+import 'providers/inventory_provider.dart'; // ADDED: Inventory provider import
 import 'providers/order_provider.dart';
 import 'providers/rider_provider.dart';
 import 'providers/notification_provider.dart';
@@ -136,6 +137,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         ChangeNotifierProvider(create: (_) => AuthService()),
         ChangeNotifierProvider(create: (_) => CartProvider()),
         ChangeNotifierProvider(create: (_) => MenuProvider()),
+        ChangeNotifierProvider(create: (_) => InventoryProvider()), // ADDED: Inventory provider
         ChangeNotifierProvider(create: (_) => NotificationProvider()),
         ChangeNotifierProvider(create: (_) => LocationProvider()), // ADDED: Register LocationProvider
         ChangeNotifierProxyProvider<NotificationProvider, OrderProvider>(
@@ -172,6 +174,16 @@ class _AppContentState extends State<_AppContent> {
       if (mounted) {
         final menuProvider = Provider.of<MenuProvider>(context, listen: false);
         await menuProvider.loadMenuItems();
+        
+        // ADDED: Load inventory items
+        final inventoryProvider = Provider.of<InventoryProvider>(context, listen: false);
+        await inventoryProvider.loadInventoryItems();
+        
+        // ADDED: Load reviews
+        final reviewsProvider = Provider.of<ReviewsProvider>(context, listen: false);
+        await reviewsProvider.loadReviews();
+        
+        // NOTE: Favorites will load per-user after login via FavoritesProvider.setCurrentUser()
       }
     });
   }

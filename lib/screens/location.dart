@@ -31,9 +31,7 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
   String? _currentAddress;
   bool _isLoadingAddress = false;
 
-  // ADDED: Local state for delivery fee and zone status
-  int? _localDeliveryFee; 
-  bool _localOutsideZone = false;
+  // REMOVED: Local state for delivery fee and zone - use provider instead
   
   // ADDED: Flag to prevent operations after disposal
   bool _isDisposed = false;
@@ -103,10 +101,6 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
         locationFound = true;
       }
 
-      // ADDED: Sync delivery fee and zone status
-      _localDeliveryFee = locationProvider.deliveryFee;
-      _localOutsideZone = locationProvider.outsideDeliveryArea;
-      
       if (!mounted || _isDisposed) return;
       
       setState(() {
@@ -257,17 +251,17 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
       ScaffoldMessenger.of(context).clearSnackBars();
       setState(() {
         _currentAddress = locationProvider.deliveryAddress;
-        _localDeliveryFee = locationProvider.deliveryFee; // ADDED: Update fee
-        _localOutsideZone = locationProvider.outsideDeliveryArea; // ADDED: Update zone
         _isLoadingAddress = false;
       });
 
-      debugPrint('📍 Map tap - Address: $_currentAddress, Fee: $_localDeliveryFee');
+      debugPrint('📍 Map tap - Address: $_currentAddress, Fee: ${locationProvider.deliveryFee}');
     }
   }
 
   void _confirmLocation(BuildContext context) {
     if (!mounted || _isDisposed) return;
+    
+    final locationProvider = context.read<LocationProvider>();
     
     // FIXED: Check for both address and coordinates
     if (_currentAddress == null || _currentAddress!.isEmpty || _selectedPoint == null) {
@@ -299,8 +293,8 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
       'address': _currentAddress!,
       'latitude': _selectedPoint!.latitude,
       'longitude': _selectedPoint!.longitude,
-      'outsideZone': _localOutsideZone, // ADDED
-      'deliveryFee': _localDeliveryFee ?? 0, // ADDED
+      'outsideZone': locationProvider.outsideDeliveryArea,
+      'deliveryFee': locationProvider.deliveryFee,
     });
   }
 
@@ -355,8 +349,6 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
         setState(() {
           _selectedPoint = newPoint;
           _currentAddress = locationProvider.deliveryAddress; // Sync address from provider
-          _localDeliveryFee = locationProvider.deliveryFee; // ADDED
-          _localOutsideZone = locationProvider.outsideDeliveryArea; // ADDED
         });
         
         _animatedMapMove(newPoint, 16.0); // UPDATED: Zoom in more on current location
@@ -492,11 +484,6 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
     
     locationProvider.setLocation(lat, lon).then((_) {
       if (mounted && !_isDisposed) {
-        setState(() {
-          _localDeliveryFee = locationProvider.deliveryFee; // ADDED
-          _localOutsideZone = locationProvider.outsideDeliveryArea; // ADDED
-        });
-
         final reverseAddress = locationProvider.deliveryAddress;
         if (reverseAddress != null && reverseAddress.length < displayName.length && reverseAddress.isNotEmpty) {
           setState(() {
@@ -562,17 +549,17 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
-                color: _localOutsideZone 
+                color: provider.outsideDeliveryArea 
                     ? Colors.red.withOpacity(0.1) 
                     : AppColors.success.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(20),
               ),
               child: Text(
-                _localOutsideZone 
+                provider.outsideDeliveryArea 
                     ? '🚫 Outside ${LocationProvider.maxDeliveryDistanceKm.toStringAsFixed(1)}km Delivery Zone'
-                    : '🚚 Delivery Fee: KES ${_localDeliveryFee ?? 0}',
+                    : '🚚 Delivery Fee: KES ${provider.deliveryFee}',
                 style: TextStyle(
-                  color: _localOutsideZone ? Colors.red : AppColors.success,
+                  color: provider.outsideDeliveryArea ? Colors.red : AppColors.success,
                   fontWeight: FontWeight.bold,
                   fontSize: 12,
                 ),

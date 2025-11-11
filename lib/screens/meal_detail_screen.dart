@@ -214,9 +214,10 @@ class _MealDetailScreenState extends State<MealDetailScreen> {
     final reviewsProvider = context.watch<ReviewsProvider>();
     final userId = auth.currentUser?.id ?? 'guest';
 
-    // FIXED: Use MenuItem properties directly
-    final isFavorite = favoritesProvider.isFavorite(userId, widget.meal.title);
-    final reviews = reviewsProvider.getReviewsForMeal(widget.meal.title);
+    // FIXED: Use MenuItem id (productId) not title
+    final productId = widget.meal.id ?? '';
+    final isFavorite = favoritesProvider.isFavorite(userId, productId);
+    final reviews = reviewsProvider.getReviewsForProduct(productId);
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -269,7 +270,7 @@ class _MealDetailScreenState extends State<MealDetailScreen> {
                   color: isFavorite ? Colors.red : Colors.white,
                 ),
                 onPressed: () {
-                  favoritesProvider.toggleFavorite(userId, widget.meal.title);
+                  favoritesProvider.toggleFavorite(userId, productId); // UPDATED: Use productId
                   HapticFeedback.lightImpact();
                   
                   ScaffoldMessenger.of(context).showSnackBar(
@@ -428,7 +429,7 @@ class _MealDetailScreenState extends State<MealDetailScreen> {
 
                     // Content based on tab selection
                     if (showDetails) _buildAboutSection(widget.meal.description ?? ''),
-                    if (!showDetails) _buildReviewsSection(widget.meal.title, reviewsProvider), // UPDATED: Pass provider
+                    if (!showDetails) _buildReviewsSection(productId, reviewsProvider), // UPDATED: Use productId
                   ],
                 ),
               ),
@@ -617,10 +618,10 @@ class _MealDetailScreenState extends State<MealDetailScreen> {
     );
   }
 
-  Widget _buildReviewsSection(String mealTitle, ReviewsProvider reviewsProvider) { // UPDATED: Accept provider
-    final reviews = reviewsProvider.getReviewsForMeal(mealTitle);
-    final averageRating = reviewsProvider.getAverageRating(mealTitle);
-    final distribution = reviewsProvider.getRatingDistribution(mealTitle);
+  Widget _buildReviewsSection(String productId, ReviewsProvider reviewsProvider) { // UPDATED: Use productId
+    final reviews = reviewsProvider.getReviewsForProduct(productId);
+    final averageRating = reviewsProvider.getAverageRating(productId);
+    final distribution = reviewsProvider.getRatingDistribution(productId);
     
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -723,7 +724,7 @@ class _MealDetailScreenState extends State<MealDetailScreen> {
             separatorBuilder: (context, index) => const SizedBox(height: 16),
             itemBuilder: (context, index) {
               final review = reviews[index];
-              return _buildReviewCard(review, mealTitle, reviewsProvider); // UPDATED
+              return _buildReviewCard(review, productId, reviewsProvider); // UPDATED: productId
             },
           ),
       ],
@@ -760,7 +761,7 @@ class _MealDetailScreenState extends State<MealDetailScreen> {
     );
   }
 
-  Widget _buildReviewCard(Review review, String mealTitle, ReviewsProvider reviewsProvider) { // UPDATED
+  Widget _buildReviewCard(Review review, String productId, ReviewsProvider reviewsProvider) { // UPDATED: productId instead of mealTitle
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -781,9 +782,9 @@ class _MealDetailScreenState extends State<MealDetailScreen> {
             children: [
               CircleAvatar(
                 radius: 20,
-                backgroundColor: review.isAnonymous ? Colors.grey : AppColors.primary, // UPDATED
-                child: Icon(
-                  review.isAnonymous ? Icons.person_off : Icons.person, // UPDATED
+                backgroundColor: AppColors.primary,
+                child: const Icon(
+                  Icons.person,
                   color: Colors.white,
                   size: 20,
                 ),
@@ -796,24 +797,16 @@ class _MealDetailScreenState extends State<MealDetailScreen> {
                     Row(
                       children: [
                         Text(
-                          review.displayName, // UPDATED: Use displayName
+                          'User', // UPDATED: Simplified - DB doesn't track user names
                           style: const TextStyle(
                             fontWeight: FontWeight.bold,
                             fontSize: 16,
                           ),
                         ),
-                        if (review.isAnonymous) ...[
-                          const SizedBox(width: 6),
-                          Icon(
-                            Icons.visibility_off,
-                            size: 14,
-                            color: AppColors.darkText.withOpacity(0.5),
-                          ),
-                        ],
                       ],
                     ),
                     Text(
-                      _formatReviewTime(review.date), // UPDATED
+                      _formatReviewTime(review.createdAt), // UPDATED: Use createdAt
                       style: TextStyle(
                         color: AppColors.darkText.withOpacity(0.6),
                         fontSize: 12,
@@ -825,10 +818,10 @@ class _MealDetailScreenState extends State<MealDetailScreen> {
               StarRating(rating: review.rating.toDouble(), size: 16), // UPDATED
             ],
           ),
-          if (review.comment.isNotEmpty) ...[
+          if (review.hasComment) ...[
             const SizedBox(height: 12),
             Text(
-              review.comment,
+              review.displayComment, // UPDATED: Use displayComment getter
               style: TextStyle(
                 fontSize: 14,
                 height: 1.4,
@@ -841,7 +834,7 @@ class _MealDetailScreenState extends State<MealDetailScreen> {
             children: [
               GestureDetector(
                 onTap: () {
-                  reviewsProvider.toggleLike(review.orderId, mealTitle); // UPDATED
+                  reviewsProvider.toggleLike(review.id); // UPDATED: Only need review id
                   HapticFeedback.lightImpact();
                 },
                 child: Row(

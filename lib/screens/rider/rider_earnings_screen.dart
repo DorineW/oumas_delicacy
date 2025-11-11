@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../constants/colors.dart';
 import '../../providers/rider_provider.dart';
+import '../../services/auth_service.dart';
 
 class RiderEarningsScreen extends StatelessWidget {
   const RiderEarningsScreen({super.key});
@@ -9,6 +10,12 @@ class RiderEarningsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final provider = Provider.of<RiderProvider>(context);
+    final auth = Provider.of<AuthService>(context, listen: false);
+    final riderId = auth.currentUser?.id ?? '';
+    
+    // Calculate earnings
+    final todayEarning = provider.todayEarnings(riderId);
+    final todayDeliveries = provider.totalDeliveriesToday(riderId);
     
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -57,7 +64,7 @@ class RiderEarningsScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Ksh ${provider.todayEarnings.toStringAsFixed(0)}',
+                    'Ksh ${todayEarning.toStringAsFixed(0)}',
                     style: const TextStyle(
                       fontSize: 32,
                       fontWeight: FontWeight.bold,
@@ -66,7 +73,7 @@ class RiderEarningsScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    '${provider.totalDeliveriesToday} deliveries completed',
+                    '$todayDeliveries deliveries completed',
                     style: TextStyle(
                       fontSize: 14,
                       color: AppColors.white.withOpacity(0.9),
@@ -83,7 +90,7 @@ class RiderEarningsScreen extends StatelessWidget {
                 Expanded(
                   child: _buildStatCard(
                     'This Week',
-                    'Ksh ${(provider.todayEarnings * 5).toStringAsFixed(0)}',
+                    'Ksh ${(todayEarning * 5).toStringAsFixed(0)}',
                     Icons.calendar_today,
                     Colors.blue,
                   ),
@@ -92,7 +99,7 @@ class RiderEarningsScreen extends StatelessWidget {
                 Expanded(
                   child: _buildStatCard(
                     'This Month',
-                    'Ksh ${(provider.todayEarnings * 20).toStringAsFixed(0)}',
+                    'Ksh ${(todayEarning * 20).toStringAsFixed(0)}',
                     Icons.calendar_month,
                     Colors.purple,
                   ),
@@ -127,10 +134,27 @@ class RiderEarningsScreen extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 16),
-                  _buildEarningItem('Order #ORD-1234', 'Ksh 150', 'Today, 2:30 PM'),
-                  _buildEarningItem('Order #ORD-1233', 'Ksh 200', 'Today, 1:15 PM'),
-                  _buildEarningItem('Order #ORD-1232', 'Ksh 180', 'Today, 11:45 AM'),
-                  _buildEarningItem('Order #ORD-1231', 'Ksh 220', 'Today, 10:20 AM'),
+                  // Show real earnings from completed orders
+                  ...provider.completedOrdersForRider(riderId).map((order) {
+                    final earning = (order.totalAmount * 0.1).toInt(); // 10% commission
+                    return _buildEarningItem(
+                      'Order #${order.id}',
+                      'Ksh $earning',
+                      _formatTime(order.deliveredAt ?? order.date),
+                    );
+                  }).toList(),
+                  if (provider.completedOrdersForRider(riderId).isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 20),
+                      child: Center(
+                        child: Text(
+                          'No completed deliveries yet',
+                          style: TextStyle(
+                            color: AppColors.darkText.withOpacity(0.5),
+                          ),
+                        ),
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -138,6 +162,23 @@ class RiderEarningsScreen extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  String _formatTime(DateTime dateTime) {
+    final now = DateTime.now();
+    final difference = now.difference(dateTime);
+    
+    if (difference.inDays == 0) {
+      final hour = dateTime.hour > 12 ? dateTime.hour - 12 : dateTime.hour;
+      final period = dateTime.hour >= 12 ? 'PM' : 'AM';
+      return 'Today, ${hour == 0 ? 12 : hour}:${dateTime.minute.toString().padLeft(2, '0')} $period';
+    } else if (difference.inDays == 1) {
+      return 'Yesterday';
+    } else if (difference.inDays < 7) {
+      return '${difference.inDays} days ago';
+    } else {
+      return '${dateTime.day}/${dateTime.month}/${dateTime.year}';
+    }
   }
 
   Widget _buildStatCard(String title, String value, IconData icon, Color color) {

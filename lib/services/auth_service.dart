@@ -42,26 +42,42 @@ class AuthService extends ChangeNotifier {
     try {
       final authUser = _supabase.auth.currentUser;
       if (authUser == null) {
+        debugPrint('⚠️ No auth user found, clearing current user');
         _currentUser = null;
         notifyListeners();
         return;
       }
 
+      debugPrint('🔄 Refreshing user profile from Supabase...');
+      debugPrint('🔑 User auth_id: ${authUser.id}');
+      
       final profile = await _supabase
           .from('users')
-          .select()
+          .select('auth_id, email, name, phone, role, created_at, updated_at')
           .eq('auth_id', authUser.id)
           .maybeSingle();
 
+      debugPrint('✅ Query executed successfully');
+      debugPrint('📊 Response type: ${profile.runtimeType}');
+      
       if (profile != null) {
+        debugPrint('📋 Raw user profile from DB: $profile');
+        
         _currentUser = app.User(
           id: authUser.id,
           email: (profile['email'] as String?) ?? (authUser.email ?? ''),
           name: (profile['name'] as String?) ?? '',
-          role: (profile['role'] as String?) ?? 'customer', // ✅ Role is read here
+          role: (profile['role'] as String?) ?? 'customer',
           phone: profile['phone'] as String?,
         );
+        
+        debugPrint('✅ User profile refreshed: ${_currentUser?.name} (Role: ${_currentUser?.role})');
+        debugPrint('🔑 Role checks:');
+        debugPrint('   - Is Admin: ${_currentUser?.role == 'admin'}');
+        debugPrint('   - Is Rider: ${_currentUser?.role == 'rider'}');
+        debugPrint('   - Is Customer: ${_currentUser?.role == 'customer'}');
       } else {
+        debugPrint('⚠️ No profile found in database, using default customer role');
         _currentUser = app.User(
           id: authUser.id,
           email: authUser.email ?? '',
@@ -71,8 +87,10 @@ class AuthService extends ChangeNotifier {
         );
       }
       notifyListeners();
-    } catch (_) {
-      // silent
+    } catch (e, stackTrace) {
+      debugPrint('❌ Error refreshing user profile: $e');
+      debugPrint('Stack: $stackTrace');
+      // silent - don't throw
     }
   }
 
@@ -245,13 +263,27 @@ class AuthService extends ChangeNotifier {
 
   Future<Map<String, dynamic>?> getCurrentProfile() async {
     final user = _supabase.auth.currentUser;
-    if (user == null) return null;
+    if (user == null) {
+      debugPrint('⚠️ No current auth user');
+      return null;
+    }
 
+    debugPrint('🔄 Fetching current user profile...');
+    debugPrint('🔑 User auth_id: ${user.id}');
+    
     final resp = await _supabase
         .from('users')
-        .select()
+        .select('auth_id, email, name, phone, role, created_at, updated_at')
         .eq('auth_id', user.id)
         .maybeSingle();
+    
+    if (resp != null) {
+      debugPrint('✅ Profile fetched successfully');
+      debugPrint('📋 Profile data: $resp');
+    } else {
+      debugPrint('⚠️ No profile found for user ${user.id}');
+    }
+    
     return resp;
   }
 
@@ -291,18 +323,23 @@ class AuthService extends ChangeNotifier {
       if (response.user != null) {
         debugPrint('✅ Login successful for: ${response.user!.email}');
         
-        // ADDED: Load user profile to get role
+        // Load user profile to get role (same pattern as MenuProvider)
         final userId = response.user!.id;
         try {
+          debugPrint('🔄 Starting to load user profile from Supabase...');
+          debugPrint('🔑 User auth_id: $userId');
+          
           final userProfile = await Supabase.instance.client
               .from('users')
-              .select()
+              .select('auth_id, email, name, phone, role, created_at, updated_at')
               .eq('auth_id', userId)
               .single();
           
+          debugPrint('✅ Query executed successfully');
+          debugPrint('📊 Response type: ${userProfile.runtimeType}');
           debugPrint('📋 Raw user profile from DB: $userProfile');
           
-          // FIXED: Use app.User instead of Supabase User
+          // Parse user data
           _currentUser = app.User(
             id: userId,
             email: response.user!.email!,
@@ -312,16 +349,24 @@ class AuthService extends ChangeNotifier {
           );
           
           debugPrint('✅ User profile loaded: ${_currentUser?.name} (Role: ${_currentUser?.role})');
-          debugPrint('🔑 Is Admin: ${_currentUser?.role == 'admin'}');
-        } catch (e) {
-          debugPrint('⚠️ Could not load user profile: $e');
+          debugPrint('🔑 Role checks:');
+          debugPrint('   - Is Admin: ${_currentUser?.role == 'admin'}');
+          debugPrint('   - Is Rider: ${_currentUser?.role == 'rider'}');
+          debugPrint('   - Is Customer: ${_currentUser?.role == 'customer'}');
+          debugPrint('🎉 Login complete for user: ${_currentUser?.email}');
+          
+        } catch (e, stackTrace) {
+          debugPrint('❌ Error loading user profile: $e');
           debugPrint('⚠️ Error type: ${e.runtimeType}');
+          debugPrint('Stack: $stackTrace');
+          
           // Fallback: create user without profile data
           _currentUser = app.User(
             id: userId,
             email: response.user!.email!,
             role: 'customer', // Default role
           );
+          debugPrint('⚠️ Using fallback user with customer role');
         }
         
         notifyListeners();

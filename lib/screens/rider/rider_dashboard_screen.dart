@@ -6,7 +6,7 @@ import 'package:provider/provider.dart';
 import '../../constants/colors.dart';
 import '../../services/auth_service.dart';
 import '../../models/order.dart'; // ADDED: Import Order model
-import '../../providers/order_provider.dart'; // ADDED: Import OrderProvider
+import '../../providers/rider_provider.dart'; // ADDED: Import RiderProvider
 import 'rider_orders_screen.dart';
 import 'rider_profile_screen.dart';
 import 'rider_earnings_screen.dart';
@@ -25,9 +25,30 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen> {
   @override
   void initState() {
     super.initState();
-    // Start auto-refresh for orders
+    
+    // Load orders for this rider when dashboard opens
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final auth = Provider.of<AuthService>(context, listen: false);
+      final riderId = auth.currentUser?.id;
+      
+      if (riderId != null) {
+        debugPrint('🚴 Loading orders for rider: $riderId');
+        final riderProvider = Provider.of<RiderProvider>(context, listen: false);
+        riderProvider.loadOrdersForRider(riderId);
+      }
+    });
+    
+    // Start auto-refresh for orders every 30 seconds
     _ordersUpdateTimer = Timer.periodic(const Duration(seconds: 30), (timer) {
-      if (mounted) setState(() {});
+      if (mounted) {
+        final auth = Provider.of<AuthService>(context, listen: false);
+        final riderId = auth.currentUser?.id;
+        
+        if (riderId != null) {
+          final riderProvider = Provider.of<RiderProvider>(context, listen: false);
+          riderProvider.refreshOrders(riderId);
+        }
+      }
     });
   }
 
@@ -40,22 +61,67 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen> {
   Widget _buildActiveOrders() {
     final auth = Provider.of<AuthService>(context, listen: false);
     final riderId = auth.currentUser?.id ?? '';
-    final orderProvider = Provider.of<OrderProvider>(context);
+    final riderProvider = Provider.of<RiderProvider>(context);
     
     debugPrint('🚴 Rider Dashboard - Rider ID: $riderId');
-    debugPrint('🚴 Total orders in system: ${orderProvider.orders.length}');
+    debugPrint('🚴 Total orders for rider: ${riderProvider.orders.length}');
     
-    // UPDATED: Get orders assigned to this rider that are out for delivery
-    final myOrders = orderProvider.orders.where((order) {
-      final isAssignedToMe = order.riderId == riderId;
-      final isOutForDelivery = order.status == OrderStatus.outForDelivery; // UPDATED
-      
-      if (order.riderId != null) {
-        debugPrint('📦 Order ${order.id}: riderId=${order.riderId}, status=${order.status}, match=$isAssignedToMe, outForDelivery=$isOutForDelivery');
-      }
-      
-      return isAssignedToMe && isOutForDelivery;
-    }).toList();
+    // Show loading indicator
+    if (riderProvider.isLoading) {
+      return const Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(height: 16),
+            Text('Loading orders...'),
+          ],
+        ),
+      );
+    }
+    
+    // Show error if any
+    if (riderProvider.error != null) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.error_outline, size: 64, color: Colors.red),
+            const SizedBox(height: 16),
+            Text(
+              'Error loading orders',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: AppColors.darkText.withOpacity(0.5),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 40),
+              child: Text(
+                riderProvider.error!,
+                textAlign: TextAlign.center,
+                style: TextStyle(color: AppColors.darkText.withOpacity(0.4)),
+              ),
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton.icon(
+              onPressed: () => riderProvider.refreshOrders(riderId),
+              icon: const Icon(Icons.refresh),
+              label: const Text('Retry'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: Colors.white,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    
+    // UPDATED: Get active orders (out for delivery)
+    final myOrders = riderProvider.activeOrdersForRider(riderId);
 
     debugPrint('🚴 My active orders count: ${myOrders.length}');
 
@@ -121,11 +187,11 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen> {
   Widget _buildStatsCard() {
     final auth = Provider.of<AuthService>(context, listen: false);
     final riderId = auth.currentUser?.id ?? '';
-    final orderProvider = Provider.of<OrderProvider>(context);
+    final riderProvider = Provider.of<RiderProvider>(context);
     
-    final myOrders = orderProvider.orders.where((order) => order.riderId == riderId).toList();
-    final activeCount = myOrders.where((o) => o.status == OrderStatus.outForDelivery).length; // UPDATED
-    final completedCount = myOrders.where((o) => o.status == OrderStatus.delivered).length;
+    final myOrders = riderProvider.ordersForRider(riderId);
+    final activeCount = riderProvider.activeOrdersForRider(riderId).length;
+    final completedCount = riderProvider.completedOrdersForRider(riderId).length;
 
     return Container(
       margin: const EdgeInsets.all(16),
@@ -543,26 +609,30 @@ class _OrderCard extends StatelessWidget {
             child: const Text('Cancel'),
           ),
           ElevatedButton(
-            onPressed: () {
-              Provider.of<OrderProvider>(context, listen: false)
-                  .updateStatus(order.id, OrderStatus.delivered);
-              Navigator.pop(context);
+            onPressed: () async {
+              // Update using RiderProvider
+              await Provider.of<RiderProvider>(context, listen: false)
+                  .updateOrderStatus(order.id, OrderStatus.delivered);
               
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Row(
-                    children: [
-                      const Icon(Icons.check_circle, color: Colors.white),
-                      const SizedBox(width: 12),
-                      Text('Order #${order.id} marked as delivered'),
-                    ],
+              if (context.mounted) {
+                Navigator.pop(context);
+                
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Row(
+                      children: [
+                        const Icon(Icons.check_circle, color: Colors.white),
+                        const SizedBox(width: 12),
+                        Text('Order #${order.id} marked as delivered'),
+                      ],
+                    ),
+                    backgroundColor: AppColors.success,
+                    behavior: SnackBarBehavior.floating,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    margin: const EdgeInsets.all(16),
                   ),
-                  backgroundColor: AppColors.success,
-                  behavior: SnackBarBehavior.floating,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  margin: const EdgeInsets.all(16),
-                ),
-              );
+                );
+              }
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.success,

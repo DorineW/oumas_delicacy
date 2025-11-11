@@ -9,6 +9,7 @@ import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../constants/colors.dart';
 import '../services/auth_service.dart';
+import '../providers/favorites_provider.dart'; // ADDED: Import FavoritesProvider
 import 'home_screen.dart';
 import 'admin/admin_dashboard_screen.dart';
 import 'rider/rider_dashboard_screen.dart';
@@ -108,6 +109,13 @@ class _LoginScreenState extends State<LoginScreen>
       // FIXED: Get fresh user data after login
       final user = auth.currentUser;
       debugPrint('👤 Logged in user: ${user?.email} with role: ${user?.role}');
+
+      // ADDED: Load user-specific favorites after login
+      if (!mounted) return;
+      final favoritesProvider = Provider.of<FavoritesProvider>(context, listen: false);
+      if (user?.id != null) {
+        favoritesProvider.setCurrentUser(user!.id);
+      }
 
       // Route based on role
       if (user?.role == 'admin') {

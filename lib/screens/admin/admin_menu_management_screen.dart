@@ -522,11 +522,9 @@ class _AdminMenuManagementScreenState extends State<AdminMenuManagementScreen> {
       ..._customCategories,
     }.toList()..sort();
 
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 300),
+    return Container(
       width: double.infinity,
       margin: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.blue.withOpacity(0.05),
         borderRadius: BorderRadius.circular(12),
@@ -539,10 +537,17 @@ class _AdminMenuManagementScreenState extends State<AdminMenuManagementScreen> {
           ),
         ],
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.5, // Flexible max height
+        ),
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
           Row(
             children: [
               Container(
@@ -717,7 +722,9 @@ class _AdminMenuManagementScreenState extends State<AdminMenuManagementScreen> {
                 ),
               ),
             ),
-        ],
+            ],
+          ),
+        ),
       ),
     );
   }

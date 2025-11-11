@@ -1,150 +1,227 @@
 import 'package:flutter/foundation.dart';
-import '../models/delivery_order.dart';
+import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import '../models/order.dart' as order_model;
 
 class RiderProvider with ChangeNotifier {
-  final List<DeliveryOrder> _orders = [];
-  bool _isDemoSeeded = false;
+  List<order_model.Order> _orders = [];
+  bool _isLoading = false;
+  String? _error;
 
-  List<DeliveryOrder> get orders => List.unmodifiable(_orders);
+  List<order_model.Order> get orders => List.unmodifiable(_orders);
+  bool get isLoading => _isLoading;
+  String? get error => _error;
 
-  List<DeliveryOrder> get activeOrders => 
-    _orders.where((o) => o.status != OrderStatus.delivered).toList();
-
-  List<DeliveryOrder> get completedOrders => 
-    _orders.where((o) => o.status == OrderStatus.delivered).toList();
-
-  List<DeliveryOrder> get todayOrders => 
-    _orders.where((o) => 
-      o.orderTime.day == DateTime.now().day &&
-      o.orderTime.month == DateTime.now().month &&
-      o.orderTime.year == DateTime.now().year
-    ).toList();
-
-  int get totalDeliveriesToday => todayOrders.where((o) => 
-    o.status == OrderStatus.delivered).length;
-
-  double get todayEarnings => todayOrders
-    .where((o) => o.status == OrderStatus.delivered)
-    .fold(0.0, (sum, order) => sum + (order.amount * 0.1)); // 10% commission
-
-  void seedDemoData() {
-    if (_isDemoSeeded) return;
-
-    _orders.clear();
-    _orders.addAll([
-      DeliveryOrder(
-        id: 'ORD-1001',
-        customerName: 'John Kamau',
-        customerPhone: '+254712345678',
-        customerAddress: '123 Main Street, Nairobi',
-        deliveryAddress: '456 Business Plaza, 3rd Floor, Room 304',
-        amount: 1250.00,
-        orderTime: DateTime.now().subtract(const Duration(minutes: 15)),
-        status: OrderStatus.assigned,
-        items: [
-          const OrderItem('UGALI NYAMA CHOMA', 2, 210.0),
-          const OrderItem('SODA 500ml', 2, 70.0),
-        ],
-        specialInstructions: 'Call when arriving at gate',
-        paymentMethod: 'M-Pesa',
-        distance: 2.5,
-        estimatedTime: 20,
-      ),
-      DeliveryOrder(
-        id: 'ORD-1002',
-        customerName: 'Mary Wanjiku',
-        customerPhone: '+254723456789',
-        customerAddress: '789 Kibera Drive',
-        deliveryAddress: 'Westlands Towers, 5th Floor',
-        amount: 890.00,
-        orderTime: DateTime.now().subtract(const Duration(minutes: 5)),
-        status: OrderStatus.pickedUp,
-        items: [
-          const OrderItem('PILAU LIVER', 1, 230.0),
-          const OrderItem('CHAPATI PLAIN', 4, 20.0),
-          const OrderItem('JUICE 300ml', 1, 100.0),
-        ],
-        specialInstructions: 'No contact delivery - leave at door',
-        paymentMethod: 'Cash',
-        distance: 4.2,
-        estimatedTime: 25,
-      ),
-      DeliveryOrder(
-        id: 'ORD-1003',
-        customerName: 'David Ochieng',
-        customerPhone: '+254734567890',
-        customerAddress: '321 Karen Road',
-        deliveryAddress: 'Karen Shopping Center',
-        amount: 1560.00,
-        orderTime: DateTime.now().subtract(const Duration(hours: 2)),
-        status: OrderStatus.delivered,
-        items: [
-          const OrderItem('MATOKE BEEF', 3, 230.0),
-          const OrderItem('SAMOSA', 6, 20.0),
-          const OrderItem('WATER 500ml', 3, 50.0),
-        ],
-        specialInstructions: 'Gate code: 1234',
-        paymentMethod: 'M-Pesa',
-        distance: 3.8,
-        estimatedTime: 18,
-      ),
-      DeliveryOrder(
-        id: 'ORD-1004',
-        customerName: 'Sarah Auma',
-        customerPhone: '+254745678901',
-        customerAddress: '654 Lavington Green',
-        deliveryAddress: 'Lavington Apartments, Block B',
-        amount: 720.00,
-        orderTime: DateTime.now().subtract(const Duration(hours: 1)),
-        status: OrderStatus.onRoute,
-        items: [
-          const OrderItem('UGALI SAMAKI', 2, 300.0),
-          const OrderItem('SODA 500ml', 2, 70.0),
-        ],
-        specialInstructions: 'Call upon arrival',
-        paymentMethod: 'Cash',
-        distance: 5.1,
-        estimatedTime: 30,
-      ),
-      DeliveryOrder(
-        id: 'ORD-1005',
-        customerName: 'Peter Mwangi',
-        customerPhone: '+254756789012',
-        customerAddress: '987 Eastleigh Estate',
-        deliveryAddress: 'Eastleigh Mall, Ground Floor',
-        amount: 980.00,
-        orderTime: DateTime.now().subtract(const Duration(hours: 3)),
-        status: OrderStatus.delivered,
-        items: [
-          const OrderItem('BEEF BURGER', 2, 350.0),
-          const OrderItem('CHIPS', 2, 140.0),
-        ],
-        specialInstructions: '',
-        paymentMethod: 'M-Pesa',
-        distance: 3.2,
-        estimatedTime: 22,
-      ),
-    ]);
-
-    _isDemoSeeded = true;
-    notifyListeners();
+  // Get orders assigned to this rider
+  List<order_model.Order> ordersForRider(String riderId) {
+    return _orders.where((o) => o.riderId == riderId).toList();
   }
 
-  void updateOrderStatus(String orderId, OrderStatus newStatus) {
-    final index = _orders.indexWhere((o) => o.id == orderId);
-    if (index != -1) {
-      _orders[index] = _orders[index].copyWith(status: newStatus);
+  // Active orders (not delivered/cancelled)
+  List<order_model.Order> activeOrdersForRider(String riderId) {
+    return _orders.where((o) => 
+      o.riderId == riderId &&
+      o.status != order_model.OrderStatus.delivered &&
+      o.status != order_model.OrderStatus.cancelled
+    ).toList();
+  }
+
+  // Completed orders
+  List<order_model.Order> completedOrdersForRider(String riderId) {
+    return _orders.where((o) => 
+      o.riderId == riderId &&
+      (o.status == order_model.OrderStatus.delivered || 
+       o.status == order_model.OrderStatus.cancelled)
+    ).toList();
+  }
+
+  // Today's orders
+  List<order_model.Order> todayOrdersForRider(String riderId) {
+    final now = DateTime.now();
+    return _orders.where((o) => 
+      o.riderId == riderId &&
+      o.date.day == now.day &&
+      o.date.month == now.month &&
+      o.date.year == now.year
+    ).toList();
+  }
+
+  // Statistics
+  int totalDeliveriesToday(String riderId) {
+    return todayOrdersForRider(riderId)
+        .where((o) => o.status == order_model.OrderStatus.delivered)
+        .length;
+  }
+
+  double todayEarnings(String riderId) {
+    return todayOrdersForRider(riderId)
+        .where((o) => o.status == order_model.OrderStatus.delivered)
+        .fold(0.0, (sum, order) => sum + (order.totalAmount * 0.1)); // 10% commission
+  }
+
+  // MAIN: Load orders from Supabase with detailed debugging (same pattern as MenuProvider)
+  Future<void> loadOrdersForRider(String riderId) async {
+    _isLoading = true;
+    _error = null;
+    notifyListeners();
+
+    try {
+      debugPrint('🔄 Starting to load orders for rider: $riderId from Supabase...');
+      
+      final supabase = Supabase.instance.client;
+      debugPrint('✅ Supabase client initialized');
+      
+      // Query orders assigned to this rider with all columns explicitly
+      final response = await supabase
+          .from('orders')
+          .select('''
+            id,
+            user_auth_id,
+            customer_name,
+            delivery_phone,
+            placed_at,
+            subtotal,
+            delivery_fee,
+            tax,
+            total,
+            status,
+            delivery_address,
+            rider_id,
+            rider_name,
+            cancellation_reason,
+            delivered_at,
+            cancelled_at
+          ''')
+          .eq('rider_id', riderId)
+          .order('placed_at', ascending: false);
+
+      debugPrint('✅ Query executed successfully');
+      debugPrint('📊 Response type: ${response.runtimeType}');
+      debugPrint('📏 Number of orders fetched: ${response.length}');
+
+      if (response.isEmpty) {
+        debugPrint('⚠️ No orders found for rider $riderId');
+        _orders = [];
+        _isLoading = false;
+        notifyListeners();
+        return;
+      }
+
+      // Parse each order with error handling
+      final orders = <order_model.Order>[];
+      for (var i = 0; i < response.length; i++) {
+        try {
+          final json = response[i];
+          debugPrint('--- Parsing order ${i + 1}/${response.length} ---');
+          debugPrint('Raw JSON: $json');
+          
+          // Parse order (without items first)
+          final order = order_model.Order.fromJson(json);
+          
+          // Load order items separately
+          final itemsResponse = await supabase
+              .from('order_items')
+              .select('id, product_id, name, quantity, unit_price, total_price')
+              .eq('order_id', order.id);
+
+          debugPrint('📦 Loading items for order ${order.id}');
+          debugPrint('Items response: $itemsResponse');
+
+          final items = <order_model.OrderItem>[];
+          for (final itemJson in itemsResponse) {
+            try {
+              final item = order_model.OrderItem(
+                id: itemJson['product_id'] ?? itemJson['id'],
+                title: itemJson['name'],
+                quantity: itemJson['quantity'],
+                price: (itemJson['unit_price'] as num).toInt(),
+              );
+              items.add(item);
+              debugPrint('  ✅ Item: ${item.title} x${item.quantity}');
+            } catch (e) {
+              debugPrint('  ❌ Error parsing item: $e');
+            }
+          }
+
+          // Add order with items
+          final orderWithItems = order.copyWith(items: items);
+          orders.add(orderWithItems);
+          debugPrint('✅ Successfully parsed order: ${order.id} - KES ${order.totalAmount}');
+        } catch (e, stackTrace) {
+          debugPrint('❌ Error parsing order ${i + 1}: $e');
+          debugPrint('Failed JSON: ${response[i]}');
+          debugPrint('Stack: $stackTrace');
+        }
+      }
+
+      _orders = orders;
+      _error = null;
+      debugPrint('🎉 Successfully loaded ${orders.length} orders for rider');
+      
+    } catch (e, stackTrace) {
+      debugPrint('❌ Error loading rider orders: $e');
+      debugPrint('Stack trace: $stackTrace');
+      _error = 'Failed to load orders: $e';
+      _orders = [];
+    } finally {
+      _isLoading = false;
       notifyListeners();
     }
   }
 
-  void addOrder(DeliveryOrder order) {
-    _orders.insert(0, order);
-    notifyListeners();
+  // Refresh orders
+  Future<void> refreshOrders(String riderId) async {
+    await loadOrdersForRider(riderId);
   }
 
-  void removeOrder(String orderId) {
-    _orders.removeWhere((o) => o.id == orderId);
+  // Update order status
+  Future<void> updateOrderStatus(String orderId, order_model.OrderStatus newStatus) async {
+    try {
+      debugPrint('🔄 Updating order $orderId status to $newStatus');
+      
+      final Map<String, dynamic> updateData = {
+        'status': newStatus.name,
+        'updated_at': DateTime.now().toIso8601String(),
+      };
+
+      // Set delivered_at or cancelled_at timestamps
+      if (newStatus == order_model.OrderStatus.delivered) {
+        updateData['delivered_at'] = DateTime.now().toIso8601String();
+      } else if (newStatus == order_model.OrderStatus.cancelled) {
+        updateData['cancelled_at'] = DateTime.now().toIso8601String();
+      }
+
+      await Supabase.instance.client
+          .from('orders')
+          .update(updateData)
+          .eq('id', orderId);
+
+      debugPrint('✅ Order status updated in database');
+
+      // Update local order
+      final index = _orders.indexWhere((o) => o.id == orderId);
+      if (index != -1) {
+        _orders[index] = _orders[index].copyWith(
+          status: newStatus,
+          deliveredAt: newStatus == order_model.OrderStatus.delivered 
+              ? DateTime.now() 
+              : _orders[index].deliveredAt,
+          cancelledAt: newStatus == order_model.OrderStatus.cancelled 
+              ? DateTime.now() 
+              : _orders[index].cancelledAt,
+        );
+        notifyListeners();
+      }
+    } catch (e, stackTrace) {
+      debugPrint('❌ Failed to update order status: $e');
+      debugPrint('Stack: $stackTrace');
+      _error = 'Failed to update order: $e';
+      notifyListeners();
+    }
+  }
+
+  void clearError() {
+    _error = null;
     notifyListeners();
   }
 }

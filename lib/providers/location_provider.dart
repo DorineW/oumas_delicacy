@@ -68,7 +68,13 @@ class LocationProvider with ChangeNotifier {
       _latitude = _currentPosition!.latitude;
       _longitude = _currentPosition!.longitude;
 
+      // ADDED: Check delivery area before reverse geocode
+      _checkDeliveryArea();
+      
       await _reverseGeocode(_latitude!, _longitude!);
+      
+      // ADDED: Notify after all operations complete
+      notifyListeners();
       
     } catch (e) {
       _error = 'Failed to get location: $e';
@@ -76,10 +82,10 @@ class LocationProvider with ChangeNotifier {
       _latitude = defaultLatitude;
       _longitude = defaultLongitude;
       _deliveryAddress = 'Madaraka, Nairobi, Kenya';
-      _isLoading = false; // ADDED: Set loading false on error
+      _checkDeliveryArea(); // ADDED: Check delivery area for default location
+      _isLoading = false;
       notifyListeners();
     }
-    // REMOVED: finally block that was calling notifyListeners() - already called in _reverseGeocode
   }
 
   Future<void> setLocation(double latitude, double longitude) async {
@@ -90,8 +96,13 @@ class LocationProvider with ChangeNotifier {
     _latitude = latitude;
     _longitude = longitude;
     
+    // FIXED: Check delivery area first (before reverse geocode to get accurate fee)
+    _checkDeliveryArea();
+    
     await _reverseGeocode(latitude, longitude);
-    _checkDeliveryArea(); // ADDED: Check if location is in delivery zone
+    
+    // ADDED: Notify again after reverse geocode completes to update delivery fee
+    notifyListeners();
   }
 
   Future<void> _reverseGeocode(double lat, double lon) async {
@@ -123,7 +134,7 @@ class LocationProvider with ChangeNotifier {
       _error = 'Address lookup failed';
     } finally {
       _isLoading = false;
-      notifyListeners();
+      // REMOVED: notifyListeners() - caller will handle it
     }
   }
 
