@@ -25,11 +25,7 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> with SingleTick
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
     
-    // Seed demo data after the first frame so we don't mutate provider during build
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final provider = Provider.of<OrderProvider>(context, listen: false);
-      provider.seedDemo(customerId: widget.customerId);
-    });
+    // REMOVED: Demo data seeding - let users have real order history only
   }
 
   @override
@@ -555,7 +551,7 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> with SingleTick
                 ),
                 child: Row(
                   children: [
-                    Icon(
+                    const Icon(
                       Icons.location_on,
                       size: 18,
                       color: AppColors.primary,

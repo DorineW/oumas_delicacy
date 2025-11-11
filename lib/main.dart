@@ -79,21 +79,22 @@ Future<void> testSupabaseConnection() async {
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // TEMPORARY FIX: Hardcode local Supabase values for testing
-  debugPrint('🔧 Using HARDCODED local Supabase credentials');
+  // TEMPORARY: Use production while debugging local network issues
+  debugPrint('🔧 Using PRODUCTION Supabase (network debugging)');
   
-  final supabaseUrl = 'http://127.0.0.1:54321';
-  final supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0';
+  const supabaseUrl = 'https://hqfixpqwxmwftvhgdrxn.supabase.co';
+  const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhxZml4cHF3eG13ZnR2aGdkcnhuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE2Mzc4NTksImV4cCI6MjA3NzIxMzg1OX0.Mjgws9SddAbTYmZotPNRKf-Yz3DmzkzJRxdstXBx6Zs';  // FIXED: corrected "role"
 
   debugPrint('📍 Supabase URL: $supabaseUrl');
   debugPrint('🔑 Anon Key: ${supabaseAnonKey.substring(0, 30)}...');
+  debugPrint('📱 Platform: ${defaultTargetPlatform.name}');
 
   await Supabase.initialize(
     url: supabaseUrl,
     anonKey: supabaseAnonKey,
   );
 
-  debugPrint('🔧 Supabase initialized with: LOCAL DOCKER');
+  debugPrint('🔧 Supabase initialized with: PRODUCTION');
 
   // Test connection after initialization
   await testSupabaseConnection();
@@ -205,7 +206,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                   children: [
                     Icon(Icons.error_outline, size: 64, color: Colors.red.withOpacity(0.5)),
                     const SizedBox(height: 16),
-                    Text(
+                    const Text(
                       'Route not found',
                       style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                     ),

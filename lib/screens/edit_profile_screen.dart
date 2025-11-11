@@ -41,6 +41,15 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   @override
   void initState() {
     super.initState();
+    final auth = Provider.of<AuthService>(context, listen: false);
+    final user = auth.currentUser;
+    
+    // FIXED: Handle nullable values properly
+    _nameController.text = user?.name ?? '';
+    _emailCont.text = user?.email ?? '';
+    _phoneCont.text = user?.phone ?? '';
+    
+    // ADDED: Load saved profile data
     _loadSavedProfile();
   }
 
@@ -51,7 +60,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     
     if (currentUser != null) {
       setState(() {
-        _nameController.text = currentUser.name;
+        _nameController.text = currentUser.name ?? ''; // FIXED: Handle null
         _emailCont.text = currentUser.email;
         _phoneCont.text = currentUser.phone ?? '';
       });
@@ -358,12 +367,12 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       });
       
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
+        const SnackBar(
           content: Row(
             children: [
-              const Icon(Icons.check_circle, color: Colors.white),
-              const SizedBox(width: 8),
-              const Expanded(child: Text('Address added successfully')),
+              Icon(Icons.check_circle, color: Colors.white),
+              SizedBox(width: 8),
+              Expanded(child: Text('Address added successfully')),
             ],
           ),
           backgroundColor: AppColors.success,
@@ -394,12 +403,12 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         body: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
           padding: EdgeInsets.all(isLandscape ? 12 : 16),
-          child: Form(  // MOVED: Form widget here
+          child: Form(
             key: _formKey,
             child: Column(
               children: [
                 SizedBox(height: isLandscape ? 12 : 16),
-                // UPDATED: Modern profile image section
+                // UPDATED: Profile image with icon fallback like profile_screen
                 Stack(
                   alignment: Alignment.center,
                   children: [
@@ -420,13 +429,17 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     ),
                     CircleAvatar(
                       radius: isLandscape ? 45 : 55,
-                      backgroundColor: Colors.white,
-                      child: CircleAvatar(
-                        radius: isLandscape ? 42 : 52,
-                        backgroundImage: _profileImageFile != null
-                            ? FileImage(_profileImageFile!) as ImageProvider
-                            : const AssetImage('assets/images/profile.jpg'),
-                      ),
+                      backgroundColor: AppColors.primary.withOpacity(0.1),
+                      backgroundImage: _profileImageFile != null
+                          ? FileImage(_profileImageFile!) as ImageProvider
+                          : null,
+                      child: _profileImageFile == null
+                          ? Icon(
+                              Icons.person,
+                              size: isLandscape ? 45 : 55,
+                              color: AppColors.primary,
+                            )
+                          : null,
                     ),
                     Positioned(
                       bottom: 0,

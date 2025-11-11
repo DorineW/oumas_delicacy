@@ -440,7 +440,7 @@ class _CartItemCard extends StatelessWidget {
                   : null,
             ),
             child: item.mealImage.isEmpty
-                ? Icon(Icons.fastfood, size: 40, color: AppColors.primary)
+                ? const Icon(Icons.fastfood, size: 40, color: AppColors.primary)
                 : null,
           ),
           // Content

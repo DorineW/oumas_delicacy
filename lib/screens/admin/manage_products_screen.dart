@@ -380,7 +380,7 @@ class _ProductCard extends StatelessWidget {
       child: ListTile(
         leading: CircleAvatar(
           backgroundColor: AppColors.primary.withOpacity(0.2),
-          child: Icon(
+          child: const Icon(
             Icons.restaurant_menu,
             color: AppColors.primary,
           ),
@@ -400,7 +400,7 @@ class _ProductCard extends StatelessWidget {
           children: [
             Text(
               'KSh ${product.price.toStringAsFixed(2)} • ${product.category}',
-              style: TextStyle(color: AppColors.darkText),
+              style: const TextStyle(color: AppColors.darkText),
             ),
             if (product.description.isNotEmpty)
               Text(
@@ -415,11 +415,11 @@ class _ProductCard extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             IconButton(
-              icon: Icon(Icons.edit, color: AppColors.primary),
+              icon: const Icon(Icons.edit, color: AppColors.primary),
               onPressed: onEdit,
             ),
             IconButton(
-              icon: Icon(Icons.delete, color: Colors.red),
+              icon: const Icon(Icons.delete, color: Colors.red),
               onPressed: onDelete,
             ),
             Switch(

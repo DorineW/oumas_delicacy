@@ -325,7 +325,7 @@ class _MealDetailScreenState extends State<MealDetailScreen> {
                                 ),
                                 child: Text(
                                   widget.meal.category, // FIXED
-                                  style: TextStyle(
+                                  style: const TextStyle(
                                     color: AppColors.primary,
                                     fontWeight: FontWeight.w600,
                                     fontSize: 12,
@@ -464,7 +464,7 @@ class _MealDetailScreenState extends State<MealDetailScreen> {
                 child: Row(
                   children: [
                     IconButton(
-                      icon: Icon(Icons.remove, size: 20, color: AppColors.primary),
+                      icon: const Icon(Icons.remove, size: 20, color: AppColors.primary),
                       onPressed: () {
                         if (quantity > 1) setState(() => quantity--);
                         HapticFeedback.lightImpact();
@@ -481,7 +481,7 @@ class _MealDetailScreenState extends State<MealDetailScreen> {
                       ),
                     ),
                     IconButton(
-                      icon: Icon(Icons.add, size: 20, color: AppColors.primary),
+                      icon: const Icon(Icons.add, size: 20, color: AppColors.primary),
                       onPressed: () {
                         setState(() => quantity++);
                         HapticFeedback.lightImpact();
@@ -581,9 +581,9 @@ class _MealDetailScreenState extends State<MealDetailScreen> {
         // UPDATED: Only show similar meals section if we have items
         if (sameCategoryMeals.isNotEmpty) ...[
           const SizedBox(height: 32),
-          Row(
+          const Row(
             children: [
-              const Text(
+              Text(
                 "Others You Might Like",
                 style: TextStyle(
                   fontSize: 18,
@@ -591,7 +591,7 @@ class _MealDetailScreenState extends State<MealDetailScreen> {
                   color: AppColors.darkText,
                 ),
               ),
-              const Spacer(),
+              Spacer(),
               Text(
                 "See all",
                 style: TextStyle(

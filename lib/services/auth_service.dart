@@ -9,7 +9,7 @@ class AuthService extends ChangeNotifier {
   final _supabase = Supabase.instance.client;
 
   app.User? _currentUser;
-  bool _isLoading = false;
+  final bool _isLoading = false;
 
   app.User? get currentUser => _currentUser;
   bool get isLoggedIn => _currentUser != null || _supabase.auth.currentUser != null;
@@ -22,7 +22,7 @@ class AuthService extends ChangeNotifier {
   final Map<String, DateTime> _lastRequest = {};
 
   Future<void> _enforceEmailRateLimit(String action, String email) async {
-    final key = '${action}:${email.toLowerCase()}';
+    final key = '$action:${email.toLowerCase()}';
     final last = _lastRequest[key];
     if (last != null) {
       final elapsed = DateTime.now().difference(last);
@@ -34,7 +34,7 @@ class AuthService extends ChangeNotifier {
   }
 
   void _recordEmailRequest(String action, String email) {
-    final key = '${action}:${email.toLowerCase()}';
+    final key = '$action:${email.toLowerCase()}';
     _lastRequest[key] = DateTime.now();
   }
 
@@ -281,7 +281,6 @@ class AuthService extends ChangeNotifier {
 
   Future<String?> login(String email, String password) async {
     try {
-      // FIXED: Use Supabase.instance.client instead of _client
       debugPrint('🔐 Attempting login for: $email');
       
       final response = await Supabase.instance.client.auth.signInWithPassword(
@@ -291,7 +290,8 @@ class AuthService extends ChangeNotifier {
 
       if (response.user != null) {
         debugPrint('✅ Login successful for: ${response.user!.email}');
-        // FIXED: Load user profile after login
+        
+        // ADDED: Load user profile to get role
         final userId = response.user!.id;
         try {
           final userProfile = await Supabase.instance.client
@@ -300,10 +300,24 @@ class AuthService extends ChangeNotifier {
               .eq('auth_id', userId)
               .single();
           
-          // Store user data (implement your User model here)
-          debugPrint('✅ User profile loaded: ${userProfile['name']}');
+          // FIXED: Use app.User instead of Supabase User
+          _currentUser = app.User(
+            id: userId,
+            email: response.user!.email!,
+            name: userProfile['name'] as String?,
+            phone: userProfile['phone'] as String?,
+            role: userProfile['role'] as String? ?? 'customer',
+          );
+          
+          debugPrint('✅ User profile loaded: ${_currentUser?.name} (Role: ${_currentUser?.role})');
         } catch (e) {
           debugPrint('⚠️ Could not load user profile: $e');
+          // Fallback: create user without profile data
+          _currentUser = app.User(
+            id: userId,
+            email: response.user!.email!,
+            role: 'customer', // Default role
+          );
         }
         
         notifyListeners();

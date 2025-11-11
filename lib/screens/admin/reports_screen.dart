@@ -337,8 +337,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
   Widget _buildChartArea() {
     if (_loading) {
-      return _GlassCard(
-        child: const Center(child: CircularProgressIndicator()),
+      return const _GlassCard(
+        child: Center(child: CircularProgressIndicator()),
       );
     }
 
@@ -434,14 +434,14 @@ class _ReportsScreenState extends State<ReportsScreen> {
         topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
         rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
       ),
-      gridData: FlGridData(show: true, drawVerticalLine: false),
+      gridData: const FlGridData(show: true, drawVerticalLine: false),
       borderData: FlBorderData(show: false),
     ));
   }
 
   Widget _buildLineChart(List<_ChartPoint> data, double chartWidth) {
     final maxY = (data.map((e) => e.value).reduce((a, b) => a > b ? a : b)) * 1.3;
-    final minY = 0.0;
+    const minY = 0.0;
 
     return LineChart(LineChartData(
       maxY: maxY,
@@ -479,7 +479,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
         topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
         rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
       ),
-      gridData: FlGridData(show: true, drawVerticalLine: false),
+      gridData: const FlGridData(show: true, drawVerticalLine: false),
       borderData: FlBorderData(show: false),
     ));
   }

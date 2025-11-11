@@ -224,11 +224,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
           // Address selected successfully
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Row(
+              content: const Row(
                 children: [
-                  const Icon(Icons.check_circle, color: Colors.white),
-                  const SizedBox(width: 12),
-                  const Expanded(child: Text('Address saved successfully!')),
+                  Icon(Icons.check_circle, color: Colors.white),
+                  SizedBox(width: 12),
+                  Expanded(child: Text('Address saved successfully!')),
                 ],
               ),
               backgroundColor: AppColors.success,
@@ -244,11 +244,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
         // Skipped address - show helpful message
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Row(
+            content: const Row(
               children: [
-                const Icon(Icons.info, color: Colors.white),
-                const SizedBox(width: 12),
-                const Expanded(
+                Icon(Icons.info, color: Colors.white),
+                SizedBox(width: 12),
+                Expanded(
                   child: Text('You can add your address later in checkout or profile.'),
                 ),
               ],
@@ -302,7 +302,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     width: 120,
                     height: 120,
                     errorBuilder: (context, error, stackTrace) {
-                      return Icon(
+                      return const Icon(
                         Icons.restaurant,
                         size: 120,
                         color: AppColors.primary,

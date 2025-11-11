@@ -354,7 +354,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     final data = _filteredChartData;
     final hasData = data.any((point) => point.value > 0);
     final maxY = data.isEmpty ? 1000.0 : max(1000.0, (data.map((e) => e.value).reduce(max)) * 1.3);
-    final minY = 0.0;
+    const minY = 0.0;
     final horizontalInterval = max(1.0, maxY / 4);
 
     return Container(
@@ -525,7 +525,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                       color: AppColors.primary.withOpacity(0.3),
                     ),
                     const SizedBox(height: 12),
-                    Text(
+                    const Text(
                       'No Data Available',
                       style: TextStyle(
                         fontSize: 16,
@@ -574,7 +574,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
+              const Text(
                 "Revenue Analytics",
                 style: TextStyle(
                   fontSize: 16,
@@ -590,11 +590,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                 ),
                 child: Row(
                   children: [
-                    Icon(Icons.trending_up, size: 14, color: AppColors.primary),
+                    const Icon(Icons.trending_up, size: 14, color: AppColors.primary),
                     const SizedBox(width: 4),
                     Text(
                       _selectedTimeFilter,
-                      style: TextStyle(
+                      style: const TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
                         color: AppColors.primary,
@@ -880,7 +880,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12),
             child: Row(
               children: [
-                Text(
+                const Text(
                   'Quick Actions',
                   style: TextStyle(
                     fontSize: 18,
@@ -890,7 +890,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                 ),
                 const Spacer(),
                 IconButton(
-                  icon: Icon(Icons.refresh, color: AppColors.primary),
+                  icon: const Icon(Icons.refresh, color: AppColors.primary),
                   onPressed: () {
                     setState(() {});
                   },
@@ -954,7 +954,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
+                const Text(
                   'Recent Activity',
                   style: TextStyle(
                     fontSize: 18,
@@ -1063,10 +1063,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    CircleAvatar(
+                    const CircleAvatar(
                       radius: 28,
                       backgroundColor: AppColors.primary,
-                      child: const Text(
+                      child: Text(
                         'AD',
                         style: TextStyle(
                           color: AppColors.white,
@@ -1076,7 +1076,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                       ),
                     ),
                     const SizedBox(height: 12),
-                    Text(
+                    const Text(
                       'Admin',
                       style: TextStyle(
                         fontSize: 18,
@@ -1200,7 +1200,7 @@ class _AdminCard extends StatelessWidget {
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   softWrap: true,
-                  style: TextStyle(
+                  style: const TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.bold,
                     color: AppColors.darkText,

@@ -511,7 +511,7 @@ class _AdminOrderCardState extends State<AdminOrderCard>
           elevation: widget.highlighted ? 4 : 2,
           shape: RoundedRectangleBorder(
             side: widget.highlighted
-                ? BorderSide(color: AppColors.accent, width: 2)
+                ? const BorderSide(color: AppColors.accent, width: 2)
                 : BorderSide.none,
             borderRadius: BorderRadius.circular(8),
           ),
@@ -827,8 +827,8 @@ class _AdminOrderCardState extends State<AdminOrderCard>
                 Navigator.pop(context);
                 
                 ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: const Text('✓ Order confirmed'),
+                  const SnackBar(
+                    content: Text('✓ Order confirmed'),
                     backgroundColor: Colors.blue,
                   ),
                 );
@@ -849,8 +849,8 @@ class _AdminOrderCardState extends State<AdminOrderCard>
                 Navigator.pop(context);
                 
                 ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: const Text('✓ Kitchen started preparing order'),
+                  const SnackBar(
+                    content: Text('✓ Kitchen started preparing order'),
                     backgroundColor: Colors.purple,
                   ),
                 );
@@ -885,8 +885,8 @@ class _AdminOrderCardState extends State<AdminOrderCard>
                 Navigator.pop(context);
                 
                 ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: const Text('✓ Order marked as delivered'),
+                  const SnackBar(
+                    content: Text('✓ Order marked as delivered'),
                     backgroundColor: AppColors.success,
                   ),
                 );

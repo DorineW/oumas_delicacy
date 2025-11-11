@@ -47,7 +47,7 @@ class RiderEarningsScreen extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
+                  const Text(
                     'Today\'s Earnings',
                     style: TextStyle(
                       fontSize: 16,
@@ -118,7 +118,7 @@ class RiderEarningsScreen extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
+                  const Text(
                     'Recent Earnings',
                     style: TextStyle(
                       fontSize: 16,
@@ -199,7 +199,7 @@ class RiderEarningsScreen extends StatelessWidget {
               children: [
                 Text(
                   orderId,
-                  style: TextStyle(
+                  style: const TextStyle(
                     fontWeight: FontWeight.w600,
                     color: AppColors.darkText,
                   ),

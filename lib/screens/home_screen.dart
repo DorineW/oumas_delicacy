@@ -887,7 +887,7 @@ class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin 
 
   // ADDED: Floating dots animation for carousel
   Widget _floatingDots() {
-    return Positioned.fill(
+    return const Positioned.fill(
       child: Stack(
         children: [
           Positioned(top: 20, left: 30, child: AnimatedDot(index: 0)),

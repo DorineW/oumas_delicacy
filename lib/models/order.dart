@@ -19,9 +19,9 @@ class OrderItem {
   final String id;
   final String title;
   final int quantity;
-  final int price; // price per item in Ksh
-  final int? rating; // ADDED: Individual item rating (1-5)
-  final String? review; // ADDED: Individual item review comment
+  final int price;
+  final int? rating;
+  final String? review;
 
   OrderItem({
     required this.id,
@@ -34,7 +34,6 @@ class OrderItem {
 
   int get totalPrice => quantity * price;
 
-  // UPDATED: Add rating and review to JSON methods
   Map<String, dynamic> toJson() => {
     'id': id,
     'title': title,
@@ -56,25 +55,33 @@ class OrderItem {
 
 class Order {
   final String id;
-  final String customerId;
+  final String customerId; // maps to user_auth_id
   final String customerName;
-  final String? deliveryPhone; 
+  final String? deliveryPhone;
   final List<OrderItem> items;
-  final int totalAmount;
-  final DateTime date;
+  final int subtotal; // ADDED: Match DB
+  final int deliveryFee; // ADDED: Match DB
+  final int tax; // ADDED: Match DB
+  final int totalAmount; // maps to total
+  final DateTime date; // maps to placed_at
   final OrderStatus status;
   final DeliveryType deliveryType;
-  final String? deliveryAddress;
+  final String? deliveryAddress; // CHANGED: Store as string instead of jsonb
   final String? riderId;
   final String? riderName;
-  final String? cancellationReason; 
+  final String? cancellationReason;
+  final DateTime? deliveredAt; // ADDED: Match DB
+  final DateTime? cancelledAt; // ADDED: Match DB
 
   Order({
     required this.id,
     required this.customerId,
     required this.customerName,
-    this.deliveryPhone, // ADDED
+    this.deliveryPhone,
     required this.items,
+    required this.subtotal, // ADDED
+    required this.deliveryFee, // ADDED
+    required this.tax, // ADDED
     required this.totalAmount,
     required this.date,
     required this.status,
@@ -82,78 +89,112 @@ class Order {
     this.deliveryAddress,
     this.riderId,
     this.riderName,
-    this.cancellationReason, 
+    this.cancellationReason,
+    this.deliveredAt, // ADDED
+    this.cancelledAt, // ADDED
   });
 
- 
   Order copyWith({
     String? id,
     String? customerId,
     String? customerName,
-    String? deliveryPhone, 
+    String? deliveryPhone,
     DateTime? date,
     List<OrderItem>? items,
+    int? subtotal,
+    int? deliveryFee,
+    int? tax,
     int? totalAmount,
     OrderStatus? status,
     DeliveryType? deliveryType,
     String? riderId,
     String? riderName,
     String? deliveryAddress,
+    DateTime? deliveredAt,
+    DateTime? cancelledAt,
   }) {
     return Order(
       id: id ?? this.id,
       customerId: customerId ?? this.customerId,
       customerName: customerName ?? this.customerName,
-      deliveryPhone: deliveryPhone ?? this.deliveryPhone, // ADDED
+      deliveryPhone: deliveryPhone ?? this.deliveryPhone,
       date: date ?? this.date,
       items: items ?? this.items,
+      subtotal: subtotal ?? this.subtotal,
+      deliveryFee: deliveryFee ?? this.deliveryFee,
+      tax: tax ?? this.tax,
       totalAmount: totalAmount ?? this.totalAmount,
       status: status ?? this.status,
       deliveryType: deliveryType ?? this.deliveryType,
       riderId: riderId ?? this.riderId,
       riderName: riderName ?? this.riderName,
       deliveryAddress: deliveryAddress ?? this.deliveryAddress,
+      deliveredAt: deliveredAt ?? this.deliveredAt,
+      cancelledAt: cancelledAt ?? this.cancelledAt,
     );
   }
 
-  // ADDED: Check if customer can still cancel (within 5 minutes)
   bool get canCancel {
     if (status == OrderStatus.cancelled || status == OrderStatus.delivered) {
       return false;
     }
     final timeSinceOrder = DateTime.now().difference(date).inMinutes;
-    return timeSinceOrder < 5; // 5-minute cancellation window
+    return timeSinceOrder < 5;
   }
 
-  // ADDED: Get remaining cancellation time in minutes
   int get cancellationTimeRemaining {
     final timeSinceOrder = DateTime.now().difference(date).inMinutes;
     final remaining = 5 - timeSinceOrder;
     return remaining > 0 ? remaining : 0;
   }
 
-  // ADDED: fromJson factory constructor
+  // UPDATED: Match database schema exactly
   factory Order.fromJson(Map<String, dynamic> json) {
     return Order(
       id: json['id'] as String,
       customerId: json['user_auth_id'] as String,
-      customerName: json['customer_name'] as String,
+      customerName: json['customer_name'] as String? ?? 'Guest',
       deliveryPhone: json['delivery_phone'] as String?,
-      date: DateTime.parse(json['created_at'] as String),
-      items: [], // Load items separately if needed
-      totalAmount: json['total_amount'] as int,
+      date: DateTime.parse(json['placed_at'] as String),
+      items: [], // Load separately
+      subtotal: (json['subtotal'] as num?)?.toInt() ?? 0,
+      deliveryFee: (json['delivery_fee'] as num?)?.toInt() ?? 0,
+      tax: (json['tax'] as num?)?.toInt() ?? 0,
+      totalAmount: (json['total'] as num?)?.toInt() ?? 0,
       status: OrderStatus.values.firstWhere(
         (e) => e.name == json['status'],
         orElse: () => OrderStatus.pending,
       ),
-      deliveryType: DeliveryType.values.firstWhere(
-        (e) => e.name == json['delivery_type'],
-        orElse: () => DeliveryType.delivery,
-      ),
+      deliveryType: (json['delivery_address'] != null) 
+          ? DeliveryType.delivery 
+          : DeliveryType.pickup,
       deliveryAddress: json['delivery_address'] as String?,
       riderId: json['rider_id'] as String?,
       riderName: json['rider_name'] as String?,
       cancellationReason: json['cancellation_reason'] as String?,
+      deliveredAt: json['delivered_at'] != null 
+          ? DateTime.parse(json['delivered_at'] as String)
+          : null,
+      cancelledAt: json['cancelled_at'] != null
+          ? DateTime.parse(json['cancelled_at'] as String)
+          : null,
     );
+  }
+
+  // UPDATED: Convert to database format
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'user_auth_id': customerId,
+      'status': status.name,
+      'subtotal': subtotal,
+      'delivery_fee': deliveryFee,
+      'tax': tax,
+      'total': totalAmount,
+      'delivery_address': deliveryAddress,
+      'placed_at': date.toIso8601String(),
+      'delivered_at': deliveredAt?.toIso8601String(),
+      'cancelled_at': cancelledAt?.toIso8601String(),
+    };
   }
 }

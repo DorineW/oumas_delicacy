@@ -75,7 +75,7 @@ class LocationProvider with ChangeNotifier {
       // Set default to Madaraka, Nairobi
       _latitude = defaultLatitude;
       _longitude = defaultLongitude;
-      _deliveryAddress = 'Madaraka, Nairobi, Kenya';;
+      _deliveryAddress = 'Madaraka, Nairobi, Kenya';
       _isLoading = false; // ADDED: Set loading false on error
       notifyListeners();
     }
@@ -203,7 +203,7 @@ class LocationProvider with ChangeNotifier {
     }
 
     // Tiered pricing for 2km radius (3 tiers)
-    final tierSize = maxDeliveryDistanceKm / 3.0; // ~0.667 km per tier
+    const tierSize = maxDeliveryDistanceKm / 3.0; // ~0.667 km per tier
 
     if (distance <= tierSize) {
       return 50; // Tier 1: 0-0.667km

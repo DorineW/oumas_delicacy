@@ -46,7 +46,7 @@ class MenuItem extends Equatable {
   final String? imageUrl;
   final bool isAvailable;
 
-  MenuItem({
+  const MenuItem({
     this.id,
     this.productId,
     required this.title,

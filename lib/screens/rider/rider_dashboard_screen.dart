@@ -460,7 +460,7 @@ class _OrderCard extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Call this number?'),
+            const Text('Call this number?'),
             const SizedBox(height: 8),
             Container(
               padding: const EdgeInsets.all(12),

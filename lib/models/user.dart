@@ -3,37 +3,37 @@
 class User {
   final String id;
   final String email;
-  final String name;
-  final String role; // 'customer', 'admin', 'rider'
+  final String? name;
   final String? phone;
+  final String role; // Make sure this exists!
 
   User({
     required this.id,
     required this.email,
-    required this.name,
-    required this.role,
+    this.name,
     this.phone,
+    this.role = 'customer', // Default value
   });
 
   // Convert to JSON for storage
   Map<String, dynamic> toJson() {
     return {
-      'id': id,
+      'auth_id': id,
       'email': email,
       'name': name,
-      'role': role,
       'phone': phone,
+      'role': role,
     };
   }
 
   // Create from JSON
   factory User.fromJson(Map<String, dynamic> json) {
     return User(
-      id: json['id'] as String,
+      id: json['auth_id'] as String,
       email: json['email'] as String,
-      name: json['name'] as String,
-      role: json['role'] as String,
+      name: json['name'] as String?,
       phone: json['phone'] as String?,
+      role: json['role'] as String? ?? 'customer',
     );
   }
 

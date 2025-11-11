@@ -74,6 +74,11 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
             ))
         .toList();
 
+    // FIXED: Calculate amounts
+    final subtotal = items.fold<int>(0, (sum, item) => sum + (item.price * item.quantity));
+    final deliveryFee = widget.deliveryType == DeliveryType.delivery ? 150 : 0; // Default delivery fee
+    const tax = 0; // No tax
+
     _order = Order(
       id: id,
       customerId: widget.customerId,
@@ -81,8 +86,11 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
       deliveryPhone: widget.phoneNumber,
       date: DateTime.now(),
       items: items,
+      subtotal: subtotal, // FIXED: Added required field
+      deliveryFee: deliveryFee, // FIXED: Added required field
+      tax: tax, // FIXED: Added required field
       totalAmount: widget.totalAmount,
-      status: OrderStatus.pending, // CHANGED: Start as pending, not confirmed
+      status: OrderStatus.pending,
       deliveryType: widget.deliveryType,
       deliveryAddress: widget.deliveryAddress,
     );
@@ -129,11 +137,11 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Row(
+              content: const Row(
                 children: [
-                  const Icon(Icons.check_circle, color: Colors.white),
-                  const SizedBox(width: 12),
-                  const Expanded(
+                  Icon(Icons.check_circle, color: Colors.white),
+                  SizedBox(width: 12),
+                  Expanded(
                     child: Text('Your order has been confirmed!'),
                   ),
                 ],
@@ -159,11 +167,11 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Row(
+            content: const Row(
               children: [
-                const Icon(Icons.check_circle, color: Colors.white),
-                const SizedBox(width: 12),
-                const Expanded(
+                Icon(Icons.check_circle, color: Colors.white),
+                SizedBox(width: 12),
+                Expanded(
                   child: Text('Order cancelled successfully'),
                 ),
               ],
@@ -365,7 +373,7 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
   Widget _buildCelebrationSection() {
     return Column(
       children: [
-        Icon(
+        const Icon(
           Icons.celebration,
           color: AppColors.primary,
           size: 80,
@@ -414,7 +422,7 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
               contentPadding: EdgeInsets.zero,
               leading: CircleAvatar(
                 backgroundColor: AppColors.primary.withOpacity(0.1),
-                child: Icon(Icons.fastfood, color: AppColors.primary, size: 20),
+                child: const Icon(Icons.fastfood, color: AppColors.primary, size: 20),
               ),
               title: Text(item.mealTitle),
               subtitle: Text('Quantity: ${item.quantity}'),

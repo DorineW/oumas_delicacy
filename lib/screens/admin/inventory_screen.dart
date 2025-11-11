@@ -205,10 +205,10 @@ class _InventoryScreenState extends State<InventoryScreen> {
                 child: const Icon(Icons.warning, color: Colors.orange, size: 20),
               ),
               const SizedBox(width: 12),
-              Expanded(
+              const Expanded(
                 child: Text(
                   'Low Stock Items',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontWeight: FontWeight.bold,
                     fontSize: 16,
                     color: Colors.orange,
@@ -277,7 +277,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
                         children: [
                           Text(
                             '${item.currentStock} ${item.unit}',
-                            style: TextStyle(
+                            style: const TextStyle(
                               fontSize: 12,
                               color: Colors.orange,
                               fontWeight: FontWeight.w600,
@@ -642,7 +642,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
                 color: AppColors.primary.withOpacity(0.1),
                 shape: BoxShape.circle,
               ),
-              child: Icon(Icons.inventory_2, color: AppColors.primary, size: 20),
+              child: const Icon(Icons.inventory_2, color: AppColors.primary, size: 20),
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -668,7 +668,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
               decoration: InputDecoration(
                 labelText: 'Quantity',
                 suffixText: item.unit,
-                prefixIcon: Icon(Icons.add_circle, color: AppColors.primary),
+                prefixIcon: const Icon(Icons.add_circle, color: AppColors.primary),
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
               ),
             ),
@@ -679,7 +679,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
               decoration: InputDecoration(
                 labelText: 'Cost per ${item.unit}',
                 prefixText: 'Ksh ',
-                prefixIcon: Icon(Icons.attach_money, color: AppColors.primary),
+                prefixIcon: const Icon(Icons.attach_money, color: AppColors.primary),
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
               ),
             ),
@@ -790,7 +790,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
                       controller: nameController,
                       decoration: InputDecoration(
                         labelText: 'Item Name',
-                        prefixIcon: Icon(Icons.inventory, color: AppColors.primary),
+                        prefixIcon: const Icon(Icons.inventory, color: AppColors.primary),
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                       ),
                       validator: (value) => value?.isEmpty ?? true ? 'Required' : null,
@@ -805,7 +805,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
                       )).toList(),
                       decoration: InputDecoration(
                         labelText: 'Category',
-                        prefixIcon: Icon(Icons.category, color: AppColors.primary),
+                        prefixIcon: const Icon(Icons.category, color: AppColors.primary),
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                       ),
                       onChanged: (value) => categoryController.text = value ?? '',
@@ -858,7 +858,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
                       keyboardType: TextInputType.number,
                       decoration: InputDecoration(
                         labelText: 'Low Stock Alert Level',
-                        prefixIcon: Icon(Icons.warning, color: Colors.orange),
+                        prefixIcon: const Icon(Icons.warning, color: Colors.orange),
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                       ),
                       validator: (value) => double.tryParse(value ?? '') == null ? 'Invalid' : null,
@@ -870,7 +870,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
                       decoration: InputDecoration(
                         labelText: 'Cost Price',
                         prefixText: 'Ksh ',
-                        prefixIcon: Icon(Icons.attach_money, color: AppColors.primary),
+                        prefixIcon: const Icon(Icons.attach_money, color: AppColors.primary),
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                       ),
                       validator: (value) => double.tryParse(value ?? '') == null ? 'Invalid' : null,
@@ -978,7 +978,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Row(
                 children: [
-                  Icon(Icons.history, color: AppColors.primary),
+                  const Icon(Icons.history, color: AppColors.primary),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(

@@ -44,70 +44,155 @@ class OrderProvider extends ChangeNotifier {
     ).toList();
   }
 
-  // For demo: seed some data
-  void seedDemo({String? customerId}) {
-    if (_orders.isNotEmpty) return;
-    final now = DateTime.now();
-    _orders.addAll([
-      Order(
-        id: 'ord001',
-        customerId: customerId ?? 'cust1',
-        customerName: 'Jane Doe',
-        date: now.subtract(const Duration(days: 2)),
-        items: [OrderItem(id: 'i1', title: 'Burger', quantity: 1, price: 500)],
-        totalAmount: 500,
-        status: OrderStatus.confirmed,
-        deliveryType: DeliveryType.delivery,
-      ),
-      Order(
-        id: 'ord002',
-        customerId: customerId ?? 'cust2',
-        customerName: 'John Smith',
-        date: now.subtract(const Duration(days: 5)),
-        items: [OrderItem(id: 'i2', title: 'Fries', quantity: 2, price: 200)],
-        totalAmount: 400,
-        status: OrderStatus.delivered,
-        deliveryType: DeliveryType.pickup,
-      ),
-    ]);
-    notifyListeners();
+  // REMOVED: seedDemo method - no more fake data!
+
+  // UPDATED: Add order and save to Supabase
+  Future<void> addOrder(Order order) async {
+    try {
+      debugPrint('💾 Saving order ${order.id} to Supabase...');
+      
+      // Save order to Supabase
+      await Supabase.instance.client.from('orders').insert({
+        'id': order.id,
+        'user_auth_id': order.customerId,
+        'status': order.status.name,
+        'subtotal': order.subtotal,
+        'delivery_fee': order.deliveryFee,
+        'tax': order.tax,
+        'total': order.totalAmount,
+        'delivery_address': order.deliveryAddress,
+        'placed_at': order.date.toIso8601String(),
+      });
+
+      // Save order items
+      for (final item in order.items) {
+        await Supabase.instance.client.from('order_items').insert({
+          'order_id': order.id,
+          'product_id': item.id,
+          'name': item.title,
+          'quantity': item.quantity,
+          'unit_price': item.price,
+          'total_price': item.totalPrice,
+        });
+      }
+
+      debugPrint('✅ Order ${order.id} saved to database');
+
+      // Add to local list
+      _orders.add(order);
+      notifyListeners();
+
+      // Start auto-confirmation timer
+      if (order.status == OrderStatus.pending) {
+        _startAutoConfirmTimer(order.id);
+      }
+
+      // Send notifications
+      if (_notificationProvider != null && order.status != OrderStatus.cancelled) {
+        _notificationProvider!.addNotification(AppNotification(
+          id: DateTime.now().millisecondsSinceEpoch.toString(),
+          userId: order.customerId,
+          title: 'Order Placed',
+          message: 'Your order #${order.id} has been placed successfully',
+          type: 'order_update',
+          timestamp: DateTime.now(),
+          data: {'orderId': order.id},
+        ));
+
+        _notificationProvider!.addNotification(AppNotification(
+          id: DateTime.now().millisecondsSinceEpoch.toString(),
+          userId: 'admin',
+          title: 'New Order',
+          message: 'New order #${order.id} from ${order.customerName}',
+          type: 'new_order',
+          timestamp: DateTime.now(),
+          data: {'orderId': order.id},
+        ));
+      }
+    } catch (e, stackTrace) {
+      debugPrint('❌ Failed to save order: $e');
+      debugPrint('Stack: $stackTrace');
+      rethrow;
+    }
   }
 
-  void addOrder(Order order) {
-    _orders.add(order);
-    notifyListeners();
+  // UPDATED: Load orders from Supabase
+  Future<void> loadOrders(String userId) async {
+    try {
+      debugPrint('📥 Loading orders for user: $userId');
+      
+      final data = await Supabase.instance.client
+          .from('orders')
+          .select('*, order_items(*)')
+          .eq('user_auth_id', userId)
+          .order('placed_at', ascending: false);
 
-    debugPrint('✅ Order ${order.id} added with status: ${order.status}');
+      _orders.clear();
+      for (final json in data as List) {
+        final order = Order.fromJson(json);
+        
+        // Load order items
+        final items = (json['order_items'] as List).map((item) => OrderItem(
+          id: item['product_id'] ?? item['id'],
+          title: item['name'],
+          quantity: item['quantity'],
+          price: (item['unit_price'] as num).toInt(),
+        )).toList();
 
-    // ADDED: Start auto-confirmation timer for pending orders
-    if (order.status == OrderStatus.pending) {
-      _startAutoConfirmTimer(order.id);
+        _orders.add(order.copyWith(items: items));
+      }
+      
+      debugPrint('✅ Loaded ${_orders.length} orders');
+      notifyListeners();
+    } catch (e, stackTrace) {
+      debugPrint('❌ Failed to load orders: $e');
+      debugPrint('Stack: $stackTrace');
     }
+  }
 
-    // Send notification to customer
-    if (_notificationProvider != null) {
-      _notificationProvider!.addNotification(AppNotification(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
-        userId: order.customerId,
-        title: 'Order Placed',
-        message: 'Your order #${order.id} has been placed successfully',
-        type: 'order_update',
-        timestamp: DateTime.now(),
-        data: {'orderId': order.id},
-      ));
-    }
+  // UPDATED: Update status in Supabase - REMOVED incorrect @override
+  Future<void> updateStatus(String orderId, OrderStatus newStatus) async {
+    try {
+      final index = _orders.indexWhere((o) => o.id == orderId);
+      if (index == -1) {
+        debugPrint('❌ Order $orderId not found');
+        return;
+      }
 
-    // UPDATED: Only send notification to admin if NOT cancelled
-    if (_notificationProvider != null && order.status != OrderStatus.cancelled) {
-      _notificationProvider!.addNotification(AppNotification(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
-        userId: 'admin',
-        title: 'New Order',
-        message: 'New order #${order.id} from ${order.customerName}',
-        type: 'new_order',
-        timestamp: DateTime.now(),
-        data: {'orderId': order.id},
-      ));
+      final order = _orders[index];
+      
+      // Update in Supabase
+      final Map<String, dynamic> updateData = {
+        'status': newStatus.name,
+        'updated_at': DateTime.now().toIso8601String(),
+      };
+
+      // Set delivered_at or cancelled_at timestamps
+      if (newStatus == OrderStatus.delivered) {
+        updateData['delivered_at'] = DateTime.now().toIso8601String();
+      } else if (newStatus == OrderStatus.cancelled) {
+        updateData['cancelled_at'] = DateTime.now().toIso8601String();
+      }
+
+      await Supabase.instance.client
+          .from('orders')
+          .update(updateData)
+          .eq('id', orderId);
+
+      debugPrint('✅ Order $orderId status updated to $newStatus in database');
+
+      // Update local order
+      _orders[index] = order.copyWith(
+        status: newStatus,
+        deliveredAt: newStatus == OrderStatus.delivered ? DateTime.now() : order.deliveredAt,
+        cancelledAt: newStatus == OrderStatus.cancelled ? DateTime.now() : order.cancelledAt,
+      );
+
+      notifyListeners();
+      _sendOrderStatusNotification(orderId, newStatus);
+    } catch (e, stackTrace) {
+      debugPrint('❌ Failed to update order status: $e');
+      debugPrint('Stack: $stackTrace');
     }
   }
 
@@ -129,7 +214,7 @@ class OrderProvider extends ChangeNotifier {
       // Only auto-confirm if still pending (not cancelled by customer)
       if (order.status == OrderStatus.pending) {
         debugPrint('⏰ Auto-confirming order $orderId after 5 minutes');
-        updateStatus(orderId, OrderStatus.confirmed); // UPDATED: Set to confirmed
+        updateStatus(orderId, OrderStatus.confirmed);
         
         // Send notification to customer
         if (_notificationProvider != null) {
@@ -150,7 +235,7 @@ class OrderProvider extends ChangeNotifier {
     });
   }
 
-  // UPDATED: Send order status notification helper
+  // ADDED: Send order status notification helper
   void _sendOrderStatusNotification(String orderId, OrderStatus newStatus) {
     if (_notificationProvider == null) return;
 
@@ -164,11 +249,11 @@ class OrderProvider extends ChangeNotifier {
         title = 'Order Confirmed';
         message = 'Your order #$orderId has been confirmed';
         break;
-      case OrderStatus.preparing: // UPDATED
+      case OrderStatus.preparing:
         title = 'Order Being Prepared';
         message = 'The kitchen is preparing your order #$orderId';
         break;
-      case OrderStatus.outForDelivery: // UPDATED
+      case OrderStatus.outForDelivery:
         title = 'Out for Delivery';
         message = 'Your order #$orderId is on its way!';
         break;
@@ -195,45 +280,6 @@ class OrderProvider extends ChangeNotifier {
     ));
   }
 
-  void updateStatus(String orderId, OrderStatus newStatus) {
-    final index = _orders.indexWhere((o) => o.id == orderId);
-    if (index == -1) {
-      debugPrint('❌ Order $orderId not found');
-      return;
-    }
-
-    final order = _orders[index];
-    final oldStatus = order.status;
-
-    // UPDATED: Handle preparing and outForDelivery statuses
-    if (oldStatus == OrderStatus.pending && newStatus != OrderStatus.confirmed && newStatus != OrderStatus.cancelled) {
-      debugPrint('❌ Cannot change from pending to $newStatus directly');
-      return;
-    }
-
-    _orders[index] = Order(
-      id: order.id,
-      customerId: order.customerId,
-      customerName: order.customerName,
-      deliveryPhone: order.deliveryPhone,
-      date: order.date,
-      items: order.items,
-      totalAmount: order.totalAmount,
-      status: newStatus,
-      deliveryType: order.deliveryType,
-      deliveryAddress: order.deliveryAddress,
-      riderId: order.riderId,
-      riderName: order.riderName,
-      cancellationReason: order.cancellationReason,
-    );
-
-    debugPrint('✅ Order $orderId status updated: $oldStatus → $newStatus');
-    notifyListeners();
-
-    // UPDATED: Use the notification helper method
-    _sendOrderStatusNotification(orderId, newStatus);
-  }
-
   // ADDED: Cancel order with reason
   void cancelOrder(String orderId, String reason) {
     final index = _orders.indexWhere((o) => o.id == orderId);
@@ -257,13 +303,17 @@ class OrderProvider extends ChangeNotifier {
       deliveryPhone: order.deliveryPhone,
       date: order.date,
       items: order.items,
+      subtotal: order.subtotal, // FIXED: Added required field
+      deliveryFee: order.deliveryFee, // FIXED: Added required field
+      tax: order.tax, // FIXED: Added required field
       totalAmount: order.totalAmount,
       status: OrderStatus.cancelled,
       deliveryType: order.deliveryType,
       deliveryAddress: order.deliveryAddress,
       riderId: order.riderId,
       riderName: order.riderName,
-      cancellationReason: reason, // ADDED: Store reason
+      cancellationReason: reason,
+      cancelledAt: DateTime.now(), // FIXED: Set cancellation timestamp
     );
 
     notifyListeners();
@@ -330,6 +380,9 @@ class OrderProvider extends ChangeNotifier {
           customerName: order.customerName,
           date: order.date,
           items: updatedItems,
+          subtotal: order.subtotal, // FIXED: Added required field
+          deliveryFee: order.deliveryFee, // FIXED: Added required field
+          tax: order.tax, // FIXED: Added required field
           totalAmount: order.totalAmount,
           status: order.status,
           deliveryType: order.deliveryType,
@@ -344,7 +397,7 @@ class OrderProvider extends ChangeNotifier {
     }
   }
 
-  // ADDED/FIXED: Assign rider to order and update status to inProgress
+  // UPDATED: Assign to rider - FIXED to include all required fields
   void assignToRider(String orderId, String riderId, String riderName) {
     final index = _orders.indexWhere((o) => o.id == orderId);
     if (index == -1) {
@@ -354,7 +407,6 @@ class OrderProvider extends ChangeNotifier {
 
     final order = _orders[index];
     
-    // UPDATED: Change status to outForDelivery when assigned to rider
     _orders[index] = Order(
       id: order.id,
       customerId: order.customerId,
@@ -362,8 +414,11 @@ class OrderProvider extends ChangeNotifier {
       deliveryPhone: order.deliveryPhone,
       date: order.date,
       items: order.items,
+      subtotal: order.subtotal, // FIXED: Added required field
+      deliveryFee: order.deliveryFee, // FIXED: Added required field
+      tax: order.tax, // FIXED: Added required field
       totalAmount: order.totalAmount,
-      status: OrderStatus.outForDelivery, // UPDATED: New status
+      status: OrderStatus.outForDelivery,
       deliveryType: order.deliveryType,
       deliveryAddress: order.deliveryAddress,
       riderId: riderId,
@@ -374,21 +429,18 @@ class OrderProvider extends ChangeNotifier {
     debugPrint('✅ Order $orderId assigned to rider $riderId ($riderName) - Status: outForDelivery');
     notifyListeners();
 
-    // Send notification to rider
+    // Send notifications
     if (_notificationProvider != null) {
       _notificationProvider!.addNotification(AppNotification(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
-        userId: riderId, // FIXED: Send to correct rider ID
+        userId: riderId,
         title: 'New Delivery Assignment',
         message: 'Order #$orderId has been assigned to you',
         type: 'new_delivery',
         timestamp: DateTime.now(),
         data: {'orderId': orderId},
       ));
-    }
 
-    // Send notification to customer
-    if (_notificationProvider != null) {
       _notificationProvider!.addNotification(AppNotification(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
         userId: order.customerId,
@@ -461,25 +513,6 @@ class OrderProvider extends ChangeNotifier {
     } catch (e) {
       debugPrint('❌ Order creation failed: $e');
       rethrow;
-    }
-  }
-
-  Future<void> loadOrders(String userId) async {
-    try {
-      // Load from Supabase filtered by current user
-      final data = await Supabase.instance.client
-          .from('orders')
-          .select('*')
-          .eq('user_auth_id', userId)
-          .order('created_at', ascending: false);
-
-      _orders.clear();
-      for (final json in data as List) {
-        _orders.add(Order.fromJson(json));
-      }
-      notifyListeners();
-    } catch (e) {
-      debugPrint('Failed to load orders: $e');
     }
   }
 

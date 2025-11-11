@@ -846,7 +846,7 @@ class _AdminMenuManagementScreenState extends State<AdminMenuManagementScreen> {
             color: AppColors.primary.withOpacity(0.5),
           ),
           const SizedBox(height: 12),
-          Text(
+          const Text(
             'Add Menu Photo',
             style: TextStyle(
               color: AppColors.primary,
@@ -1145,7 +1145,7 @@ class _AdminMenuManagementScreenState extends State<AdminMenuManagementScreen> {
                                           ),
                                           child: Text(
                                             item.category,
-                                            style: TextStyle(
+                                            style: const TextStyle(
                                               fontSize: 11,
                                               color: AppColors.primary,
                                             ),
@@ -1356,9 +1356,9 @@ class _AdminMenuManagementScreenState extends State<AdminMenuManagementScreen> {
                         // Title field
                         TextFormField(
                           controller: _titleController,
-                          decoration: InputDecoration(
+                          decoration: const InputDecoration(
                             labelText: 'Item Name',
-                            border: const OutlineInputBorder(),
+                            border: OutlineInputBorder(),
                             prefixIcon: Icon(Icons.fastfood, color: AppColors.primary),
                           ),
                           validator: (value) {
@@ -1373,11 +1373,11 @@ class _AdminMenuManagementScreenState extends State<AdminMenuManagementScreen> {
                         // Price field
                         TextFormField(
                           controller: _priceController,
-                          decoration: InputDecoration(
+                          decoration: const InputDecoration(
                             labelText: 'Price',
-                            border: const OutlineInputBorder(),
+                            border: OutlineInputBorder(),
                             prefixText: 'KSh ',
-                            prefixStyle: const TextStyle(
+                            prefixStyle: TextStyle(
                               fontWeight: FontWeight.w600,
                               color: AppColors.primary,
                             ),
@@ -1408,7 +1408,7 @@ class _AdminMenuManagementScreenState extends State<AdminMenuManagementScreen> {
                                     decoration: InputDecoration(
                                       labelText: 'Category',
                                       border: const OutlineInputBorder(),
-                                      prefixIcon: Icon(Icons.category, color: AppColors.primary),
+                                      prefixIcon: const Icon(Icons.category, color: AppColors.primary),
                                       suffixIcon: _selectedCategory != null
                                           ? IconButton(
                                               icon: const Icon(Icons.clear, size: 18),
@@ -1462,9 +1462,9 @@ class _AdminMenuManagementScreenState extends State<AdminMenuManagementScreen> {
                                     const SizedBox(height: 16),
                                     TextFormField(
                                       controller: _newCategoryController,
-                                      decoration: InputDecoration(
+                                      decoration: const InputDecoration(
                                         labelText: 'New Category Name',
-                                        border: const OutlineInputBorder(),
+                                        border: OutlineInputBorder(),
                                         prefixIcon: Icon(Icons.create_new_folder, color: AppColors.primary),
                                       ),
                                       validator: (value) {
@@ -1487,11 +1487,11 @@ class _AdminMenuManagementScreenState extends State<AdminMenuManagementScreen> {
                             return Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Row(
+                                const Row(
                                   children: [
                                     Icon(Icons.fitness_center, size: 16, color: AppColors.primary),
-                                    const SizedBox(width: 8),
-                                    const Text(
+                                    SizedBox(width: 8),
+                                    Text(
                                       'Meal Weight',
                                       style: TextStyle(
                                         fontSize: 14,
@@ -1589,7 +1589,7 @@ class _AdminMenuManagementScreenState extends State<AdminMenuManagementScreen> {
                                     child: Column(
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
-                                        Text(
+                                        const Text(
                                           'Availability',
                                           style: TextStyle(
                                             fontSize: 14,
@@ -1632,9 +1632,9 @@ class _AdminMenuManagementScreenState extends State<AdminMenuManagementScreen> {
                         // Description field
                         TextFormField(
                           controller: _descriptionController,
-                          decoration: InputDecoration(
+                          decoration: const InputDecoration(
                             labelText: 'Description (Optional)',
-                            border: const OutlineInputBorder(),
+                            border: OutlineInputBorder(),
                             prefixIcon: Icon(Icons.description, color: AppColors.primary),
                           ),
                           maxLines: 3,

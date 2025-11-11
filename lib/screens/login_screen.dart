@@ -89,60 +89,63 @@ class _LoginScreenState extends State<LoginScreen>
     setState(() => _isLoading = true);
 
     try {
-      // ADDED: Log the login attempt
-      debugPrint('🔐 Login attempt for: ${_emailController.text}');
-      
-      final authService = Provider.of<AuthService>(context, listen: false);
-      final error = await authService.login(
-        _emailController.text.trim(),
-        _passwordController.text,
-      );
-
-      if (!mounted) return;
+      final auth = Provider.of<AuthService>(context, listen: false);
+      final error = await auth.login(_emailController.text.trim(), _passwordController.text);
 
       if (error != null) {
-        // UPDATED: Show detailed error
-        debugPrint('❌ Login failed: $error');
-        
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Login Failed',
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 4),
-                Text(error),
-              ],
-            ),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 5),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
+        if (!mounted) return;
+        _showErrorDialog(error);
+        setState(() => _isLoading = false);
+        return;
+      }
+
+      // ADDED: Wait for user profile to load completely
+      await Future.delayed(const Duration(milliseconds: 500));
+      
+      if (!mounted) return;
+
+      // FIXED: Get fresh user data after login
+      final user = auth.currentUser;
+      debugPrint('👤 Logged in user: ${user?.email} with role: ${user?.role}');
+
+      // Route based on role
+      if (user?.role == 'admin') {
+        debugPrint('🔀 Routing to: /admin');
+        Navigator.of(context).pushReplacementNamed('/admin');
+      } else if (user?.role == 'rider') {
+        debugPrint('🔀 Routing to: /rider');
+        Navigator.of(context).pushReplacementNamed('/rider');
       } else {
-        debugPrint('✅ Login successful, navigating to home');
-        // Navigate to home
+        debugPrint('🔀 Routing to: /home');
         Navigator.of(context).pushReplacementNamed('/home');
       }
     } catch (e) {
-      debugPrint('❌ Unexpected error during login: $e');
+      debugPrint('❌ Login error: $e');
       if (!mounted) return;
-      
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Unexpected error: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      _showErrorDialog('Login failed: $e');
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
       }
     }
+  }
+
+  void _showErrorDialog(String message) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Error'),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(ctx).pop();
+            },
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -164,7 +167,7 @@ class _LoginScreenState extends State<LoginScreen>
                     width: 120,
                     height: 120,
                     errorBuilder: (context, error, stackTrace) {
-                      return Icon(
+                      return const Icon(
                         Icons.restaurant,
                         size: 120,
                         color: AppColors.primary,
@@ -189,7 +192,7 @@ class _LoginScreenState extends State<LoginScreen>
                   const SizedBox(height: 30),
 
                   // Bike animation
-                  SizedBox(
+                  const SizedBox(
                     height: 100,
                     child: BikeAnimation(size: 80),
                   ),

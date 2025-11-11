@@ -610,7 +610,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   // UPDATED: Helper method to build meal images
   Widget _buildMealImage(String? imageUrl) { // CHANGED: Accept String? instead of dynamic
-    Widget errorWidget = Icon(Icons.fastfood, size: 24, color: AppColors.primary);
+    Widget errorWidget = const Icon(Icons.fastfood, size: 24, color: AppColors.primary);
     
     if (imageUrl == null) {
       return errorWidget;
@@ -874,12 +874,12 @@ class _RecentOrderCard extends StatelessWidget {
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(color: Colors.amber),
                   ),
-                  child: Row(
+                  child: const Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.star, color: Colors.amber, size: 14),
-                      const SizedBox(width: 4),
-                      const Text(
+                      Icon(Icons.star, color: Colors.amber, size: 14),
+                      SizedBox(width: 4),
+                      Text(
                         'Rated',
                         style: TextStyle(
                           fontSize: 11,
@@ -998,11 +998,11 @@ class _RatingDialogState extends State<_RatingDialog> {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.receipt, size: 14, color: AppColors.primary),
+                    const Icon(Icons.receipt, size: 14, color: AppColors.primary),
                     const SizedBox(width: 6),
                     Text(
                       'Order #${widget.order.id}',
-                      style: TextStyle(
+                      style: const TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
                         color: AppColors.primary,
@@ -1150,7 +1150,7 @@ class _RatingDialogState extends State<_RatingDialog> {
                   color: AppColors.primary.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: Icon(Icons.restaurant, size: 16, color: AppColors.primary),
+                child: const Icon(Icons.restaurant, size: 16, color: AppColors.primary),
               ),
               const SizedBox(width: 10),
               Expanded(

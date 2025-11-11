@@ -204,9 +204,9 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
     
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Row(
+        content: const Row(
           children: [
-            const SizedBox(
+            SizedBox(
               width: 16,
               height: 16,
               child: CircularProgressIndicator(
@@ -214,8 +214,8 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
                 valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
               ),
             ),
-            const SizedBox(width: 12),
-            const Expanded(child: Text('Getting address...')),
+            SizedBox(width: 12),
+            Expanded(child: Text('Getting address...')),
           ],
         ),
         backgroundColor: AppColors.primary,
@@ -246,11 +246,11 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
     if (_currentAddress == null || _currentAddress!.isEmpty || _selectedPoint == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Row(
+          content: const Row(
             children: [
-              const Icon(Icons.warning, color: Colors.white),
-              const SizedBox(width: 12),
-              const Expanded(
+              Icon(Icons.warning, color: Colors.white),
+              SizedBox(width: 12),
+              Expanded(
                 child: Text('Please select a location on the map'),
               ),
             ],
@@ -292,11 +292,11 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
 
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Row(
+            content: const Row(
               children: [
-                const Icon(Icons.error, color: Colors.white),
-                const SizedBox(width: 12),
-                const Expanded(
+                Icon(Icons.error, color: Colors.white),
+                SizedBox(width: 12),
+                Expanded(
                   child: Text('Location permissions are permanently denied. Please enable in settings.'),
                 ),
               ],
@@ -359,11 +359,11 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
 
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Row(
+            content: const Row(
               children: [
-                const Icon(Icons.error, color: Colors.white),
-                const SizedBox(width: 12),
-                const Expanded(
+                Icon(Icons.error, color: Colors.white),
+                SizedBox(width: 12),
+                Expanded(
                   child: Text('Could not get current location. Using default.'),
                 ),
               ],
@@ -495,7 +495,7 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
               color: AppColors.primary.withOpacity(0.1),
               shape: BoxShape.circle,
             ),
-            child: Icon(
+            child: const Icon(
               Icons.location_on,
               size: 28,
               color: AppColors.primary,
@@ -576,7 +576,7 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
                   label: Text(_isLoadingLocation ? 'Loading...' : 'Current'),
                   style: OutlinedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 12),
-                    side: BorderSide(color: AppColors.primary),
+                    side: const BorderSide(color: AppColors.primary),
                   ),
                 ),
               ),
@@ -783,14 +783,14 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
                     ),
                   ],
                 ),
-                child: Row(
+                child: const Row(
                   children: [
-                    const Icon(Icons.warning, color: Colors.white),
-                    const SizedBox(width: 8),
+                    Icon(Icons.warning, color: Colors.white),
+                    SizedBox(width: 8),
                     Expanded(
                       child: Text(
                         'You are outside our delivery area (5km radius)',
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: Colors.white,
                           fontWeight: FontWeight.w600,
                         ),
@@ -844,16 +844,16 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
                       ),
                       
                       // Restaurant location marker
-                      MarkerLayer(
+                      const MarkerLayer(
                         markers: [
                           Marker(
-                            point: const LatLng(
+                            point: LatLng(
                               LocationProvider.defaultLatitude,
                               LocationProvider.defaultLongitude,
                             ),
                             width: 40,
                             height: 40,
-                            child: const Icon(Icons.restaurant, color: Colors.red, size: 30),
+                            child: Icon(Icons.restaurant, color: Colors.red, size: 30),
                           ),
                         ],
                       ),

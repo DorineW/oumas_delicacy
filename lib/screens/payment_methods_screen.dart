@@ -24,21 +24,21 @@ class PaymentMethodsScreen extends StatelessWidget {
         body: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            _PaymentMethodCard(
+            const _PaymentMethodCard(
               icon: Icons.credit_card,
               title: 'Credit Card',
               subtitle: '**** **** **** 1234',
               isDefault: true,
             ),
             const SizedBox(height: 12),
-            _PaymentMethodCard(
+            const _PaymentMethodCard(
               icon: Icons.account_balance,
               title: 'Bank Account',
               subtitle: 'ABC Bank - ****5678',
               isDefault: false,
             ),
             const SizedBox(height: 12),
-            _PaymentMethodCard(
+            const _PaymentMethodCard(
               icon: Icons.phone_android,
               title: 'M-Pesa',
               subtitle: '+254 712 345 678',
