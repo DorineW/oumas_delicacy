@@ -219,46 +219,32 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   }
 
   Future<void> _payNow() async {
-    // Ensure form is validated before proceeding if TextFormFields are used.
-    // However, the provided code uses manual validation and snackbars, which is fine.
-
-    final locationProvider = context.read<LocationProvider>();
+    // SIMPLIFIED: Just basic validation and process order
+    
+    // Only check if mounted before showing errors
+    if (!mounted) return;
 
     // 1. Validate delivery address if delivery is requested
     if (_deliveryLatLng != null) {
       if (_deliveryAddressController.text.trim().isEmpty) {
-        _showErrorSnackBar('Please enter or select a delivery address');
-        return;
-      }
-
-      await locationProvider.setLocation(_deliveryLatLng!.latitude, _deliveryLatLng!.longitude);
-      if (locationProvider.outsideDeliveryArea) {
         if (!mounted) return;
-        _showErrorSnackBar('Cannot proceed. Location is outside the delivery area.');
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please enter or select a delivery address')),
+        );
         return;
       }
     }
 
-    // 2. Validate M-Pesa phone number (REQUIRED)
-    if (_mpesaPhoneController.text.trim().isEmpty) {
-      _showErrorSnackBar('Please enter your M-Pesa phone number');
-      return;
-    }
-
-    // ADDED: Validate M-Pesa number format
-    final mpesaPhone = _mpesaPhoneController.text.trim();
-    if (mpesaPhone.length < 9 || mpesaPhone.length > 10) {
-      _showErrorSnackBar('Please enter a valid phone number (9-10 digits)');
-      return;
-    }
-
-    // 3. Validate contact phone number
+    // 2. Validate contact phone number (simplified - only contact phone)
     if (_phoneController.text.trim().isEmpty) {
-      _showErrorSnackBar('Please enter your contact phone number');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter your contact phone number')),
+      );
       return;
     }
 
-    // 4. Check item availability
+    // 3. Check item availability
     final menuProvider = context.read<MenuProvider>();
     final cartProvider = context.read<CartProvider>();
 
@@ -267,12 +253,14 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     ).toList();
 
     if (unavailableItems.isNotEmpty) {
+      if (!mounted) return;
       _showUnavailableItemsDialog(unavailableItems, cartProvider);
       return;
     }
 
-    // UPDATED: Show M-Pesa payment confirmation
-    _showMpesaPaymentDialog();
+    // Process order directly
+    if (!mounted) return;
+    _processOrder();
   }
 
   // ADDED: Method to show dialog for unavailable items
@@ -353,7 +341,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     );
   }
 
-  // ADDED: M-Pesa payment dialog
+  // TEMPORARILY COMMENTED OUT FOR TESTING - M-Pesa payment dialog
+  // Re-enable this when you want to show the payment dialog again
+  /*
   void _showMpesaPaymentDialog() {
     showDialog(
       context: context,
@@ -493,6 +483,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       ),
     );
   }
+  */
 
   // ADDED: Process order after payment confirmation
   void _processOrder() async {
@@ -521,6 +512,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       final orderId = orderProvider.generateOrderId();
       final orderItems = widget.selectedItems.map((item) => OrderItem(
         id: item.id,
+        menuItemId: item.menuItemId, // Pass the menu item UUID
         title: item.mealTitle,
         quantity: item.quantity,
         price: item.price,
@@ -572,8 +564,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           'phoneNumber': _phoneController.text.isNotEmpty
               ? _phoneController.text
               : null,
-          'mpesaNumber': _mpesaPhoneController.text,
-          'paymentMethod': 'M-Pesa',
+          'mpesaNumber': _mpesaPhoneController.text.isNotEmpty 
+              ? _mpesaPhoneController.text 
+              : null, // UPDATED: Handle empty M-Pesa number
+          'paymentMethod': 'Cash on Delivery', // UPDATED: Changed payment method
         },
       );
     } catch (e) {
@@ -1087,10 +1081,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             : const Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.payment, color: AppColors.white),
+                  Icon(Icons.check_circle, color: AppColors.white), // UPDATED: Changed icon
                   SizedBox(width: 8),
                   Text(
-                    'Proceed to M-Pesa Payment',
+                    'Complete Order', // UPDATED: Simplified text
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,

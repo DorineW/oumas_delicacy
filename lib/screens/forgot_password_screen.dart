@@ -28,8 +28,13 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     setState(() => _isLoading = true);
 
     try {
-      await Provider.of<AuthService>(context, listen: false)
-          .resetPassword(_emailController.text.trim());
+      final authService = Provider.of<AuthService>(context, listen: false);
+      
+      // Send reset password email with deep link for app redirect
+      await authService.resetPassword(
+        _emailController.text.trim(),
+        redirectTo: 'com.oumasdelicacy.app://reset-password',
+      );
 
       if (!mounted) return;
 

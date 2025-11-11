@@ -68,7 +68,7 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> with SingleTick
                 const Icon(Icons.check_circle, color: Colors.white),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: Text('Order #${order.id} has been cancelled'),
+                  child: Text('Your order has been cancelled'),
                 ),
               ],
             ),
@@ -131,11 +131,11 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> with SingleTick
                       children: [
                         Row(
                           children: [
-                            const Icon(Icons.info, size: 16, color: Colors.orange),
+                            const Icon(Icons.restaurant_menu, size: 16, color: Colors.orange),
                             const SizedBox(width: 8),
                             Expanded(
                               child: Text(
-                                'Order #${order.id}',
+                                'Your Order',
                                 style: const TextStyle(
                                   fontSize: 12,
                                   fontWeight: FontWeight.w600,
@@ -294,6 +294,7 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> with SingleTick
     for (final item in order.items) {
       cartProvider.addItem(CartItem(
         id: item.id,
+        menuItemId: item.menuItemId ?? item.id, // Use menuItemId or fallback to item.id
         mealTitle: item.title,
         price: item.price,
         quantity: item.quantity,
@@ -414,13 +415,13 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> with SingleTick
             ),
             const SizedBox(height: 12),
             
-            // Order number & date
+            // Order date
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  'Order #${order.id}',
-                  style: const TextStyle(
+                const Text(
+                  'Order Details',
+                  style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
                   ),

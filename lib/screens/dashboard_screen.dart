@@ -373,7 +373,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     final favoriteIds = favoritesProvider.getFavoritesForUser(userId);
     final favoriteMeals = menuProvider.menuItems.where((meal) => 
-      favoriteIds.contains(meal.title) && menuProvider.isItemAvailable(meal.title) // FIXED: Use meal.title
+      favoriteIds.contains(meal.id) && menuProvider.isItemAvailable(meal.title) // FIXED: Use meal.id to match favoriteIds
     ).toList();
 
     if (favoriteMeals.isEmpty) {
@@ -581,9 +581,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           IconButton(
-                            icon: const Icon(Icons.favorite, color: Colors.red, size: 20),
+                            icon: Icon(
+                              favoritesProvider.isFavorite(userId, meal.id ?? '')
+                                  ? Icons.favorite
+                                  : Icons.favorite_border,
+                              color: Colors.red,
+                              size: 20,
+                            ),
                             onPressed: () {
-                              favoritesProvider.toggleFavorite(userId, meal.title); // FIXED: Use meal.title
+                              favoritesProvider.toggleFavorite(userId, meal.id ?? ''); // FIXED: Use meal.id (UUID)
                               HapticFeedback.lightImpact();
                             },
                             padding: EdgeInsets.zero,
@@ -1001,7 +1007,7 @@ class _RatingDialogState extends State<_RatingDialog> {
                     const Icon(Icons.receipt, size: 14, color: AppColors.primary),
                     const SizedBox(width: 6),
                     Text(
-                      'Order #${widget.order.id}',
+                      'Your Order',
                       style: const TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,

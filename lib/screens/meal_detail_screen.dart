@@ -503,6 +503,7 @@ class _MealDetailScreenState extends State<MealDetailScreen> {
 
                     final cartItem = CartItem(
                       id: DateTime.now().millisecondsSinceEpoch.toString(),
+                      menuItemId: widget.meal.id ?? '', // UUID from database
                       mealTitle: widget.meal.title, // FIXED
                       mealImage: widget.meal.imageUrl ?? '', // FIXED
                       price: widget.meal.price, // FIXED

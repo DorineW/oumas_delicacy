@@ -16,7 +16,8 @@ enum DeliveryType {
 }
 
 class OrderItem {
-  final String id;
+  final String id; // Order item ID
+  final String? menuItemId; // UUID from menu_items table (optional for backward compatibility)
   final String title;
   final int quantity;
   final int price;
@@ -25,6 +26,7 @@ class OrderItem {
 
   OrderItem({
     required this.id,
+    this.menuItemId,
     required this.title,
     required this.quantity,
     required this.price,
@@ -36,6 +38,7 @@ class OrderItem {
 
   Map<String, dynamic> toJson() => {
     'id': id,
+    'menu_item_id': menuItemId,
     'title': title,
     'quantity': quantity,
     'price': price,
@@ -45,6 +48,7 @@ class OrderItem {
 
   factory OrderItem.fromJson(Map<String, dynamic> json) => OrderItem(
     id: json['id'],
+    menuItemId: json['menu_item_id'],
     title: json['title'],
     quantity: json['quantity'],
     price: json['price'],
@@ -132,6 +136,12 @@ class Order {
       deliveredAt: deliveredAt ?? this.deliveredAt,
       cancelledAt: cancelledAt ?? this.cancelledAt,
     );
+  }
+
+  // Generate a short, user-friendly order number from UUID
+  String get orderNumber {
+    // Take first 8 characters of UUID and convert to uppercase
+    return id.substring(0, 8).toUpperCase();
   }
 
   bool get canCancel {

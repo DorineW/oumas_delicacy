@@ -312,8 +312,10 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
 
       if (permission == LocationPermission.deniedForever) {
         if (!mounted || _isDisposed) return;
-
-        ScaffoldMessenger.of(context).showSnackBar(
+        
+        // FIXED: Capture messenger before async gap
+        final messenger = ScaffoldMessenger.of(context);
+        messenger.showSnackBar(
           SnackBar(
             content: const Row(
               children: [
@@ -331,7 +333,9 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
             duration: const Duration(seconds: 4),
           ),
         );
-        setState(() => _isLoadingLocation = false);
+        if (mounted && !_isDisposed) {
+          setState(() => _isLoadingLocation = false);
+        }
         return;
       }
 
@@ -353,7 +357,9 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
         
         _animatedMapMove(newPoint, 16.0); // UPDATED: Zoom in more on current location
         
-        ScaffoldMessenger.of(context).showSnackBar(
+        // FIXED: Capture messenger before showing snackbar
+        final messenger = ScaffoldMessenger.of(context);
+        messenger.showSnackBar(
           SnackBar(
             content: Row(
               children: [
@@ -378,7 +384,9 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
       } else {
         if (!mounted || _isDisposed) return;
 
-        ScaffoldMessenger.of(context).showSnackBar(
+        // FIXED: Capture messenger before showing snackbar
+        final messenger = ScaffoldMessenger.of(context);
+        messenger.showSnackBar(
           SnackBar(
             content: const Row(
               children: [
@@ -399,7 +407,9 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
     } catch (e) {
       if (!mounted || _isDisposed) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
+      // FIXED: Capture messenger before showing snackbar
+      final messenger = ScaffoldMessenger.of(context);
+      messenger.showSnackBar(
         SnackBar(
           content: Row(
             children: [

@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../constants/colors.dart';
+import '../../providers/inventory_provider.dart';
+import '../../models/inventory_item.dart';
 
 class InventoryScreen extends StatefulWidget {
   const InventoryScreen({super.key});
@@ -15,64 +18,15 @@ class _InventoryScreenState extends State<InventoryScreen> {
   
   // ADDED: State for showing/hiding low stock section
   bool _showLowStockSection = false;
-  
-  // UPDATED: Added 'Flour' to categories
-  final List<String> _categories = ['All', 'Grains', 'Flour', 'Vegetables', 'Meat', 'Drinks', 'Spices', 'Dairy', 'Oils'];
-  
-  final List<InventoryItem> _items = [
-    InventoryItem(
-      id: '1',
-      name: 'Ugali Flour',
-      category: 'Grains',
-      currentStock: 25.5,
-      unit: 'kg',
-      lowStockThreshold: 10.0,
-      costPrice: 80.0,
-      lastRestocked: DateTime.now().subtract(const Duration(days: 2)),
-    ),
-    InventoryItem(
-      id: '2',
-      name: 'Beef (Prime Cut)',
-      category: 'Meat',
-      currentStock: 8.5,
-      unit: 'kg',
-      lowStockThreshold: 10.0,
-      costPrice: 450.0,
-      lastRestocked: DateTime.now().subtract(const Duration(days: 1)),
-    ),
-    InventoryItem(
-      id: '3',
-      name: 'Rice (Pishori)',
-      category: 'Grains',
-      currentStock: 45.0,
-      unit: 'kg',
-      lowStockThreshold: 20.0,
-      costPrice: 120.0,
-      lastRestocked: DateTime.now().subtract(const Duration(days: 3)),
-    ),
-    InventoryItem(
-      id: '4',
-      name: 'Cooking Oil',
-      category: 'Oils',
-      currentStock: 15.0,
-      unit: 'liters',
-      lowStockThreshold: 8.0,
-      costPrice: 180.0,
-      lastRestocked: DateTime.now().subtract(const Duration(days: 4)),
-    ),
-    InventoryItem(
-      id: '5',
-      name: 'Tomatoes',
-      category: 'Vegetables',
-      currentStock: 3.0,
-      unit: 'kg',
-      lowStockThreshold: 5.0,
-      costPrice: 50.0,
-      lastRestocked: DateTime.now(),
-    ),
-  ];
 
-  final List<StockHistory> _stockHistory = [];
+  @override
+  void initState() {
+    super.initState();
+    // Load inventory items when screen opens
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<InventoryProvider>().loadInventoryItems();
+    });
+  }
 
   @override
   void dispose() {
@@ -80,25 +34,30 @@ class _InventoryScreenState extends State<InventoryScreen> {
     super.dispose();
   }
 
-  List<InventoryItem> get _filteredItems {
-    return _items.where((item) {
+  List<InventoryItem> _getFilteredItems(List<InventoryItem> items) {
+    return items.where((item) {
       final matchesSearch = item.name.toLowerCase().contains(_filter.toLowerCase()) ||
           item.category.toLowerCase().contains(_filter.toLowerCase());
       final matchesCategory = _selectedCategory == 'All' || item.category == _selectedCategory;
-      return matchesSearch && matchesCategory && item.isActive;
+      return matchesSearch && matchesCategory;
     }).toList();
   }
 
-  List<InventoryItem> get _lowStockItems {
-    return _items.where((item) => item.currentStock <= item.lowStockThreshold && item.isActive).toList();
+  List<InventoryItem> _getLowStockItems(List<InventoryItem> items) {
+    return items.where((item) => item.quantity <= item.lowStockThreshold).toList();
   }
 
-  Widget _buildStatsHeader() {
-    final totalItems = _items.where((item) => item.isActive).length;
-    final lowStockCount = _lowStockItems.length;
-    final totalValue = _items.where((item) => item.isActive).fold<double>(
-      0, (sum, item) => sum + (item.currentStock * item.costPrice)
-    );
+  List<String> _getDynamicCategories(List<InventoryItem> items) {
+    final categories = items.map((item) => item.category).toSet().toList();
+    categories.sort();
+    return ['All', ...categories];
+  }
+
+  Widget _buildStatsHeader(List<InventoryItem> items) {
+    final totalItems = items.length;
+    final lowStockItems = _getLowStockItems(items);
+    final lowStockCount = lowStockItems.length;
+    final totalQuantity = items.fold<double>(0, (sum, item) => sum + item.quantity);
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -115,7 +74,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
         children: [
           _buildStatItem('Total Items', totalItems.toString(), Icons.inventory_2, AppColors.primary),
           _buildStatItem('Low Stock', lowStockCount.toString(), Icons.warning, Colors.orange),
-          _buildStatItem('Stock Value', 'Ksh ${totalValue.toStringAsFixed(0)}', Icons.attach_money, AppColors.success),
+          _buildStatItem('Total Quantity', totalQuantity.toStringAsFixed(0), Icons.inventory, AppColors.success),
         ],
       ),
     );
@@ -175,8 +134,9 @@ class _InventoryScreenState extends State<InventoryScreen> {
   }
 
   // ADDED: New collapsible low stock section (like chart in admin dashboard)
-  Widget _buildLowStockSection() {
-    if (!_showLowStockSection || _lowStockItems.isEmpty) {
+  Widget _buildLowStockSection(List<InventoryItem> items) {
+    final lowStockItems = _getLowStockItems(items);
+    if (!_showLowStockSection || lowStockItems.isEmpty) {
       return const SizedBox.shrink();
     }
 
@@ -222,7 +182,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Text(
-                  '${_lowStockItems.length}',
+                  '${lowStockItems.length}',
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 12,
@@ -235,7 +195,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
           const SizedBox(height: 16),
           
           // Low stock items list - UPDATED: Removed restock button
-          ..._lowStockItems.map((item) => Container(
+          ...lowStockItems.map((item) => Container(
             margin: const EdgeInsets.only(bottom: 8),
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
@@ -276,7 +236,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
                       Row(
                         children: [
                           Text(
-                            '${item.currentStock} ${item.unit}',
+                            '${item.quantity} ${item.unit}',
                             style: const TextStyle(
                               fontSize: 12,
                               color: Colors.orange,
@@ -304,12 +264,13 @@ class _InventoryScreenState extends State<InventoryScreen> {
     );
   }
 
-  Widget _buildCategoryFilter() {
+  Widget _buildCategoryFilter(List<InventoryItem> items) {
+    final categories = _getDynamicCategories(items);
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       padding: const EdgeInsets.symmetric(horizontal: 12),
       child: Row(
-        children: _categories.map((category) => Padding(
+        children: categories.map((category) => Padding(
           padding: const EdgeInsets.only(right: 8),
           child: FilterChip(
             label: Text(category),
@@ -331,7 +292,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
   }
 
   Widget _buildInventoryCard(InventoryItem item, int index) {
-    final isLowStock = item.currentStock <= item.lowStockThreshold;
+    final isLowStock = item.quantity <= item.lowStockThreshold;
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -421,26 +382,23 @@ class _InventoryScreenState extends State<InventoryScreen> {
                           ),
                         ),
                         const SizedBox(height: 4),
-                        // FIXED: Wrap row in Flexible/Expanded to prevent overflow
+                        // Stock quantity display (adjustment buttons feature not implemented yet)
                         Row(
-                          mainAxisSize: MainAxisSize.min, // ADDED: Use minimum space
+                          mainAxisSize: MainAxisSize.min,
                           children: [
-                            _buildStockButton(Icons.remove, () => _adjustStock(index, -1)),
-                            const SizedBox(width: 8), // REDUCED: from 12 to 8
-                            Flexible( // ADDED: Allow text to shrink if needed
-                              child: Text(
-                                '${item.currentStock} ${item.unit}',
-                                style: TextStyle(
-                                  fontSize: 14, // REDUCED: from 16 to 14
-                                  fontWeight: FontWeight.bold,
-                                  color: isLowStock ? Colors.orange : AppColors.primary,
-                                ),
-                                overflow: TextOverflow.ellipsis, // ADDED: Handle long text
-                                maxLines: 1,
+                            // TODO: Implement stock adjustment buttons with provider
+                            // _buildStockButton(Icons.remove, () => adjustStock(item, -1)),
+                            // const SizedBox(width: 8),
+                            Text(
+                              '${item.quantity} ${item.unit}',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                                color: isLowStock ? Colors.orange : AppColors.primary,
                               ),
                             ),
-                            const SizedBox(width: 8), // REDUCED: from 12 to 8
-                            _buildStockButton(Icons.add, () => _adjustStock(index, 1)),
+                            // const SizedBox(width: 8),
+                            // _buildStockButton(Icons.add, () => adjustStock(item, 1)),
                           ],
                         ),
                       ],
@@ -481,18 +439,11 @@ class _InventoryScreenState extends State<InventoryScreen> {
             ),
             const SizedBox(height: 12),
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                _buildPriceTag('Cost Price', item.costPrice),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Row(
               children: [
                 Icon(Icons.access_time, size: 12, color: AppColors.darkText.withOpacity(0.5)),
                 const SizedBox(width: 4),
                 Text(
-                  'Last restocked: ${_formatRestockDate(item.lastRestocked)}',
+                  'Last updated: ${item.updatedAt != null ? _formatRestockDate(item.updatedAt!) : 'Never'}',
                   style: TextStyle(
                     fontSize: 11,
                     color: AppColors.darkText.withOpacity(0.6),
@@ -503,17 +454,18 @@ class _InventoryScreenState extends State<InventoryScreen> {
             const SizedBox(height: 12),
             Row(
               children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    icon: const Icon(Icons.inventory_2, size: 16),
-                    label: const Text('Restock', style: TextStyle(fontSize: 12)),
-                    onPressed: () => _showRestockDialog(index),
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
+                // Restock feature not implemented yet
+                // Expanded(
+                //   child: OutlinedButton.icon(
+                //     icon: const Icon(Icons.inventory_2, size: 16),
+                //     label: const Text('Restock', style: TextStyle(fontSize: 12)),
+                //     onPressed: () => _showRestockDialog(index),
+                //     style: OutlinedButton.styleFrom(
+                //       padding: const EdgeInsets.symmetric(vertical: 8),
+                //     ),
+                //   ),
+                // ),
+                // const SizedBox(width: 8),
                 Expanded(
                   child: OutlinedButton.icon(
                     icon: const Icon(Icons.edit, size: 16),
@@ -524,59 +476,20 @@ class _InventoryScreenState extends State<InventoryScreen> {
                     ),
                   ),
                 ),
-                const SizedBox(width: 8),
-                IconButton(
-                  icon: const Icon(Icons.history, size: 20),
-                  color: AppColors.primary,
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
-                  onPressed: () => _showStockHistory(item.id),
-                ),
+                // Stock history feature not yet implemented
+                // const SizedBox(width: 8),
+                // IconButton(
+                //   icon: const Icon(Icons.history, size: 20),
+                //   color: AppColors.primary,
+                //   padding: EdgeInsets.zero,
+                //   constraints: const BoxConstraints(),
+                //   onPressed: () => _showStockHistory(item.id),
+                // ),
               ],
             ),
           ],
         ),
       ),
-    );
-  }
-
-  // UPDATED: Slightly smaller button size
-  Widget _buildStockButton(IconData icon, VoidCallback onPressed) {
-    return Container(
-      width: 28, // REDUCED: from 32 to 28
-      height: 28, // REDUCED: from 32 to 28
-      decoration: BoxDecoration(
-        color: AppColors.primary.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: IconButton(
-        icon: Icon(icon, size: 14), // REDUCED: from 16 to 14
-        onPressed: onPressed,
-        padding: EdgeInsets.zero,
-        color: AppColors.primary,
-      ),
-    );
-  }
-
-  Widget _buildPriceTag(String label, double price) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 10,
-            color: AppColors.darkText.withOpacity(0.6),
-          ),
-        ),
-        Text(
-          'Ksh ${price.toStringAsFixed(0)}',
-          style: const TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-      ],
     );
   }
 
@@ -608,150 +521,28 @@ class _InventoryScreenState extends State<InventoryScreen> {
     return '${diff.inDays}d ago';
   }
 
-  void _adjustStock(int index, double adjustment) {
-    setState(() {
-      double newStock = _items[index].currentStock + adjustment;
-      if (newStock >= 0) {
-        final oldStock = _items[index].currentStock;
-        _items[index].currentStock = newStock;
-        
-        _addToStockHistory(
-          _items[index].id,
-          'adjustment',
-          adjustment,
-          'Manual stock adjustment from $oldStock to $newStock ${_items[index].unit}',
-        );
-      }
-    });
-  }
+  // Stock adjustment feature - needs to be reimplemented using provider
+  // void _adjustStock(int index, double adjustment) {
+  //   // TODO: Implement using InventoryProvider.updateStock()
+  // }
 
-  void _showRestockDialog(int index) {
-    final item = _items[index];
-    final quantityController = TextEditingController();
-    final costController = TextEditingController(text: item.costPrice.toString());
-    
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: AppColors.primary.withOpacity(0.1),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(Icons.inventory_2, color: AppColors.primary, size: 20),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Restock Item', style: TextStyle(fontSize: 16)),
-                  Text(
-                    item.name,
-                    style: TextStyle(fontSize: 12, color: AppColors.darkText.withOpacity(0.6)),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: quantityController,
-              keyboardType: TextInputType.number,
-              decoration: InputDecoration(
-                labelText: 'Quantity',
-                suffixText: item.unit,
-                prefixIcon: const Icon(Icons.add_circle, color: AppColors.primary),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: costController,
-              keyboardType: TextInputType.number,
-              decoration: InputDecoration(
-                labelText: 'Cost per ${item.unit}',
-                prefixText: 'Ksh ',
-                prefixIcon: const Icon(Icons.attach_money, color: AppColors.primary),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              double quantity = double.tryParse(quantityController.text) ?? 0;
-              double cost = double.tryParse(costController.text) ?? 0;
-              if (quantity > 0 && cost > 0) {
-                _restockItem(index, quantity, cost);
-                Navigator.pop(context);
-              }
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.primary,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Restock'),
-          ),
-        ],
-      ),
-    );
-  }
+  // Restock dialog - needs to be reimplemented using provider
+  // void _showRestockDialog(int index) {
+  //   // TODO: Implement using InventoryProvider.updateStock()
+  // }
 
-  void _restockItem(int index, double quantity, double cost) {
-    setState(() {
-      _items[index].currentStock += quantity;
-      _items[index].costPrice = cost;
-      _items[index].lastRestocked = DateTime.now();
-      
-      _addToStockHistory(
-        _items[index].id,
-        'restock',
-        quantity,
-        'Restocked $quantity ${_items[index].unit} at Ksh $cost per ${_items[index].unit}',
-      );
-    });
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          children: [
-            const Icon(Icons.check_circle, color: Colors.white),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text('${_items[index].name} restocked successfully'),
-            ),
-          ],
-        ),
-        backgroundColor: AppColors.success,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-      ),
-    );
-  }
-
-  void _showAddEditDialog({InventoryItem? item, int? index}) {
+  void _showAddEditDialog({InventoryItem? item, int? index}) async {
     final isEditing = item != null;
     final nameController = TextEditingController(text: item?.name ?? '');
     final categoryController = TextEditingController(text: item?.category ?? '');
-    final stockController = TextEditingController(text: item?.currentStock.toString() ?? '');
+    final stockController = TextEditingController(text: item?.quantity.toString() ?? '');
     final thresholdController = TextEditingController(text: item?.lowStockThreshold.toString() ?? '');
-    final costController = TextEditingController(text: item?.costPrice.toString() ?? '');
     
     String selectedUnit = item?.unit ?? 'kg';
     final formKey = GlobalKey<FormState>();
+    
+    final inventoryProvider = Provider.of<InventoryProvider>(context, listen: false);
+    final categories = _getDynamicCategories(inventoryProvider.items);
 
     showDialog(
       context: context,
@@ -797,9 +588,9 @@ class _InventoryScreenState extends State<InventoryScreen> {
                     ),
                     const SizedBox(height: 12),
                     DropdownButtonFormField<String>(
-                      value: _categories.contains(categoryController.text) ? categoryController.text : null,
+                      value: categories.contains(categoryController.text) ? categoryController.text : null,
                       isExpanded: true,
-                      items: _categories.skip(1).map((cat) => DropdownMenuItem(
+                      items: categories.skip(1).map((cat) => DropdownMenuItem(
                         value: cat, 
                         child: Text(cat, overflow: TextOverflow.ellipsis),
                       )).toList(),
@@ -863,18 +654,6 @@ class _InventoryScreenState extends State<InventoryScreen> {
                       ),
                       validator: (value) => double.tryParse(value ?? '') == null ? 'Invalid' : null,
                     ),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      controller: costController,
-                      keyboardType: TextInputType.number,
-                      decoration: InputDecoration(
-                        labelText: 'Cost Price',
-                        prefixText: 'Ksh ',
-                        prefixIcon: const Icon(Icons.attach_money, color: AppColors.primary),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                      ),
-                      validator: (value) => double.tryParse(value ?? '') == null ? 'Invalid' : null,
-                    ),
                   ],
                 ),
               ),
@@ -885,43 +664,53 @@ class _InventoryScreenState extends State<InventoryScreen> {
                 child: const Text('Cancel'),
               ),
               ElevatedButton(
-                onPressed: () {
+                onPressed: () async {
                   if (formKey.currentState!.validate()) {
                     final newItem = InventoryItem(
-                      id: item?.id ?? DateTime.now().millisecondsSinceEpoch.toString(),
+                      id: item?.id ?? '',
                       name: nameController.text,
                       category: categoryController.text,
-                      currentStock: double.parse(stockController.text),
+                      quantity: double.parse(stockController.text),
                       unit: selectedUnit,
                       lowStockThreshold: double.parse(thresholdController.text),
-                      costPrice: double.parse(costController.text),
-                      lastRestocked: item?.lastRestocked ?? DateTime.now(),
+                      updatedAt: DateTime.now(),
                     );
 
-                    setState(() {
-                      if (isEditing && index != null) {
-                        _items[index] = newItem;
+                    try {
+                      if (isEditing) {
+                        await inventoryProvider.updateInventoryItem(newItem);
                       } else {
-                        _items.add(newItem);
+                        await inventoryProvider.addInventoryItem(newItem);
                       }
-                    });
-
-                    Navigator.pop(context);
-                    
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Row(
-                          children: [
-                            const Icon(Icons.check_circle, color: Colors.white),
-                            const SizedBox(width: 8),
-                            Text(isEditing ? 'Item updated' : 'Item added'),
-                          ],
-                        ),
-                        backgroundColor: AppColors.success,
-                        behavior: SnackBarBehavior.floating,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                      ),
-                    );
+                      
+                      if (context.mounted) {
+                        Navigator.pop(context);
+                        
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Row(
+                              children: [
+                                const Icon(Icons.check_circle, color: Colors.white),
+                                const SizedBox(width: 8),
+                                Text(isEditing ? 'Item updated' : 'Item added'),
+                              ],
+                            ),
+                            backgroundColor: AppColors.success,
+                            behavior: SnackBarBehavior.floating,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          ),
+                        );
+                      }
+                    } catch (e) {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Error: $e'),
+                            backgroundColor: Colors.red,
+                          ),
+                        );
+                      }
+                    }
                   }
                 },
                 style: ElevatedButton.styleFrom(
@@ -937,162 +726,21 @@ class _InventoryScreenState extends State<InventoryScreen> {
     );
   }
 
-  void _addToStockHistory(String itemId, String type, double quantity, String note) {
-    _stockHistory.add(StockHistory(
-      date: DateTime.now(),
-      itemId: itemId,
-      type: type,
-      quantity: quantity,
-      note: note,
-    ));
-  }
+  // Stock history feature not implemented yet (not in database schema)
+  // void _addToStockHistory(String itemId, String type, double quantity, String note) {
+  //   // TODO: Implement stock history tracking
+  // }
 
-  void _showStockHistory(String itemId) {
-    final history = _stockHistory.where((h) => h.itemId == itemId).toList()
-      ..sort((a, b) => b.date.compareTo(a.date));
-    final item = _items.firstWhere((i) => i.id == itemId);
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        height: MediaQuery.of(context).size.height * 0.7,
-        margin: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Column(
-          children: [
-            Container(
-              width: 40,
-              height: 4,
-              margin: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.grey[300],
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Row(
-                children: [
-                  const Icon(Icons.history, color: AppColors.primary),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Stock History',
-                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                        ),
-                        Text(
-                          item.name,
-                          style: TextStyle(fontSize: 12, color: AppColors.darkText.withOpacity(0.6)),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-            Expanded(
-              child: history.isEmpty
-                  ? Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.history, size: 60, color: AppColors.darkText.withOpacity(0.3)),
-                          const SizedBox(height: 12),
-                          Text(
-                            'No history available',
-                            style: TextStyle(color: AppColors.darkText.withOpacity(0.5)),
-                          ),
-                        ],
-                      ),
-                    )
-                  : ListView.builder(
-                      padding: const EdgeInsets.symmetric(horizontal: 20),
-                      itemCount: history.length,
-                      itemBuilder: (context, index) {
-                        final h = history[index];
-                        return Card(
-                          margin: const EdgeInsets.only(bottom: 8),
-                          child: ListTile(
-                            leading: Container(
-                              padding: const EdgeInsets.all(8),
-                              decoration: BoxDecoration(
-                                color: _getHistoryColor(h.type).withOpacity(0.1),
-                                shape: BoxShape.circle,
-                              ),
-                              child: Icon(
-                                _getHistoryIcon(h.type),
-                                color: _getHistoryColor(h.type),
-                                size: 20,
-                              ),
-                            ),
-                            title: Text(
-                              h.note,
-                              style: const TextStyle(fontSize: 13),
-                            ),
-                            subtitle: Text(
-                              _formatDateTime(h.date),
-                              style: const TextStyle(fontSize: 11),
-                            ),
-                            trailing: Text(
-                              '${h.quantity > 0 ? '+' : ''}${h.quantity} ${item.unit}',
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: h.quantity > 0 ? AppColors.success : Colors.red,
-                              ),
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Color _getHistoryColor(String type) {
-    switch (type) {
-      case 'restock':
-        return AppColors.success;
-      case 'adjustment':
-        return AppColors.primary;
-      case 'sale':
-        return Colors.red;
-      default:
-        return AppColors.darkText;
-    }
-  }
-
-  IconData _getHistoryIcon(String type) {
-    switch (type) {
-      case 'restock':
-        return Icons.inventory_2;
-      case 'adjustment':
-        return Icons.edit;
-      case 'sale':
-        return Icons.shopping_cart;
-      default:
-        return Icons.circle;
-    }
-  }
-
-  String _formatDateTime(DateTime date) {
-    return '${date.day}/${date.month}/${date.year} ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
-  }
+  // void _showStockHistory(String itemId) {
+  //   // TODO: Implement stock history view
+  // }
 
   @override
   Widget build(BuildContext context) {
-    final filteredItems = _filteredItems;
+    return Consumer<InventoryProvider>(
+      builder: (context, inventoryProvider, child) {
+        final allItems = inventoryProvider.items;
+        final filteredItems = _getFilteredItems(allItems);
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -1111,8 +759,8 @@ class _InventoryScreenState extends State<InventoryScreen> {
       ),
       body: Column(
         children: [
-          _buildStatsHeader(),
-          _buildLowStockSection(), // Uses inline collapsible section instead of dialog
+          _buildStatsHeader(allItems),
+          _buildLowStockSection(allItems), // Uses inline collapsible section instead of dialog
           const SizedBox(height: 8),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -1138,7 +786,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
               },
             ),
           ),
-          _buildCategoryFilter(),
+          _buildCategoryFilter(allItems),
           const SizedBox(height: 8),
           Expanded(
             child: filteredItems.isEmpty
@@ -1176,53 +824,13 @@ class _InventoryScreenState extends State<InventoryScreen> {
                     padding: const EdgeInsets.only(bottom: 16),
                     itemCount: filteredItems.length,
                     itemBuilder: (context, index) {
-                      final actualIndex = _items.indexOf(filteredItems[index]);
-                      return _buildInventoryCard(filteredItems[index], actualIndex);
+                      return _buildInventoryCard(filteredItems[index], index);
                     },
                   ),
           ),
         ],
       ),
-    );
+      );
+    });
   }
-}
-
-class InventoryItem {
-  final String id;
-  String name;
-  String category;
-  double currentStock;
-  String unit;
-  double lowStockThreshold;
-  double costPrice;
-  DateTime lastRestocked;
-  bool isActive;
-
-  InventoryItem({
-    required this.id,
-    required this.name,
-    required this.category,
-    required this.currentStock,
-    required this.unit,
-    required this.lowStockThreshold,
-    required this.costPrice,
-    required this.lastRestocked,
-    this.isActive = true,
-  });
-}
-
-class StockHistory {
-  final DateTime date;
-  final String itemId;
-  final String type;
-  final double quantity;
-  final String note;
-
-  StockHistory({
-    required this.date,
-    required this.itemId,
-    required this.type,
-    required this.quantity,
-    required this.note,
-  });
 }

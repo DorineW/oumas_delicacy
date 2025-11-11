@@ -77,7 +77,6 @@ class RiderProvider with ChangeNotifier {
           .select('''
             id,
             user_auth_id,
-            customer_name,
             delivery_phone,
             placed_at,
             subtotal,

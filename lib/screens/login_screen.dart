@@ -71,7 +71,16 @@ class _LoginScreenState extends State<LoginScreen>
         await auth.getCurrentProfile(); // force refresh from DB
         
         if (!mounted) return;
-        Navigator.of(context).pushReplacementNamed('/home');
+        
+        // FIXED: Route based on user role instead of always going to /home
+        final user = auth.currentUser;
+        if (user?.role == 'admin') {
+          Navigator.of(context).pushReplacementNamed('/admin');
+        } else if (user?.role == 'rider') {
+          Navigator.of(context).pushReplacementNamed('/rider');
+        } else {
+          Navigator.of(context).pushReplacementNamed('/home');
+        }
       }
     });
   }
@@ -89,6 +98,9 @@ class _LoginScreenState extends State<LoginScreen>
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _isLoading = true);
+    
+    // FIXED: Prevent auth listener from interfering with manual login navigation
+    _deepLinkProcessed = true;
 
     try {
       final auth = Provider.of<AuthService>(context, listen: false);

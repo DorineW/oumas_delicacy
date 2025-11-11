@@ -2,6 +2,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../constants/colors.dart';
 import '../../models/order.dart';
 import '../../providers/order_provider.dart';
@@ -920,89 +921,204 @@ class _AdminOrderCardState extends State<AdminOrderCard>
     );
   }
 
-  // FIXED: Show assign rider dialog with proper context handling
+  // Fetch real riders from database with their current status
   Future<void> _assignRiderDialog(BuildContext context, Order order) async {
-    // ADDED: Get provider BEFORE showing dialog
+    debugPrint('🚀 _assignRiderDialog called for order ${order.id}');
+    
+    // Get provider BEFORE showing dialog
     final provider = Provider.of<OrderProvider>(context, listen: false);
     
-    // FIXED: Use rider IDs that match AuthService demo accounts
-    final riders = [
-      {'id': 'rider_001', 'name': 'John Rider'}, // FIXED: Match demo account ID
-      {'id': 'rider_2', 'name': 'Mary Delivery'},
-      {'id': 'rider_3', 'name': 'Bob Transport'},
-    ];
+    // Fetch riders from Supabase users table
+    List<Map<String, dynamic>> riders = [];
+    String? errorMessage;
+    
+    try {
+      debugPrint('📡 Fetching riders from Supabase...');
+      final supabase = Supabase.instance.client;
+      final response = await supabase
+          .from('users')
+          .select('auth_id, full_name')
+          .eq('role', 'rider')
+          .order('full_name');
+      
+      debugPrint('✅ Riders fetched: ${response.length} riders found');
+      riders = List<Map<String, dynamic>>.from(response);
+      
+      // Get rider statuses (check if they have active deliveries)
+      for (var rider in riders) {
+        final activeDeliveries = provider.orders.where((o) => 
+          o.riderId == rider['auth_id'] && 
+          o.status == OrderStatus.outForDelivery
+        ).length;
+        
+        rider['active_deliveries'] = activeDeliveries;
+        rider['is_available'] = activeDeliveries == 0;
+        
+        debugPrint('   👤 ${rider['full_name']}: $activeDeliveries active deliveries');
+      }
+    } catch (e) {
+      debugPrint('❌ Error fetching riders: $e');
+      errorMessage = e.toString();
+    }
 
-    final selected = await showDialog<Map<String, String>>(
+    debugPrint('🎭 About to show dialog. Riders count: ${riders.length}, Has error: ${errorMessage != null}');
+    
+    if (!context.mounted) {
+      debugPrint('⚠️ Context not mounted, cannot show dialog');
+      return;
+    }
+
+    final selected = await showDialog<Map<String, dynamic>>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Assign Rider'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // ADDED: Info about current logged-in rider
-            Container(
-              padding: const EdgeInsets.all(12),
-              margin: const EdgeInsets.only(bottom: 16),
-              decoration: BoxDecoration(
-                color: Colors.blue.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.blue.withOpacity(0.3)),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.info, size: 16, color: Colors.blue),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'Order #${order.id}',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.blue,
-                      ),
-                    ),
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: const Text('Assign Rider'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Order info
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  margin: const EdgeInsets.only(bottom: 16),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.blue.withOpacity(0.3)),
                   ),
-                ],
-              ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.info, size: 16, color: Colors.blue),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Assign delivery for order #${order.orderNumber}',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.blue,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                
+                // Loading or error state
+                if (errorMessage != null)
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      children: [
+                        const Icon(Icons.error_outline, size: 48, color: Colors.red),
+                        const SizedBox(height: 8),
+                        Text('Error: $errorMessage', 
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(color: Colors.red),
+                        ),
+                      ],
+                    ),
+                  )
+                else if (riders.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.all(16),
+                    child: Column(
+                      children: [
+                        Icon(Icons.people_outline, size: 48, color: Colors.grey),
+                        SizedBox(height: 8),
+                        Text('No riders available', 
+                          style: TextStyle(color: Colors.grey),
+                        ),
+                      ],
+                    ),
+                  )
+                else
+                  // Rider list
+                  ...riders.map((rider) {
+                    final isAvailable = rider['is_available'] == true;
+                    final activeDeliveries = rider['active_deliveries'] as int;
+                    
+                    return ListTile(
+                      leading: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: isAvailable 
+                            ? AppColors.success.withOpacity(0.1)
+                            : Colors.orange.withOpacity(0.1),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          Icons.delivery_dining, 
+                          color: isAvailable ? AppColors.success : Colors.orange,
+                        ),
+                      ),
+                      title: Text(rider['full_name'] ?? 'Unknown Rider'),
+                      subtitle: Text(
+                        isAvailable 
+                          ? 'Available' 
+                          : 'Currently delivering ($activeDeliveries order${activeDeliveries > 1 ? 's' : ''})',
+                        style: TextStyle(
+                          color: isAvailable ? AppColors.success : Colors.orange,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      trailing: isAvailable 
+                        ? const Icon(Icons.check_circle, color: AppColors.success, size: 20)
+                        : const Icon(Icons.access_time, color: Colors.orange, size: 20),
+                      onTap: () => Navigator.pop(dialogContext, rider),
+                    );
+                  }),
+                
+                const Divider(),
+                
+                // In-house delivery option
+                ListTile(
+                  leading: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withOpacity(0.1),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.admin_panel_settings, color: AppColors.primary),
+                  ),
+                  title: const Text('In-House Delivery'),
+                  subtitle: const Text('Admin will handle delivery'),
+                  onTap: () => Navigator.pop(dialogContext, {
+                    'auth_id': 'admin', 
+                    'full_name': 'In-House',
+                  }),
+                ),
+              ],
             ),
-            ...riders.map((rider) => ListTile(
-              leading: Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: AppColors.primary.withOpacity(0.1),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.delivery_dining, color: AppColors.primary),
-              ),
-              title: Text(rider['name']!),
-              subtitle: Text('ID: ${rider['id']}'), // Show rider ID for debugging
-              onTap: () => Navigator.pop(dialogContext, rider),
-            )),
-            const Divider(),
-            ListTile(
-              leading: Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.orange.withOpacity(0.1),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.admin_panel_settings, color: Colors.orange),
-              ),
-              title: const Text('In-House Delivery'),
-              subtitle: const Text('Admin will handle delivery'),
-              onTap: () => Navigator.pop(dialogContext, {'id': 'admin', 'name': 'In-House'}),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
             ),
           ],
         ),
       ),
     );
 
-    if (!mounted) return;
-    if (selected == null) return;
+    debugPrint('🔍 Dialog result: $selected');
+
+    if (!mounted) {
+      debugPrint('⚠️ Widget not mounted after dialog');
+      return;
+    }
+    if (selected == null) {
+      debugPrint('❌ Dialog cancelled or no selection made');
+      return;
+    }
     
-    // FIXED: Use provider that was captured BEFORE dialog
-    debugPrint('🔔 Assigning order ${order.id} to rider ${selected['id']} (${selected['name']})');
-    provider.assignToRider(order.id, selected['id']!, selected['name']!);
+    // Use provider that was captured BEFORE dialog
+    final riderId = selected['auth_id'] as String;
+    final riderName = selected['full_name'] as String;
+    
+    debugPrint('🔔 Assigning order ${order.id} to rider $riderId ($riderName)');
+    provider.assignToRider(order.id, riderId, riderName);
+    debugPrint('✅ Rider assignment initiated');
     
     if (!mounted) return;
     
@@ -1014,9 +1130,9 @@ class _AdminOrderCardState extends State<AdminOrderCard>
             const SizedBox(width: 12),
             Expanded(
               child: Text(
-                selected['id'] == 'admin'
+                riderId == 'admin'
                     ? 'Order assigned to In-House delivery'
-                    : 'Order assigned to ${selected['name']}',
+                    : 'Order assigned to $riderName',
               ),
             ),
           ],

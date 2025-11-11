@@ -49,11 +49,11 @@ class OrderProvider extends ChangeNotifier {
   // UPDATED: Add order and save to Supabase
   Future<void> addOrder(Order order) async {
     try {
-      debugPrint('💾 Saving order ${order.id} to Supabase...');
+      debugPrint('💾 Saving order to Supabase...');
       
-      // Save order to Supabase
-      await Supabase.instance.client.from('orders').insert({
-        'id': order.id,
+      // Save order to Supabase (let database generate UUID for id)
+      final response = await Supabase.instance.client.from('orders').insert({
+        // Don't specify 'id' - let Supabase auto-generate UUID
         'user_auth_id': order.customerId,
         'status': order.status.name,
         'subtotal': order.subtotal,
@@ -61,14 +61,18 @@ class OrderProvider extends ChangeNotifier {
         'tax': order.tax,
         'total': order.totalAmount,
         'delivery_address': order.deliveryAddress,
+        'delivery_phone': order.deliveryPhone,
         'placed_at': order.date.toIso8601String(),
-      });
+      }).select('id').single();
 
-      // Save order items
+      final generatedOrderId = response['id'] as String;
+      debugPrint('✅ Order created with ID: $generatedOrderId');
+
+      // Save order items with the generated order ID
       for (final item in order.items) {
         await Supabase.instance.client.from('order_items').insert({
-          'order_id': order.id,
-          'product_id': item.id,
+          'order_id': generatedOrderId,
+          'product_id': item.menuItemId ?? item.id, // Use menuItemId (UUID) or fallback to item.id
           'name': item.title,
           'quantity': item.quantity,
           'unit_price': item.price,
@@ -76,24 +80,41 @@ class OrderProvider extends ChangeNotifier {
         });
       }
 
-      debugPrint('✅ Order ${order.id} saved to database');
+      debugPrint('✅ Order $generatedOrderId saved to database');
+
+      // Update local order with generated ID
+      final updatedOrder = Order(
+        id: generatedOrderId,
+        customerId: order.customerId,
+        customerName: order.customerName,
+        deliveryPhone: order.deliveryPhone,
+        items: order.items,
+        subtotal: order.subtotal,
+        deliveryFee: order.deliveryFee,
+        tax: order.tax,
+        totalAmount: order.totalAmount,
+        date: order.date,
+        status: order.status,
+        deliveryType: order.deliveryType,
+        deliveryAddress: order.deliveryAddress,
+      );
 
       // Add to local list
-      _orders.add(order);
+      _orders.add(updatedOrder);
       notifyListeners();
 
       // Start auto-confirmation timer
-      if (order.status == OrderStatus.pending) {
-        _startAutoConfirmTimer(order.id);
+      if (updatedOrder.status == OrderStatus.pending) {
+        _startAutoConfirmTimer(updatedOrder.id);
       }
 
       // Send notifications
-      if (_notificationProvider != null && order.status != OrderStatus.cancelled) {
+      if (_notificationProvider != null && updatedOrder.status != OrderStatus.cancelled) {
         _notificationProvider!.addNotification(AppNotification(
           id: DateTime.now().millisecondsSinceEpoch.toString(),
-          userId: order.customerId,
+          userId: updatedOrder.customerId,
           title: 'Order Placed',
-          message: 'Your order #${order.id} has been placed successfully',
+          message: 'Your order #${updatedOrder.id} has been placed successfully',
           type: 'order_update',
           timestamp: DateTime.now(),
           data: {'orderId': order.id},
@@ -487,7 +508,7 @@ class OrderProvider extends ChangeNotifier {
     required DeliveryType deliveryType,
     required int totalAmount,
     required String customerId, // This should be auth_id
-    required String customerName,
+    required String customerName, // Keep for local use but don't insert
     String? deliveryAddress,
     String? specialInstructions,
   }) async {
@@ -495,11 +516,10 @@ class OrderProvider extends ChangeNotifier {
       // VERIFY: customerId is the UUID from auth.users.id (not email)
       final orderId = 'ORD-${DateTime.now().millisecondsSinceEpoch}';
       
-      // Insert into Supabase orders table
+      // Insert into Supabase orders table (without customer_name - it's fetched from users table)
       await Supabase.instance.client.from('orders').insert({
         'id': orderId,
         'user_auth_id': customerId, // CHANGED: use user_auth_id (FK to public.users.auth_id)
-        'customer_name': customerName,
         'total_amount': totalAmount,
         'status': 'pending',
         'delivery_type': deliveryType.name,

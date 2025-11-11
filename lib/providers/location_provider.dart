@@ -25,7 +25,7 @@ class LocationProvider with ChangeNotifier {
   // Nairobi, Madaraka coordinates as fallback
   static const double defaultLatitude = -1.303960; 
   static const double defaultLongitude = 36.790900;
-  static const double maxDeliveryDistanceKm = 2.0; // UPDATED: Max delivery radius 2km
+  static const double maxDeliveryDistanceKm = 5.0; // UPDATED: Max delivery radius 5km (more reasonable)
 
   Future<void> initializeLocation() async {
     _isLoading = true;
@@ -172,7 +172,7 @@ class LocationProvider with ChangeNotifier {
     }
   }
 
-  // ADDED: Check if location is within delivery area (5km from restaurant)
+  // ADDED: Check if location is within delivery area (2km from restaurant)
   void _checkDeliveryArea() {
     const restaurantLat = defaultLatitude;
     const restaurantLon = defaultLongitude;
@@ -188,6 +188,13 @@ class LocationProvider with ChangeNotifier {
       _latitude!,
       _longitude!,
     );
+    
+    debugPrint('🔍 Location Check:');
+    debugPrint('   Restaurant: ($restaurantLat, $restaurantLon)');
+    debugPrint('   User: ($_latitude, $_longitude)');
+    debugPrint('   Distance: ${distance.toStringAsFixed(3)} km');
+    debugPrint('   Max Distance: $maxDeliveryDistanceKm km');
+    debugPrint('   Outside Zone: ${distance > maxDeliveryDistanceKm}');
     
     _outsideDeliveryArea = distance > maxDeliveryDistanceKm; // UPDATED: 2km check
   }
@@ -213,15 +220,17 @@ class LocationProvider with ChangeNotifier {
       return 0; // Outside delivery area
     }
 
-    // Tiered pricing for 2km radius (3 tiers)
-    const tierSize = maxDeliveryDistanceKm / 3.0; // ~0.667 km per tier
-
-    if (distance <= tierSize) {
-      return 50; // Tier 1: 0-0.667km
-    } else if (distance <= 2 * tierSize) {
-      return 100; // Tier 2: 0.667-1.334km
+    // Tiered pricing for 5km radius (5 tiers)
+    if (distance <= 1.0) {
+      return 50; // Tier 1: 0-1km (closest)
+    } else if (distance <= 2.0) {
+      return 100; // Tier 2: 1-2km
+    } else if (distance <= 3.0) {
+      return 150; // Tier 3: 2-3km
+    } else if (distance <= 4.0) {
+      return 200; // Tier 4: 3-4km
     } else {
-      return 150; // Tier 3: 1.334-2.0km
+      return 250; // Tier 5: 4-5km (furthest)
     }
   }
 

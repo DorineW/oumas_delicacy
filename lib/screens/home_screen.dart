@@ -144,7 +144,7 @@ class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin 
   String _search = '';
   int _tabIndex = 0;
 
-  late TabController _tabController;
+  TabController? _tabController; // FIXED: Make nullable
   final Map<int, ScrollController> _scrollControllers = {};
 
   @override
@@ -177,7 +177,7 @@ class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin 
   @override
   void dispose() {
     _searchCtrl.dispose();
-    _tabController.dispose();
+    _tabController?.dispose(); // FIXED: Safe call
     for (final c in _scrollControllers.values) {
       c.dispose();
     }
@@ -591,26 +591,29 @@ class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin 
                   }
                 }),
                 // Category tabs
-                Container(
-                  color: AppColors.white,
-                  child: TabBar(
-                    controller: _tabController,
-                    isScrollable: true,
-                    indicatorColor: AppColors.primary,
-                    labelColor: AppColors.primary,
-                    unselectedLabelColor: AppColors.darkText,
-                    indicatorWeight: 3,
-                    labelStyle: const TextStyle(fontWeight: FontWeight.bold),
-                    unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.normal),
-                    tabs: cats.map((c) => Tab(text: c)).toList(),
-                    onTap: (i) => setState(() => _tabIndex = i),
+                if (_tabController != null) // FIXED: Only show when initialized
+                  Container(
+                    color: AppColors.white,
+                    child: TabBar(
+                      controller: _tabController!,
+                      isScrollable: true,
+                      indicatorColor: AppColors.primary,
+                      labelColor: AppColors.primary,
+                      unselectedLabelColor: AppColors.darkText,
+                      indicatorWeight: 3,
+                      labelStyle: const TextStyle(fontWeight: FontWeight.bold),
+                      unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.normal),
+                      tabs: cats.map((c) => Tab(text: c)).toList(),
+                      onTap: (i) => setState(() => _tabIndex = i),
+                    ),
                   ),
-                ),
                 // Grid section
                 Expanded(
-                  child: TabBarView(
-                    controller: _tabController,
-                    children: cats.asMap().entries.map((e) {
+                  child: _tabController == null // FIXED: Show loading until initialized
+                      ? const Center(child: CircularProgressIndicator())
+                      : TabBarView(
+                          controller: _tabController!,
+                          children: cats.asMap().entries.map((e) {
                       final list = e.key == 0 ? filtered : filtered.where((m) => m.category == cats[e.key]).toList();
                       if (list.isEmpty) {
                         return Center(
@@ -671,8 +674,8 @@ class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin 
                         },
                       );
                     }).toList(),
-                  ),
-                ),
+                  ), // TabBarView closing
+                ), // Expanded closing
               ],
             );
           },
@@ -1145,6 +1148,7 @@ class _RiderStyleMealCardState extends State<_RiderStyleMealCard>
     final cart = context.read<CartProvider>();
     cart.addItem(CartItem(
       id: '${widget.meal.title}_${DateTime.now().millisecondsSinceEpoch}', // FIXED
+      menuItemId: widget.meal.id ?? '', // UUID from database
       mealTitle: widget.meal.title, // FIXED
       price: widget.meal.price, // FIXED
       quantity: addedQuantity,
