@@ -114,12 +114,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    
-    // ADDED: Load menu items on app start
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      final menuProvider = Provider.of<MenuProvider>(context, listen: false);
-      await menuProvider.loadMenuItems();
-    });
+    // REMOVED: Can't access providers here - moved to _AppContent
   }
 
   @override
@@ -154,10 +149,39 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         ChangeNotifierProvider(create: (_) => ReviewsProvider()), // ADDED
         ChangeNotifierProvider(create: (_) => FavoritesProvider()), // ADDED: This line
       ],
-      child: MaterialApp(
-        title: "Ouma's Delicacy",
-        debugShowCheckedModeBanner: false,
-        theme: ThemeData(
+      child: const _AppContent(), // FIXED: Move MaterialApp to separate widget
+    );
+  }
+}
+
+// ADDED: Separate widget to access providers
+class _AppContent extends StatefulWidget {
+  const _AppContent();
+
+  @override
+  State<_AppContent> createState() => _AppContentState();
+}
+
+class _AppContentState extends State<_AppContent> {
+  @override
+  void initState() {
+    super.initState();
+    
+    // FIXED: Now we can access providers because we're inside MultiProvider
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (mounted) {
+        final menuProvider = Provider.of<MenuProvider>(context, listen: false);
+        await menuProvider.loadMenuItems();
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: "Ouma's Delicacy",
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
           primaryColor: AppColors.primary,
           colorScheme: ColorScheme.fromSeed(
             seedColor: AppColors.primary,
@@ -184,7 +208,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                 totalAmount: args['totalAmount'] as int,
                 customerId: args['customerId'] as String,
                 customerName: args['customerName'] as String,
-                deliveryAddress: args['deliveryAddress'] as String?,
+                deliveryAddress: args['deliveryAddress'] as Map<String, dynamic>?, // FIXED: Map type
                 specialInstructions: args['phoneNumber'] as String?,
               ),
             );
@@ -230,7 +254,6 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
             ),
           );
         },
-      ),
-    );
+      );
   }
 }

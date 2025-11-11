@@ -808,7 +808,8 @@ class _AdminOrderCardState extends State<AdminOrderCard>
               if (widget.order.deliveryType == DeliveryType.delivery) ...[
                 const Divider(),
                 if (widget.order.deliveryAddress != null)
-                  _buildDetailRow('Address', widget.order.deliveryAddress!),
+                  _buildDetailRow('Address', 
+                    widget.order.deliveryAddress!['address']?.toString() ?? 'N/A'), // FIXED: Extract address
                 if (widget.order.deliveryPhone != null)
                   _buildDetailRow('Phone', widget.order.deliveryPhone!),
                 if (widget.order.riderId != null)

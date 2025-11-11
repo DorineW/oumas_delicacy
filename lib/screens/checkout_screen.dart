@@ -541,7 +541,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         status: OrderStatus.pending,
         deliveryType: orderDeliveryType,
         deliveryAddress: _deliveryAddressController.text.isNotEmpty
-            ? _deliveryAddressController.text
+            ? {'address': _deliveryAddressController.text} // FIXED: Convert to Map
             : null,
       );
 
@@ -567,7 +567,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           'customerId': customerId,
           'customerName': customerName,
           'deliveryAddress': _deliveryAddressController.text.isNotEmpty
-              ? _deliveryAddressController.text
+              ? {'address': _deliveryAddressController.text} // FIXED: Pass as Map
               : null,
           'phoneNumber': _phoneController.text.isNotEmpty
               ? _phoneController.text

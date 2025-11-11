@@ -384,7 +384,8 @@ class _OrderCard extends StatelessWidget {
                 children: [
                   const Icon(Icons.location_on, size: 16, color: Colors.grey),
                   const SizedBox(width: 8),
-                  Expanded(child: Text(order.deliveryAddress!)),
+                  Expanded(child: Text(
+                    order.deliveryAddress!['address']?.toString() ?? 'N/A')), // FIXED: Extract address
                 ],
               ),
               const SizedBox(height: 8),

@@ -66,7 +66,7 @@ class Order {
   final DateTime date; // maps to placed_at
   final OrderStatus status;
   final DeliveryType deliveryType;
-  final String? deliveryAddress; // CHANGED: Store as string instead of jsonb
+  final Map<String, dynamic>? deliveryAddress; // FIXED: jsonb in DB = Map in Dart
   final String? riderId;
   final String? riderName;
   final String? cancellationReason;
@@ -109,7 +109,7 @@ class Order {
     DeliveryType? deliveryType,
     String? riderId,
     String? riderName,
-    String? deliveryAddress,
+    Map<String, dynamic>? deliveryAddress, // FIXED: Map type
     DateTime? deliveredAt,
     DateTime? cancelledAt,
   }) {
@@ -168,7 +168,7 @@ class Order {
       deliveryType: (json['delivery_address'] != null) 
           ? DeliveryType.delivery 
           : DeliveryType.pickup,
-      deliveryAddress: json['delivery_address'] as String?,
+      deliveryAddress: json['delivery_address'] as Map<String, dynamic>?, // FIXED: jsonb type
       riderId: json['rider_id'] as String?,
       riderName: json['rider_name'] as String?,
       cancellationReason: json['cancellation_reason'] as String?,

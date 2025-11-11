@@ -34,6 +34,9 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
   // ADDED: Local state for delivery fee and zone status
   int? _localDeliveryFee; 
   bool _localOutsideZone = false;
+  
+  // ADDED: Flag to prevent operations after disposal
+  bool _isDisposed = false;
 
   @override
   void initState() {
@@ -45,6 +48,7 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
 
   @override
   void dispose() {
+    _isDisposed = true;
     _searchController.dispose();
     _debounceTimer?.cancel();
     super.dispose();
@@ -52,7 +56,7 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
 
   // UPDATED: Better location initialization with permission handling
   void _initializeMap() async {
-    if (!mounted) return;
+    if (!mounted || _isDisposed) return;
 
     setState(() => _isLoadingLocation = true);
 
@@ -66,7 +70,7 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
         // Force fresh location fetch
         await locationProvider.initializeLocation();
 
-        if (!mounted) return;
+        if (!mounted || _isDisposed) return;
 
         if (locationProvider.latitude != null && locationProvider.longitude != null) {
           initialPoint = LatLng(locationProvider.latitude!, locationProvider.longitude!);
@@ -80,13 +84,21 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
         }
       } else {
         // Use provided initial position and reverse geocode it
-        initialPoint = LatLng(
-          widget.initialPosition.latitude ?? LocationProvider.defaultLatitude,
-          widget.initialPosition.longitude ?? LocationProvider.defaultLongitude,
-        );
+        // FIXED: Access Map using bracket notation instead of property access
+        final lat = widget.initialPosition is Map 
+            ? (widget.initialPosition['latitude'] as double?) ?? LocationProvider.defaultLatitude
+            : LocationProvider.defaultLatitude;
+        final lon = widget.initialPosition is Map 
+            ? (widget.initialPosition['longitude'] as double?) ?? LocationProvider.defaultLongitude
+            : LocationProvider.defaultLongitude;
+        
+        initialPoint = LatLng(lat, lon);
         
         // Get address for initial position
         await locationProvider.setLocation(initialPoint.latitude, initialPoint.longitude);
+        
+        if (!mounted || _isDisposed) return;
+        
         _currentAddress = locationProvider.deliveryAddress;
         locationFound = true;
       }
@@ -95,6 +107,8 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
       _localDeliveryFee = locationProvider.deliveryFee;
       _localOutsideZone = locationProvider.outsideDeliveryArea;
       
+      if (!mounted || _isDisposed) return;
+      
       setState(() {
         _selectedPoint = initialPoint;
         _isMapReady = true;
@@ -102,7 +116,7 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
 
       if (locationFound) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) {
+          if (mounted && !_isDisposed) {
             _animatedMapMove(initialPoint, 15.0);
           }
         });
@@ -110,25 +124,8 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
     } catch (e) {
       debugPrint('❌ Error initializing map: $e');
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                const Icon(Icons.error, color: Colors.white),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text('Could not get location: $e'),
-                ),
-              ],
-            ),
-            backgroundColor: Colors.red,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            margin: const EdgeInsets.all(16),
-          ),
-        );
-
+      // FIXED: Check mounted and disposed before accessing context
+      if (mounted && !_isDisposed) {
         setState(() {
           _selectedPoint = const LatLng(
             LocationProvider.defaultLatitude,
@@ -136,9 +133,32 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
           );
           _isMapReady = true;
         });
+
+        // Show error after setState to ensure widget tree is stable
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && !_isDisposed) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Row(
+                  children: [
+                    const Icon(Icons.error, color: Colors.white),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text('Could not get location: $e'),
+                    ),
+                  ],
+                ),
+                backgroundColor: Colors.red,
+                behavior: SnackBarBehavior.floating,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                margin: const EdgeInsets.all(16),
+              ),
+            );
+          }
+        });
       }
     } finally {
-      if (mounted) {
+      if (mounted && !_isDisposed) {
         setState(() => _isLoadingLocation = false);
       }
     }
@@ -191,6 +211,8 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
 
   // UPDATED: Improved onMapTap with better address handling
   void _onMapTap(BuildContext context, LatLng point) async {
+    if (!mounted || _isDisposed) return;
+    
     final locationProvider = context.read<LocationProvider>();
 
     setState(() {
@@ -199,6 +221,9 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
       _currentAddress = null;
     });
 
+    // FIXED: Check mounted and disposed before accessing ScaffoldMessenger
+    if (!mounted || _isDisposed) return;
+    
     // Remove any existing snackbar before showing new one
     ScaffoldMessenger.of(context).clearSnackBars();
     
@@ -228,7 +253,7 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
 
     await locationProvider.setLocation(point.latitude, point.longitude);
 
-    if (mounted) {
+    if (mounted && !_isDisposed) {
       ScaffoldMessenger.of(context).clearSnackBars();
       setState(() {
         _currentAddress = locationProvider.deliveryAddress;
@@ -242,6 +267,8 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
   }
 
   void _confirmLocation(BuildContext context) {
+    if (!mounted || _isDisposed) return;
+    
     // FIXED: Check for both address and coordinates
     if (_currentAddress == null || _currentAddress!.isEmpty || _selectedPoint == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -279,6 +306,8 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
 
   // UPDATED: Refresh current location with better feedback
   Future<void> _currentLocationButtonPressed() async {
+    if (!mounted || _isDisposed) return;
+    
     setState(() => _isLoadingLocation = true);
     
     try {
@@ -288,7 +317,7 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
       }
 
       if (permission == LocationPermission.deniedForever) {
-        if (!mounted) return;
+        if (!mounted || _isDisposed) return;
 
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -318,7 +347,7 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
       locationProvider.clearLocation();
       await locationProvider.initializeLocation();
       
-      if (!mounted) return;
+      if (!mounted || _isDisposed) return;
       
       if (locationProvider.latitude != null && locationProvider.longitude != null) {
         final newPoint = LatLng(locationProvider.latitude!, locationProvider.longitude!);
@@ -355,7 +384,7 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
           ),
         );
       } else {
-        if (!mounted) return;
+        if (!mounted || _isDisposed) return;
 
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -376,7 +405,7 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
         );
       }
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || _isDisposed) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -394,7 +423,7 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
         ),
       );
     } finally {
-      if (mounted) {
+      if (mounted && !_isDisposed) {
         setState(() => _isLoadingLocation = false);
       }
     }
@@ -402,12 +431,16 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
 
   // UPDATED: Faster search with immediate results on Enter/Done
   Future<void> _searchAddress(String query, {bool immediate = false}) async {
+    if (!mounted || _isDisposed) return;
+    
     if (_debounceTimer?.isActive ?? false) {
       _debounceTimer?.cancel();
     }
     
     if (query.isEmpty) {
-      setState(() => _searchResults = []);
+      if (mounted && !_isDisposed) {
+        setState(() => _searchResults = []);
+      }
       return;
     }
 
@@ -425,10 +458,12 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
 
   // ADDED: Extracted search logic
   Future<void> _performSearch(String query) async {
+    if (!mounted || _isDisposed) return;
+    
     final locationProvider = context.read<LocationProvider>();
     final results = await locationProvider.searchAddress(query);
     
-    if (mounted) {
+    if (mounted && !_isDisposed) {
       setState(() {
         _searchResults = results;
       });
@@ -437,6 +472,8 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
 
   // UPDATED: Better result selection with immediate address update
   Future<void> _selectSearchResult(Map<String, dynamic> result) async {
+    if (!mounted || _isDisposed) return;
+    
     final locationProvider = context.read<LocationProvider>();
     
     final lat = result['lat'] as double;
@@ -454,7 +491,7 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
     _animatedMapMove(_selectedPoint!, 16.0);
     
     locationProvider.setLocation(lat, lon).then((_) {
-      if (mounted) {
+      if (mounted && !_isDisposed) {
         setState(() {
           _localDeliveryFee = locationProvider.deliveryFee; // ADDED
           _localOutsideZone = locationProvider.outsideDeliveryArea; // ADDED

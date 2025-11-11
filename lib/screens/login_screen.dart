@@ -31,6 +31,7 @@ class _LoginScreenState extends State<LoginScreen>
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   bool _isLoading = false;
+  bool _obscurePassword = true; // ADDED: Track password visibility
 
   late AnimationController _slideController;
   late Animation<Offset> _slideAnimation;
@@ -214,19 +215,31 @@ class _LoginScreenState extends State<LoginScreen>
                   ),
                   const SizedBox(height: 16),
                   
-                  // Password field
+                  // UPDATED: Password field with visibility toggle
                   TextField(
                     controller: _passwordController,
                     decoration: InputDecoration(
                       labelText: 'Password',
                       prefixIcon: const Icon(Icons.lock),
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                          _obscurePassword ? Icons.visibility_off : Icons.visibility,
+                          color: AppColors.darkText.withOpacity(0.6),
+                        ),
+                        onPressed: () {
+                          setState(() {
+                            _obscurePassword = !_obscurePassword;
+                          });
+                        },
+                        tooltip: _obscurePassword ? 'Show password' : 'Hide password',
+                      ),
                       filled: true,
                       fillColor: AppColors.cardBackground,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
                     ),
-                    obscureText: true,
+                    obscureText: _obscurePassword, // UPDATED: Use dynamic state
                   ),
                   const SizedBox(height: 24),
                   

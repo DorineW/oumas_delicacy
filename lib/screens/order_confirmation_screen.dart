@@ -14,7 +14,7 @@ class OrderConfirmationScreen extends StatefulWidget {
   final int totalAmount;
   final String customerId;
   final String customerName;
-  final String? deliveryAddress;
+  final Map<String, dynamic>? deliveryAddress; // FIXED: Match Order model
   final String? specialInstructions;
   final String? phoneNumber; // ADDED
 

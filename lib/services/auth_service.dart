@@ -300,6 +300,8 @@ class AuthService extends ChangeNotifier {
               .eq('auth_id', userId)
               .single();
           
+          debugPrint('📋 Raw user profile from DB: $userProfile');
+          
           // FIXED: Use app.User instead of Supabase User
           _currentUser = app.User(
             id: userId,
@@ -310,8 +312,10 @@ class AuthService extends ChangeNotifier {
           );
           
           debugPrint('✅ User profile loaded: ${_currentUser?.name} (Role: ${_currentUser?.role})');
+          debugPrint('🔑 Is Admin: ${_currentUser?.role == 'admin'}');
         } catch (e) {
           debugPrint('⚠️ Could not load user profile: $e');
+          debugPrint('⚠️ Error type: ${e.runtimeType}');
           // Fallback: create user without profile data
           _currentUser = app.User(
             id: userId,

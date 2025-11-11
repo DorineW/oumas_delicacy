@@ -559,7 +559,8 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> with SingleTick
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        order.deliveryAddress!,
+                        order.deliveryAddress?['address']?.toString() ?? 
+                        'Pickup', // FIXED: Extract address from Map
                         style: const TextStyle(fontSize: 13),
                       ),
                     ),
