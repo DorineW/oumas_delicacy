@@ -942,9 +942,9 @@ class _AdminOrderCardState extends State<AdminOrderCard>
       final supabase = Supabase.instance.client;
       final response = await supabase
           .from('users')
-          .select('auth_id, full_name')
+          .select('auth_id, name')
           .eq('role', 'rider')
-          .order('full_name');
+          .order('name');
       
       debugPrint('✅ Riders fetched: ${response.length} riders found');
       riders = List<Map<String, dynamic>>.from(response);
@@ -959,7 +959,7 @@ class _AdminOrderCardState extends State<AdminOrderCard>
         rider['active_deliveries'] = activeDeliveries;
         rider['is_available'] = activeDeliveries == 0;
         
-        debugPrint('   👤 ${rider['full_name']}: $activeDeliveries active deliveries');
+        debugPrint('   👤 ${rider['name']}: $activeDeliveries active deliveries');
       }
     } catch (e) {
       debugPrint('❌ Error fetching riders: $e');
@@ -1057,7 +1057,7 @@ class _AdminOrderCardState extends State<AdminOrderCard>
                           color: isAvailable ? AppColors.success : Colors.orange,
                         ),
                       ),
-                      title: Text(rider['full_name'] ?? 'Unknown Rider'),
+                      title: Text(rider['name'] ?? 'Unknown Rider'),
                       subtitle: Text(
                         isAvailable 
                           ? 'Available' 
@@ -1090,7 +1090,7 @@ class _AdminOrderCardState extends State<AdminOrderCard>
                   subtitle: const Text('Admin will handle delivery'),
                   onTap: () => Navigator.pop(dialogContext, {
                     'auth_id': 'admin', 
-                    'full_name': 'In-House',
+                    'name': 'In-House',
                   }),
                 ),
               ],
@@ -1119,7 +1119,7 @@ class _AdminOrderCardState extends State<AdminOrderCard>
     
     // Use provider that was captured BEFORE dialog
     final riderId = selected['auth_id'] as String;
-    final riderName = selected['full_name'] as String;
+    final riderName = selected['name'] as String;
     
     debugPrint('🔔 Assigning order ${order.id} to rider $riderId ($riderName)');
     provider.assignToRider(order.id, riderId, riderName);

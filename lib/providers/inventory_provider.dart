@@ -42,9 +42,9 @@ class InventoryProvider extends ChangeNotifier {
       final supabase = Supabase.instance.client;
       debugPrint('✅ Supabase client initialized');
       
-      // Query from 'inventory' table (not 'inventory_items')
+      // Query from 'inventory_items' table
       final response = await supabase
-          .from('inventory')
+          .from('inventory_items')
           .select('id, product_id, name, category, quantity, unit, low_stock_threshold, updated_at')
           .order('name', ascending: true);
 
@@ -121,17 +121,15 @@ class InventoryProvider extends ChangeNotifier {
       final dbData = {
         'name': item.name,
         'category': item.category,
-        'quantity': item.quantity, // Map quantity to current_stock
+        'quantity': item.quantity,
         'unit': item.unit,
         'low_stock_threshold': item.lowStockThreshold,
-        'cost_price': 0.0, // Default cost price
-        'is_active': true,
       };
       
       debugPrint('📤 Sending data to DB: $dbData');
       
       final response = await Supabase.instance.client
-          .from('inventory')
+          .from('inventory_items')
           .insert(dbData)
           .select()
           .single();
@@ -171,7 +169,7 @@ class InventoryProvider extends ChangeNotifier {
       };
       
       await Supabase.instance.client
-          .from('inventory')
+          .from('inventory_items')
           .update(dbData)
           .eq('id', item.id!);
 
@@ -192,7 +190,7 @@ class InventoryProvider extends ChangeNotifier {
       debugPrint('🗑️ Deleting inventory item: $id');
       
       await Supabase.instance.client
-          .from('inventory')
+          .from('inventory_items')
           .delete()
           .eq('id', id);
 
@@ -213,7 +211,7 @@ class InventoryProvider extends ChangeNotifier {
       debugPrint('📦 Updating stock for item $id to $newQuantity');
       
       await Supabase.instance.client
-          .from('inventory')
+          .from('inventory_items')
           .update({
             'quantity': newQuantity, // Map to current_stock
             'updated_at': DateTime.now().toIso8601String(),

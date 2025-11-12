@@ -143,13 +143,13 @@ class OrderProvider extends ChangeNotifier {
     try {
       debugPrint('📥 Loading orders for user: $userId');
       
-      // JOIN with users table to get customer name
+      // JOIN with users table to get customer name - specify the relationship
       final data = await Supabase.instance.client
           .from('orders')
           .select('''
             *, 
             order_items(*),
-            users!inner(name)
+            users!fk_orders_user_auth(name)
           ''')
           .eq('user_auth_id', userId)
           .order('placed_at', ascending: false);
@@ -172,13 +172,69 @@ class OrderProvider extends ChangeNotifier {
           price: (item['unit_price'] as num).toInt(),
         )).toList();
 
-        _orders.add(order.copyWith(items: items));
+        final loadedOrder = order.copyWith(items: items);
+        _orders.add(loadedOrder);
+        
+        // FIXED: Restart auto-confirm timer for pending orders
+        if (loadedOrder.status == OrderStatus.pending) {
+          _startAutoConfirmTimerFromDate(loadedOrder.id, loadedOrder.date);
+        }
       }
       
       debugPrint('✅ Loaded ${_orders.length} orders');
       notifyListeners();
     } catch (e, stackTrace) {
       debugPrint('❌ Failed to load orders: $e');
+      debugPrint('Stack: $stackTrace');
+    }
+  }
+
+  // ADDED: Load ALL orders from Supabase (for admins)
+  Future<void> loadAllOrders() async {
+    try {
+      debugPrint('📥 Loading ALL orders for admin...');
+      
+      // JOIN with users table to get customer name
+      final data = await Supabase.instance.client
+          .from('orders')
+          .select('''
+            *, 
+            order_items(*),
+            users!fk_orders_user_auth(name)
+          ''')
+          .order('placed_at', ascending: false);
+
+      _orders.clear();
+      for (final json in data as List) {
+        // Extract customer name from joined users table
+        final customerName = json['users']?['name'] ?? 'Guest';
+        
+        final order = Order.fromJson({
+          ...json,
+          'customer_name': customerName,
+        });
+        
+        // Load order items
+        final items = (json['order_items'] as List).map((item) => OrderItem(
+          id: item['product_id'] ?? item['id'],
+          title: item['name'],
+          quantity: item['quantity'],
+          price: (item['unit_price'] as num).toInt(),
+        )).toList();
+
+        final loadedOrder = order.copyWith(items: items);
+        _orders.add(loadedOrder);
+        
+        // FIXED: Restart auto-confirm timer for pending orders
+        if (loadedOrder.status == OrderStatus.pending) {
+          _startAutoConfirmTimerFromDate(loadedOrder.id, loadedOrder.date);
+        }
+      }
+      
+      debugPrint('✅ Loaded ${_orders.length} total orders');
+      notifyListeners();
+    } catch (e, stackTrace) {
+      debugPrint('❌ Failed to load all orders: $e');
       debugPrint('Stack: $stackTrace');
     }
   }
@@ -268,6 +324,53 @@ class OrderProvider extends ChangeNotifier {
     });
   }
 
+  // ADDED: Start auto-confirm timer based on order placed date (for loaded orders)
+  void _startAutoConfirmTimerFromDate(String orderId, DateTime orderDate) {
+    final timeSinceOrder = DateTime.now().difference(orderDate);
+    const cancellationWindow = Duration(minutes: 5);
+    
+    if (timeSinceOrder >= cancellationWindow) {
+      // Time has already passed, auto-confirm immediately
+      debugPrint('⏰ Auto-confirming order $orderId (cancellation window expired)');
+      updateStatus(orderId, OrderStatus.confirmed);
+      return;
+    }
+    
+    // Calculate remaining time
+    final remainingTime = cancellationWindow - timeSinceOrder;
+    debugPrint('⏰ Setting up auto-confirm for $orderId in ${remainingTime.inSeconds}s');
+    
+    // Cancel existing timer if any
+    _autoConfirmTimers[orderId]?.cancel();
+    
+    // Create timer for remaining time
+    _autoConfirmTimers[orderId] = Timer(remainingTime, () {
+      final orderIndex = _orders.indexWhere((o) => o.id == orderId);
+      if (orderIndex == -1) return;
+
+      final order = _orders[orderIndex];
+      
+      if (order.status == OrderStatus.pending) {
+        debugPrint('⏰ Auto-confirming order $orderId');
+        updateStatus(orderId, OrderStatus.confirmed);
+        
+        if (_notificationProvider != null) {
+          _notificationProvider!.addNotification(AppNotification(
+            id: DateTime.now().millisecondsSinceEpoch.toString(),
+            userId: order.customerId,
+            title: 'Order Confirmed',
+            message: 'Your order #$orderId has been confirmed',
+            type: 'order_update',
+            timestamp: DateTime.now(),
+            data: {'orderId': orderId},
+          ));
+        }
+      }
+      
+      _autoConfirmTimers.remove(orderId);
+    });
+  }
+
   // ADDED: Send order status notification helper
   void _sendOrderStatusNotification(String orderId, OrderStatus newStatus) {
     if (_notificationProvider == null) return;
@@ -311,6 +414,23 @@ class OrderProvider extends ChangeNotifier {
       timestamp: DateTime.now(),
       data: {'orderId': orderId},
     ));
+  }
+
+  // ADDED: Manually confirm order (by customer or admin)
+  Future<void> confirmOrder(String orderId) async {
+    try {
+      // Cancel the auto-confirm timer since it's being manually confirmed
+      _autoConfirmTimers[orderId]?.cancel();
+      _autoConfirmTimers.remove(orderId);
+      
+      // Update status to confirmed
+      await updateStatus(orderId, OrderStatus.confirmed);
+      
+      debugPrint('✅ Order $orderId manually confirmed');
+    } catch (e) {
+      debugPrint('❌ Failed to confirm order: $e');
+      rethrow;
+    }
   }
 
   // ADDED: Cancel order with reason

@@ -45,7 +45,6 @@ class InventoryItem {
       'quantity': quantity,
       'unit': unit,
       'low_stock_threshold': lowStockThreshold,
-      'updated_at': updatedAt?.toIso8601String() ?? DateTime.now().toIso8601String(),
     };
     
     // Include IDs only if they exist (for updates)

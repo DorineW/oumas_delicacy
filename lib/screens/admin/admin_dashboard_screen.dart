@@ -7,6 +7,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../constants/colors.dart';
 import '../../services/auth_service.dart';
@@ -37,15 +38,45 @@ class AdminDashboardScreen extends StatefulWidget {
 class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   bool _showChart = false;
   String _selectedTimeFilter = '6H';
+  double _todayDeliveredRevenue = 0.0; // Store revenue from database view
 
   @override
   void initState() {
     super.initState();
+    // Load all orders for admin dashboard
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final orderProvider = Provider.of<OrderProvider>(context, listen: false);
+      orderProvider.loadAllOrders();
+      _loadTodayRevenue(); // Load revenue from view
+    });
   }
 
   @override
   void dispose() {
     super.dispose();
+  }
+
+  // Load today's delivered revenue from database view
+  Future<void> _loadTodayRevenue() async {
+    try {
+      final today = DateTime.now();
+      final todayStr = '${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
+      
+      final response = await Supabase.instance.client
+          .from('daily_revenue_breakdown')
+          .select('daily_revenue, completed_count')
+          .eq('order_day', todayStr)
+          .maybeSingle();
+      
+      if (response != null && mounted) {
+        setState(() {
+          _todayDeliveredRevenue = (response['daily_revenue'] as num?)?.toDouble() ?? 0.0;
+        });
+        debugPrint('✅ Loaded today\'s revenue from view: $_todayDeliveredRevenue');
+      }
+    } catch (e) {
+      debugPrint('❌ Failed to load today\'s revenue: $e');
+    }
   }
 
   void _markOrderHandled(String orderId, OrderProvider provider) {
@@ -72,19 +103,20 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             borderRadius: BorderRadius.circular(16),
           ),
           child: Column(
-            mainAxisSize: MainAxisSize.min,
             children: [
+              // Drag handle
               Container(
                 width: 40,
                 height: 4,
-                margin: const EdgeInsets.all(16),
+                margin: const EdgeInsets.symmetric(vertical: 12),
                 decoration: BoxDecoration(
                   color: Colors.grey[300],
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
+              // Header
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -109,7 +141,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                   ],
                 ),
               ),
-              const SizedBox(height: 16),
+              // Content
               Expanded(
                 child: pendingOrders.isEmpty
                     ? Center(
@@ -133,7 +165,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                         ),
                       )
                     : ListView.builder(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                         itemCount: pendingOrders.length,
                         itemBuilder: (_, index) {
                           final order = pendingOrders[index];
@@ -155,7 +187,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                         },
                       ),
               ),
-              const SizedBox(height: 16),
             ],
           ),
         );
@@ -632,9 +663,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     final todayOrders = provider.orders.where((o) =>
       o.date.year == now.year && o.date.month == now.month && o.date.day == now.day).toList();
 
-    final todayRevenue = todayOrders
-        .where((o) => o.status == OrderStatus.delivered)
-        .fold<double>(0, (sum, o) => sum + o.totalAmount);
+    // Use revenue from database view (more accurate than in-memory calculation)
+    final todayRevenue = _todayDeliveredRevenue;
 
     final pendingOrders = provider.orders.where((o) => o.status == OrderStatus.pending).length;
     final deliveredToday = todayOrders.where((o) => o.status == OrderStatus.delivered).length;

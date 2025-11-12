@@ -29,7 +29,10 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> with SingleTick
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final provider = context.read<OrderProvider>();
       if (widget.customerId != null) {
+        debugPrint('📦 Loading orders for customer: ${widget.customerId}');
         provider.loadOrders(widget.customerId!);
+      } else {
+        debugPrint('⚠️ No customerId provided to OrderHistoryScreen');
       }
     });
   }
@@ -56,6 +59,61 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> with SingleTick
     final timeSinceOrder = DateTime.now().difference(order.date);
     final remainingSeconds = (5 * 60) - timeSinceOrder.inSeconds;
     return remainingSeconds > 0 ? remainingSeconds : 0;
+  }
+
+  // ADDED: Confirm order manually
+  void _confirmOrder(BuildContext context, Order order) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.check_circle, color: AppColors.success),
+            SizedBox(width: 8),
+            Text('Confirm Order'),
+          ],
+        ),
+        content: const Text(
+          'Are you sure you want to confirm this order? '
+          'This will skip the cancellation window and your order will be prepared immediately.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Go Back'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              final provider = context.read<OrderProvider>();
+              try {
+                await provider.confirmOrder(order.id);
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Order confirmed successfully!'),
+                    backgroundColor: AppColors.success,
+                  ),
+                );
+              } catch (e) {
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Failed to confirm order: $e'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.success,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Confirm Order'),
+          ),
+        ],
+      ),
+    );
   }
 
   // ADDED: Cancel order with reason
@@ -636,6 +694,26 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> with SingleTick
             const SizedBox(height: 16),
             Row(
               children: [
+                // Confirm Order button (for pending orders within cancellation window)
+                if (order.status == OrderStatus.pending) ...[
+                  Expanded(
+                    flex: 3,
+                    child: ElevatedButton.icon(
+                      onPressed: () => _confirmOrder(context, order),
+                      icon: const Icon(Icons.check_circle, size: 18),
+                      label: const Text('Confirm Order'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.success,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                    ),
+                  ),
+                  if (canCancel) const SizedBox(width: 8),
+                ],
                 // Cancel button (only if can cancel)
                 if (canCancel) ...[
                   Expanded(
@@ -653,25 +731,27 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> with SingleTick
                       ),
                     ),
                   ),
-                  const SizedBox(width: 8),
                 ],
-                // Reorder button
-                Expanded(
-                  flex: 3,
-                  child: ElevatedButton.icon(
-                    onPressed: () => _reorderItems(order),
-                    icon: const Icon(Icons.replay, size: 18),
-                    label: const Text('Reorder'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.primary,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
+                // Reorder button (for completed orders)
+                if (order.status == OrderStatus.delivered) ...[
+                  if (canCancel) const SizedBox(width: 8),
+                  Expanded(
+                    flex: 3,
+                    child: ElevatedButton.icon(
+                      onPressed: () => _reorderItems(order),
+                      icon: const Icon(Icons.replay, size: 18),
+                      label: const Text('Reorder'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.primary,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
                       ),
                     ),
                   ),
-                ),
+                ],
               ],
             ),
           ],

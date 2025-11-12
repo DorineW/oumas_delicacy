@@ -87,6 +87,11 @@ class _MpesaPaymentConfirmationScreenState
             _actualOrderId = statusResult['orderId'];
             debugPrint('✅ Order created with ID: $_actualOrderId');
           }
+          // Update receipt number if available
+          if (statusResult['mpesaReceipt'] != null && _mpesaReceiptNumber == null) {
+            _mpesaReceiptNumber = statusResult['mpesaReceipt'];
+            debugPrint('✅ M-Pesa Receipt: $_mpesaReceiptNumber');
+          }
         });
 
         if (status == 'confirmed' || status == 'cancelled' || status == 'pending') {
@@ -196,10 +201,17 @@ class _MpesaPaymentConfirmationScreenState
   }
 
   void _navigateToHome() {
+    // Navigate to order history, keeping the home route in the stack
     Navigator.of(context).pushNamedAndRemoveUntil(
-      '/order-history', // Navigate to order history instead of home
+      '/home',
       (route) => false,
     );
+    // Then push order history on top
+    Future.delayed(const Duration(milliseconds: 100), () {
+      if (mounted) {
+        Navigator.of(context).pushNamed('/order-history');
+      }
+    });
   }
 
   @override
@@ -573,7 +585,6 @@ class _MpesaPaymentConfirmationScreenState
   // ADDED: Receipt widget
   Widget _buildReceipt() {
     final now = DateTime.now();
-    final transactionCode = _mpesaReceiptNumber ?? 'TEST${now.millisecondsSinceEpoch.toString().substring(7)}';
     
     return Container(
       width: double.infinity,
@@ -602,7 +613,7 @@ class _MpesaPaymentConfirmationScreenState
           ),
           const Divider(height: 24, color: Colors.green),
           
-          _buildReceiptRow('Transaction Code', transactionCode),
+          _buildReceiptRow('Transaction Code', _mpesaReceiptNumber ?? 'N/A'),
           const SizedBox(height: 12),
           _buildReceiptRow('Phone Number', widget.phoneNumber),
           const SizedBox(height: 12),
