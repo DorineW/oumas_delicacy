@@ -500,6 +500,34 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   ),
                   const SizedBox(height: 16),
 
+                  // Email verification hint
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.blue.withOpacity(0.25)),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Icon(Icons.mark_email_unread, color: Colors.blue, size: 24),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            'After creating an account, check your email for a verification link. Click the link to verify your email and you\'ll be automatically signed in.',
+                            style: TextStyle(
+                              color: AppColors.darkText.withOpacity(0.8),
+                              fontSize: 13,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+
                   // Already have account
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,

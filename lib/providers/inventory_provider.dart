@@ -42,10 +42,10 @@ class InventoryProvider extends ChangeNotifier {
       final supabase = Supabase.instance.client;
       debugPrint('✅ Supabase client initialized');
       
-      // Query with all columns explicitly
+      // Query from 'inventory' table (not 'inventory_items')
       final response = await supabase
-          .from('inventory_items')
-          .select('id, product_id, name, category, quantity, unit, low_stock_threshold, updated_at')
+          .from('inventory')
+          .select('id, name, category, current_stock, unit, low_stock_threshold, updated_at')
           .order('name', ascending: true);
 
       debugPrint('✅ Query executed successfully');
@@ -69,7 +69,19 @@ class InventoryProvider extends ChangeNotifier {
           debugPrint('--- Parsing item ${i + 1}/${response.length} ---');
           debugPrint('Raw JSON: $json');
           
-          final item = InventoryItem.fromJson(json);
+          // Map database columns to model fields
+          final mappedJson = {
+            'id': json['id'],
+            'product_id': null,
+            'name': json['name'],
+            'category': json['category'],
+            'quantity': json['current_stock'], // Map current_stock to quantity
+            'unit': json['unit'],
+            'low_stock_threshold': json['low_stock_threshold'],
+            'updated_at': json['updated_at'],
+          };
+          
+          final item = InventoryItem.fromJson(mappedJson);
           items.add(item);
           debugPrint('✅ Successfully parsed: ${item.name} - ${item.quantity} ${item.unit}');
         } catch (e, stackTrace) {
@@ -105,17 +117,31 @@ class InventoryProvider extends ChangeNotifier {
     try {
       debugPrint('➕ Adding new inventory item: ${item.name}');
       
+      // Map model fields to database columns (don't include id - let Supabase generate it)
+      final dbData = {
+        'name': item.name,
+        'category': item.category,
+        'current_stock': item.quantity, // Map quantity to current_stock
+        'unit': item.unit,
+        'low_stock_threshold': item.lowStockThreshold,
+        'cost_price': 0.0, // Default cost price
+        'is_active': true,
+      };
+      
+      debugPrint('📤 Sending data to DB: $dbData');
+      
       final response = await Supabase.instance.client
-          .from('inventory_items')
-          .insert(item.toJson())
+          .from('inventory')
+          .insert(dbData)
           .select()
           .single();
 
       debugPrint('✅ Inventory item added: $response');
       await loadInventoryItems(); // Reload to get fresh data
       return true;
-    } catch (e) {
+    } catch (e, stackTrace) {
       debugPrint('❌ Error adding inventory item: $e');
+      debugPrint('Stack trace: $stackTrace');
       _error = 'Failed to add inventory item: $e';
       notifyListeners();
       return false;
@@ -125,12 +151,29 @@ class InventoryProvider extends ChangeNotifier {
   // Update an inventory item
   Future<bool> updateInventoryItem(InventoryItem item) async {
     try {
+      if (item.id == null) {
+        debugPrint('❌ Cannot update item without ID');
+        _error = 'Item ID is required for updates';
+        notifyListeners();
+        return false;
+      }
+      
       debugPrint('🔄 Updating inventory item: ${item.name}');
       
+      // Map model fields to database columns
+      final dbData = {
+        'name': item.name,
+        'category': item.category,
+        'current_stock': item.quantity, // Map quantity to current_stock
+        'unit': item.unit,
+        'low_stock_threshold': item.lowStockThreshold,
+        'updated_at': DateTime.now().toIso8601String(),
+      };
+      
       await Supabase.instance.client
-          .from('inventory_items')
-          .update(item.toJson())
-          .eq('id', item.id);
+          .from('inventory')
+          .update(dbData)
+          .eq('id', item.id!);
 
       debugPrint('✅ Inventory item updated');
       await loadInventoryItems(); // Reload to get fresh data
@@ -149,7 +192,7 @@ class InventoryProvider extends ChangeNotifier {
       debugPrint('🗑️ Deleting inventory item: $id');
       
       await Supabase.instance.client
-          .from('inventory_items')
+          .from('inventory')
           .delete()
           .eq('id', id);
 
@@ -170,9 +213,9 @@ class InventoryProvider extends ChangeNotifier {
       debugPrint('📦 Updating stock for item $id to $newQuantity');
       
       await Supabase.instance.client
-          .from('inventory_items')
+          .from('inventory')
           .update({
-            'quantity': newQuantity,
+            'current_stock': newQuantity, // Map to current_stock
             'updated_at': DateTime.now().toIso8601String(),
           })
           .eq('id', id);

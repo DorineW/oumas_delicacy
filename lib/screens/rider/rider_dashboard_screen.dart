@@ -9,7 +9,6 @@ import '../../models/order.dart'; // ADDED: Import Order model
 import '../../providers/rider_provider.dart'; // ADDED: Import RiderProvider
 import 'rider_orders_screen.dart';
 import 'rider_profile_screen.dart';
-import 'rider_earnings_screen.dart';
 
 class RiderDashboardScreen extends StatefulWidget {
   const RiderDashboardScreen({super.key});
@@ -292,11 +291,6 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen> {
           } else if (index == 2) {
             Navigator.push(
               context,
-              MaterialPageRoute(builder: (_) => const RiderEarningsScreen()),
-            );
-          } else if (index == 3) {
-            Navigator.push(
-              context,
               MaterialPageRoute(builder: (_) => const RiderProfileScreen()),
             );
           } else {
@@ -316,10 +310,6 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen> {
           BottomNavigationBarItem(
             icon: Icon(Icons.list_alt),
             label: 'All Orders',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.attach_money),
-            label: 'Earnings',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.person),

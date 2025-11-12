@@ -5,7 +5,6 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../constants/colors.dart';
 import '../services/auth_service.dart';
@@ -143,7 +142,18 @@ class _LoginScreenState extends State<LoginScreen>
     } catch (e) {
       debugPrint('❌ Login error: $e');
       if (!mounted) return;
-      _showErrorDialog('Login failed: $e');
+      
+      // Parse the error for a user-friendly message
+      String errorMessage = 'An unexpected error occurred. Please try again.';
+      if (e.toString().contains('SocketException') || e.toString().contains('NetworkException')) {
+        errorMessage = 'Network connection error. Please check your internet and try again.';
+      } else if (e.toString().contains('TimeoutException')) {
+        errorMessage = 'Connection timed out. Please try again.';
+      } else if (e.toString().contains('FormatException')) {
+        errorMessage = 'Invalid response from server. Please try again later.';
+      }
+      
+      _showErrorDialog(errorMessage);
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -152,17 +162,67 @@ class _LoginScreenState extends State<LoginScreen>
   }
 
   void _showErrorDialog(String message) {
+    // Parse and format the error message for better UX
+    String title = 'Login Failed';
+    String formattedMessage = message;
+    IconData icon = Icons.error_outline;
+    Color iconColor = Colors.red;
+
+    // Handle common error cases
+    if (message.toLowerCase().contains('invalid login credentials') || 
+        message.toLowerCase().contains('invalid email or password')) {
+      title = 'Incorrect Credentials';
+      formattedMessage = 'The email or password you entered is incorrect. Please check and try again.';
+      icon = Icons.lock_outline;
+    } else if (message.toLowerCase().contains('email not confirmed')) {
+      title = 'Email Not Verified';
+      formattedMessage = 'Please verify your email address. Check your inbox for the verification link.';
+      icon = Icons.mail_outline;
+      iconColor = Colors.orange;
+    } else if (message.toLowerCase().contains('network') || 
+               message.toLowerCase().contains('connection')) {
+      title = 'Connection Error';
+      formattedMessage = 'Unable to connect to the server. Please check your internet connection and try again.';
+      icon = Icons.wifi_off;
+    } else if (message.toLowerCase().contains('too many requests')) {
+      title = 'Too Many Attempts';
+      formattedMessage = 'Too many login attempts. Please wait a few minutes and try again.';
+      icon = Icons.timer_outlined;
+      iconColor = Colors.orange;
+    } else if (message.toLowerCase().contains('user not found')) {
+      title = 'Account Not Found';
+      formattedMessage = 'No account found with this email. Please check the email or sign up.';
+      icon = Icons.person_outline;
+    }
+
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Error'),
-        content: Text(message),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            Icon(icon, color: iconColor, size: 28),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                title,
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          formattedMessage,
+          style: const TextStyle(fontSize: 15, height: 1.4),
+        ),
         actions: [
           TextButton(
-            onPressed: () {
-              Navigator.of(ctx).pop();
-            },
-            child: const Text('OK'),
+            onPressed: () => Navigator.of(ctx).pop(),
+            style: TextButton.styleFrom(
+              foregroundColor: AppColors.primary,
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+            ),
+            child: const Text('OK', style: TextStyle(fontWeight: FontWeight.bold)),
           ),
         ],
       ),
@@ -340,36 +400,6 @@ class _LoginScreenState extends State<LoginScreen>
                       ),
                     ),
                   ),
-
-                  const SizedBox(height: 12),
-
-                  // ADDED: Email verification hint
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.blue.withOpacity(0.08),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.blue.withOpacity(0.25)),
-                    ),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Icon(Icons.mark_email_unread, color: Colors.blue),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            'After creating an account, open the verification link sent to your email. The app will sign you in automatically.',
-                            style: TextStyle(
-                              color: AppColors.darkText.withOpacity(0.8),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  const SizedBox(height: 12),
                 ],
                 ),
               ),

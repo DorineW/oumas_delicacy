@@ -53,12 +53,6 @@ class RiderProvider with ChangeNotifier {
         .length;
   }
 
-  double todayEarnings(String riderId) {
-    return todayOrdersForRider(riderId)
-        .where((o) => o.status == order_model.OrderStatus.delivered)
-        .fold(0.0, (sum, order) => sum + (order.totalAmount * 0.1)); // 10% commission
-  }
-
   // MAIN: Load orders from Supabase with detailed debugging (same pattern as MenuProvider)
   Future<void> loadOrdersForRider(String riderId) async {
     _isLoading = true;

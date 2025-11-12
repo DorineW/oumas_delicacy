@@ -11,12 +11,14 @@ import '../models/cart_item.dart';
 import '../models/order.dart';
 import '../services/location_service.dart';
 import '../services/auth_service.dart';
+import '../services/mpesa_service.dart'; // ADDED: M-Pesa service
 import '../providers/cart_provider.dart';
 import '../providers/menu_provider.dart';
 import '../providers/order_provider.dart';
 import '../constants/colors.dart';
 import 'location.dart'; // UPDATED: Use existing LocationScreen
 import '../providers/location_provider.dart'; // ADDED: Import LocationProvider (Removed duplicate import)
+import 'mpesa_payment_confirmation_screen.dart'; // ADDED: M-Pesa confirmation screen
 
 class CheckoutScreen extends StatefulWidget {
   final List<CartItem> selectedItems;
@@ -219,27 +221,52 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   }
 
   Future<void> _payNow() async {
-    // SIMPLIFIED: Just basic validation and process order
+    // REQUIRED: Location and payment must be provided
     
     // Only check if mounted before showing errors
     if (!mounted) return;
 
-    // 1. Validate delivery address if delivery is requested
-    if (_deliveryLatLng != null) {
-      if (_deliveryAddressController.text.trim().isEmpty) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Please enter or select a delivery address')),
-        );
-        return;
-      }
-    }
-
-    // 2. Validate contact phone number (simplified - only contact phone)
-    if (_phoneController.text.trim().isEmpty) {
+    // 1. REQUIRED: Validate delivery location is selected
+    if (_deliveryLatLng == null) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter your contact phone number')),
+        const SnackBar(
+          content: Row(
+            children: [
+              Icon(Icons.location_off, color: Colors.white),
+              SizedBox(width: 8),
+              Expanded(child: Text('Please select a delivery location (Current Location or Map)')),
+            ],
+          ),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    // 2. Validate delivery address details are provided
+    if (_deliveryAddressController.text.trim().isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter delivery address details (building, floor, etc.)')),
+      );
+      return;
+    }
+
+    // 3. REQUIRED: Validate M-Pesa phone number for payment
+    if (_mpesaPhoneController.text.trim().isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Row(
+            children: [
+              Icon(Icons.payment, color: Colors.white),
+              SizedBox(width: 8),
+              Expanded(child: Text('Please enter your M-Pesa phone number for payment')),
+            ],
+          ),
+          backgroundColor: Colors.red,
+        ),
       );
       return;
     }
@@ -485,92 +512,120 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   }
   */
 
-  // ADDED: Process order after payment confirmation
+  // UPDATED: Process order with M-Pesa payment
   void _processOrder() async {
     setState(() => _isProcessing = true);
 
     try {
-      await Future.delayed(const Duration(seconds: 2));
-
-      if (!mounted) {
-        setState(() => _isProcessing = false);
-        return;
-      }
-
       final auth = context.read<AuthService>();
       final orderProvider = context.read<OrderProvider>();
       final cartProvider = context.read<CartProvider>();
       final currentUser = auth.currentUser;
       final customerId = currentUser?.id ?? 'guest';
       final customerName = currentUser?.name ?? 'Guest User';
-      // Assuming DeliveryType is an enum defined in ../models/order.dart
+      
+      // Validate M-Pesa phone number
+      final mpesaPhone = _mpesaPhoneController.text.trim();
+      if (mpesaPhone.isEmpty) {
+        if (!mounted) return;
+        _showErrorSnackBar('Please enter M-Pesa phone number');
+        setState(() => _isProcessing = false);
+        return;
+      }
+
+      // Determine delivery type
       final DeliveryType orderDeliveryType = _deliveryLatLng != null
           ? DeliveryType.delivery
           : DeliveryType.pickup;
 
-      // UPDATED: Create order with proper structure
-      final orderId = orderProvider.generateOrderId();
+      // Create temporary order ID (will be replaced by database UUID)
+      final tempOrderId = 'temp-${DateTime.now().millisecondsSinceEpoch}';
+      
+      // Create order items
       final orderItems = widget.selectedItems.map((item) => OrderItem(
         id: item.id,
-        menuItemId: item.menuItemId, // Pass the menu item UUID
+        menuItemId: item.menuItemId,
         title: item.mealTitle,
         quantity: item.quantity,
         price: item.price,
       )).toList();
 
-      // Assuming OrderStatus is an enum defined in ../models/order.dart
+      // Create order object
       final order = Order(
-        id: orderId,
+        id: tempOrderId, // Temporary ID, will be replaced by database UUID
         customerId: customerId,
         customerName: customerName,
         deliveryPhone: _phoneController.text.isNotEmpty ? _phoneController.text : null,
         items: orderItems,
-        subtotal: subtotalAmount, // ADDED
-        deliveryFee: orderDeliveryType == DeliveryType.delivery ? _deliveryFee : 0, // ADDED
-        tax: tax, // ADDED
+        subtotal: subtotalAmount,
+        deliveryFee: orderDeliveryType == DeliveryType.delivery ? _deliveryFee : 0,
+        tax: tax,
         totalAmount: totalAmount,
         date: DateTime.now(),
         status: OrderStatus.pending,
         deliveryType: orderDeliveryType,
         deliveryAddress: _deliveryAddressController.text.isNotEmpty
-            ? {'address': _deliveryAddressController.text} // FIXED: Convert to Map
+            ? {'address': _deliveryAddressController.text}
             : null,
       );
 
-      // Save to database
-      await orderProvider.addOrder(order);
+      // Save order to database FIRST (so backend can verify it exists)
+      final dbOrderId = await orderProvider.addOrder(order);
+      debugPrint('✅ Order saved to database with ID: $dbOrderId');
 
-      // Clear cart items after successful order
-      for (final item in widget.selectedItems) {
-        cartProvider.removeItem(item.id);
+      // Format phone number for M-Pesa
+      final formattedPhone = MpesaService.formatPhoneNumber(mpesaPhone);
+
+      // Initiate M-Pesa payment (use database UUID, not ORD-XXXXX)
+      debugPrint('💳 Initiating M-Pesa payment...');
+      final paymentResult = await MpesaService.initiateStkPush(
+        orderId: dbOrderId, // FIXED: Use database UUID instead of ORD-XXXXX
+        phoneNumber: mpesaPhone,
+        amount: totalAmount,
+        userId: customerId,
+      );
+
+      if (!mounted) {
+        setState(() => _isProcessing = false);
+        return;
       }
 
-      // Navigate to confirmation screen
-      Navigator.pushReplacementNamed(
-        context,
-        '/confirmation',
-        arguments: {
-          'items': widget.selectedItems,
-          'deliveryType': orderDeliveryType,
-          'totalAmount': totalAmount,
-          'subtotal': subtotalAmount, // ADDED
-          'deliveryFee': orderDeliveryType == DeliveryType.delivery ? _deliveryFee : 0,
-          'tax': tax, // ADDED
-          'customerId': customerId,
-          'customerName': customerName,
-          'deliveryAddress': _deliveryAddressController.text.isNotEmpty
-              ? {'address': _deliveryAddressController.text} // FIXED: Pass as Map
-              : null,
-          'phoneNumber': _phoneController.text.isNotEmpty
-              ? _phoneController.text
-              : null,
-          'mpesaNumber': _mpesaPhoneController.text.isNotEmpty 
-              ? _mpesaPhoneController.text 
-              : null, // UPDATED: Handle empty M-Pesa number
-          'paymentMethod': 'Cash on Delivery', // UPDATED: Changed payment method
-        },
-      );
+      if (paymentResult['success'] == true) {
+        debugPrint('✅ STK push initiated successfully');
+        
+        // Clear cart items after successful payment initiation
+        for (final item in widget.selectedItems) {
+          cartProvider.removeItem(item.id);
+        }
+
+        // Navigate to M-Pesa confirmation screen
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) => MpesaPaymentConfirmationScreen(
+              orderId: dbOrderId, // FIXED: Use database UUID
+              totalAmount: totalAmount,
+              checkoutRequestId: paymentResult['checkoutRequestID'],
+              phoneNumber: formattedPhone, // UPDATED: Use formatted phone for receipt
+            ),
+          ),
+        );
+      } else {
+        // Payment initiation failed
+        debugPrint('❌ Payment initiation failed: ${paymentResult['error']}');
+        
+        // Cancel the order since payment failed
+        orderProvider.cancelOrder(dbOrderId, 'Payment initiation failed'); // FIXED: Use database UUID
+        
+        if (!mounted) return;
+        _showErrorSnackBar(
+          paymentResult['error'] ?? 'Failed to initiate payment. Please try again.',
+        );
+        setState(() => _isProcessing = false);
+      }
     } catch (e) {
+      debugPrint('❌ Error processing order: $e');
+      
       if (!mounted) {
         setState(() => _isProcessing = false);
         return;
@@ -738,9 +793,20 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 child: const Icon(Icons.delivery_dining, color: AppColors.primary, size: 20),
               ),
               const SizedBox(width: 12),
-              const Text(
-                'Delivery Information',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.darkText),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Delivery Information',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.darkText),
+                    ),
+                    Text(
+                      'Required - Select delivery location',
+                      style: TextStyle(fontSize: 11, color: Colors.red, fontWeight: FontWeight.w500),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
@@ -885,14 +951,14 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             ),
             const SizedBox(width: 12),
             const Text(
-              'M-Pesa Payment',
+              'Payment Details',
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.darkText),
             ),
           ],
         ),
         const SizedBox(height: 16),
 
-        // M-Pesa payment section (always shown, not optional)
+        // Payment info container
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
@@ -910,90 +976,13 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [AppColors.success, AppColors.success.withOpacity(0.8)],
-                  ),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Row(
-                      children: [
-                        Icon(Icons.phone_android, color: Colors.white, size: 20),
-                        SizedBox(width: 8),
-                        Text(
-                          'M-Pesa Till Number',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 14,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    const Text(
-                      '123456',
-                      style: TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Use this number when making payment',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.white.withOpacity(0.9),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-
-              // Contact Phone Number
-              TextFormField(
-                controller: _phoneController,
-                keyboardType: TextInputType.phone,
-                decoration: InputDecoration(
-                  labelText: 'Contact Phone Number',
-                  hintText: 'For order updates',
-                  prefixText: '+254 ',
-                  prefixIcon: const Icon(Icons.phone_outlined, color: AppColors.primary),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: const BorderSide(color: AppColors.primary, width: 2),
-                  ),
-                  filled: true,
-                  fillColor: AppColors.background,
-                ),
-                validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
-                    return 'Please enter your contact number';
-                  }
-                  return null;
-                },
-              ),
-
-              const SizedBox(height: 16),
-
-              // M-Pesa Phone Number
+              // M-Pesa Phone Number (used for both payment and contact)
               TextFormField(
                 controller: _mpesaPhoneController,
                 keyboardType: TextInputType.phone,
                 decoration: InputDecoration(
                   labelText: 'M-Pesa Phone Number *',
-                  hintText: 'Number you will pay from',
+                  hintText: 'Enter your phone number (e.g., 0712345678)',
                   prefixText: '+254 ',
                   prefixIcon: const Icon(Icons.phone_android, color: AppColors.success),
                   border: OutlineInputBorder(
@@ -1005,12 +994,18 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   ),
                   filled: true,
                   fillColor: AppColors.background,
+                  helperText: 'We\'ll send payment prompt & receipt to this number',
+                  helperStyle: const TextStyle(fontSize: 12),
                 ),
                 validator: (value) {
                   if (value == null || value.trim().isEmpty) {
-                    return 'M-Pesa number is required for payment';
+                    return 'Phone number is required';
                   }
                   return null;
+                },
+                onChanged: (value) {
+                  // Auto-sync to contact phone
+                  _phoneController.text = value;
                 },
               ),
 

@@ -25,7 +25,13 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> with SingleTick
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
     
-    // REMOVED: Demo data seeding - let users have real order history only
+    // Load orders from database when screen opens
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final provider = context.read<OrderProvider>();
+      if (widget.customerId != null) {
+        provider.loadOrders(widget.customerId!);
+      }
+    });
   }
 
   @override

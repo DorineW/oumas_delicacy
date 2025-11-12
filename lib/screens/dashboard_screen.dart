@@ -146,7 +146,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                     Navigator.push(
                                       context,
                                       MaterialPageRoute(
-                                        builder: (_) => const OrderHistoryScreen(),
+                                        builder: (_) => OrderHistoryScreen(customerId: userId),
                                       ),
                                     );
                                   },
@@ -206,7 +206,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                         Navigator.push(
                                           context,
                                           MaterialPageRoute(
-                                            builder: (_) => const OrderHistoryScreen(),
+                                            builder: (_) => OrderHistoryScreen(customerId: userId),
                                           ),
                                         );
                                       },
@@ -281,7 +281,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                 Navigator.push(
                                   context,
                                   MaterialPageRoute(
-                                    builder: (_) => const OrderHistoryScreen(),
+                                    builder: (_) => OrderHistoryScreen(customerId: userId),
                                   ),
                                 );
                               },

@@ -175,7 +175,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
       // Force refresh from DB
       await Future.delayed(const Duration(milliseconds: 300));
-      await auth.getCurrentProfile(); // refetch and update currentUser
+      await auth.refreshProfile(); // FIXED: Use public method to refresh current user
       
       if (!mounted) return;
 

@@ -1,7 +1,7 @@
 //lib/models/inventory_item.dart
 //the inventory item model representing items in stock
 class InventoryItem {
-  final String id;
+  final String? id; // Made optional - Supabase generates UUID
   final String? productId; // ADDED: Match DB schema
   final String name;
   final String category;
@@ -11,7 +11,7 @@ class InventoryItem {
   final DateTime? updatedAt; // ADDED: Match DB schema
 
   InventoryItem({
-    required this.id,
+    this.id, // Now optional
     this.productId,
     required this.name,
     required this.category,
@@ -39,9 +39,7 @@ class InventoryItem {
 
   // ADDED: Convert to JSON for Supabase
   Map<String, dynamic> toJson() {
-    return {
-      'id': id,
-      'product_id': productId,
+    final json = <String, dynamic>{
       'name': name,
       'category': category,
       'quantity': quantity,
@@ -49,6 +47,12 @@ class InventoryItem {
       'low_stock_threshold': lowStockThreshold,
       'updated_at': updatedAt?.toIso8601String() ?? DateTime.now().toIso8601String(),
     };
+    
+    // Include IDs only if they exist (for updates)
+    if (id != null) json['id'] = id;
+    if (productId != null) json['product_id'] = productId;
+    
+    return json;
   }
 
   // ADDED: Check if stock is low

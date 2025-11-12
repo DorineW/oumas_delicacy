@@ -94,6 +94,11 @@ class AuthService extends ChangeNotifier {
     }
   }
 
+  /// Public method to refresh the current user profile from database
+  Future<void> refreshProfile() async {
+    await _refreshCurrentUserFromProfile();
+  }
+
   /// Sign up with email/password and ensure a users row exists when session is active.
   Future<AuthResponse> signUpWithEmail({
     required String email,

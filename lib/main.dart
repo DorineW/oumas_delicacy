@@ -12,7 +12,6 @@ import 'package:flutter_dotenv/flutter_dotenv.dart'; // ADDED: Environment varia
 // ADDED: All necessary screen imports
 import 'screens/login_screen.dart';
 import 'screens/home_screen.dart';
-import 'screens/order_confirmation_screen.dart';
 import 'screens/rider/rider_dashboard_screen.dart';
 import 'screens/admin/admin_dashboard_screen.dart';
 import 'screens/order_history_screen.dart'; // ADDED
@@ -208,25 +207,6 @@ class _AppContentState extends State<_AppContent> {
           '/rider': (context) => const RiderDashboardScreen(),
           '/admin': (context) => const AdminDashboardScreen(),
           '/order-history': (context) => const OrderHistoryScreen(), // ADDED
-        },
-        onGenerateRoute: (settings) {
-          if (settings.name == '/confirmation') {
-            final args = settings.arguments as Map<String, dynamic>;
-            
-            return MaterialPageRoute(
-              builder: (context) => OrderConfirmationScreen(
-                orderItems: args['items'] as List<CartItem>,
-                deliveryType: args['deliveryType'] as DeliveryType,
-                totalAmount: args['totalAmount'] as int,
-                customerId: args['customerId'] as String,
-                customerName: args['customerName'] as String,
-                deliveryAddress: args['deliveryAddress'] as Map<String, dynamic>?, // FIXED: Map type
-                specialInstructions: args['phoneNumber'] as String?,
-              ),
-            );
-          }
-          
-          return null;
         },
         onUnknownRoute: (settings) {
           return MaterialPageRoute(

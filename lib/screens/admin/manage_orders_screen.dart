@@ -32,11 +32,8 @@ class _ManageOrdersScreenState extends State<ManageOrdersScreen>
   OrderSort _currentSort = OrderSort.newestFirst;
   Timer? _autoRefreshTimer;
 
-  Set<OrderStatus> _selectedStatuses = {
-    OrderStatus.pending,
-    OrderStatus.confirmed,
-    OrderStatus.preparing, // UPDATED: Use preparing instead of inProgress
-  };
+  // FIXED: Initialize with ALL statuses selected by default
+  Set<OrderStatus> _selectedStatuses = Set.from(OrderStatus.values);
 
   @override
   void initState() {
@@ -199,6 +196,14 @@ class _ManageOrdersScreenState extends State<ManageOrdersScreen>
                   });
                 },
                 child: const Text('Select All'),
+              ),
+              TextButton(
+                onPressed: () {
+                  setDialogState(() {
+                    _selectedStatuses.clear();
+                  });
+                },
+                child: const Text('Clear All'),
               ),
               TextButton(
                 onPressed: () => Navigator.of(context).pop(),

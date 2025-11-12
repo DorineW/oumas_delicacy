@@ -1,22 +1,14 @@
 // lib/screens/admin/reports_screen.dart
-import 'dart:io';
 import 'dart:math';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:pdf/widgets.dart' as pw;
-import 'package:printing/printing.dart';
-import 'package:share_plus/share_plus.dart';
-import 'package:open_filex/open_filex.dart';
-import 'package:path/path.dart' as p;
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../constants/colors.dart';
 
 enum ReportPeriod { day, week, month, year }
-enum ChartType { bar, line, pie }
+enum ChartType { bar, line }
 
 class ReportsScreen extends StatefulWidget {
   const ReportsScreen({super.key});
@@ -39,8 +31,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
   final compactFmt = NumberFormat.compactCurrency(locale: 'en_US', symbol: 'Ksh ');
 
   bool _loading = false;
-  String _copyProgressMessage = '';
-  String? _lastSavedDir;
 
   @override
   void initState() {
@@ -58,82 +48,162 @@ class _ReportsScreenState extends State<ReportsScreen> {
   }
 
   // ---------------------------
-  // Enhanced data fetchers
+  // Real data fetchers from Supabase
   // ---------------------------
   Future<List<_ChartPoint>> fetchSalesData(ReportPeriod period, DateTime date) async {
-    await Future.delayed(const Duration(milliseconds: 800));
-    
-    final random = Random(date.millisecondsSinceEpoch);
-    
-    if (period == ReportPeriod.day) {
-      return List.generate(24, (i) {
-        final label = '${i.toString().padLeft(2, '0')}:00';
-        final value = 500.0 + random.nextDouble() * 2000;
-        return _ChartPoint(label, value);
-      });
-    } else if (period == ReportPeriod.week) {
-      final days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-      return List.generate(7, (i) {
-        final value = 5000.0 + random.nextDouble() * 15000;
-        return _ChartPoint(days[i], value);
-      });
-    } else if (period == ReportPeriod.month) {
-      final daysInMonth = DateUtils.getDaysInMonth(date.year, date.month);
-      return List.generate(daysInMonth, (i) {
-        final label = '${i + 1}';
-        final value = 1000.0 + random.nextDouble() * 5000;
-        return _ChartPoint(label, value);
-      });
-    } else {
-      final months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-      return List.generate(12, (i) {
-        final value = 50000.0 + random.nextDouble() * 100000;
-        return _ChartPoint(months[i], value);
-      });
+    try {
+      final supabase = Supabase.instance.client;
+      
+      // Calculate date range based on period
+      DateTime startDate, endDate;
+      
+      if (period == ReportPeriod.day) {
+        startDate = DateTime(date.year, date.month, date.day);
+        endDate = startDate.add(const Duration(days: 1));
+      } else if (period == ReportPeriod.week) {
+        // Start of week (Monday)
+        startDate = date.subtract(Duration(days: date.weekday - 1));
+        startDate = DateTime(startDate.year, startDate.month, startDate.day);
+        endDate = startDate.add(const Duration(days: 7));
+      } else if (period == ReportPeriod.month) {
+        startDate = DateTime(date.year, date.month, 1);
+        endDate = DateTime(date.year, date.month + 1, 1);
+      } else {
+        // Year
+        startDate = DateTime(date.year, 1, 1);
+        endDate = DateTime(date.year + 1, 1, 1);
+      }
+      
+      // Fetch delivered orders in the date range
+      final response = await supabase
+          .from('orders')
+          .select('id, order_date, total_amount, subtotal, delivery_fee, tax')
+          .eq('status', 'delivered')
+          .gte('order_date', startDate.toIso8601String())
+          .lt('order_date', endDate.toIso8601String())
+          .order('order_date', ascending: true);
+      
+      final orders = response as List<dynamic>;
+      
+      // Group orders by time period
+      if (period == ReportPeriod.day) {
+        // Group by hour (24 hours)
+        final hourlyData = List.generate(24, (i) => _ChartPoint('${i.toString().padLeft(2, '0')}:00', 0.0));
+        
+        for (var order in orders) {
+          final orderDate = DateTime.parse(order['order_date']);
+          final hour = orderDate.hour;
+          hourlyData[hour].value += (order['total_amount'] as num).toDouble();
+        }
+        
+        return hourlyData;
+      } else if (period == ReportPeriod.week) {
+        // Group by day of week
+        final days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+        final dailyData = List.generate(7, (i) => _ChartPoint(days[i], 0.0));
+        
+        for (var order in orders) {
+          final orderDate = DateTime.parse(order['order_date']);
+          final dayIndex = orderDate.weekday - 1; // Monday = 0
+          dailyData[dayIndex].value += (order['total_amount'] as num).toDouble();
+        }
+        
+        return dailyData;
+      } else if (period == ReportPeriod.month) {
+        // Group by day of month
+        final daysInMonth = DateUtils.getDaysInMonth(date.year, date.month);
+        final dailyData = List.generate(daysInMonth, (i) => _ChartPoint('${i + 1}', 0.0));
+        
+        for (var order in orders) {
+          final orderDate = DateTime.parse(order['order_date']);
+          final day = orderDate.day - 1; // 0-indexed
+          if (day < dailyData.length) {
+            dailyData[day].value += (order['total_amount'] as num).toDouble();
+          }
+        }
+        
+        return dailyData;
+      } else {
+        // Group by month (12 months)
+        final months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        final monthlyData = List.generate(12, (i) => _ChartPoint(months[i], 0.0));
+        
+        for (var order in orders) {
+          final orderDate = DateTime.parse(order['order_date']);
+          final month = orderDate.month - 1; // 0-indexed
+          monthlyData[month].value += (order['total_amount'] as num).toDouble();
+        }
+        
+        return monthlyData;
+      }
+    } catch (e) {
+      debugPrint('❌ Error fetching sales data: $e');
+      // Return empty data on error
+      if (period == ReportPeriod.day) {
+        return List.generate(24, (i) => _ChartPoint('${i.toString().padLeft(2, '0')}:00', 0.0));
+      } else if (period == ReportPeriod.week) {
+        return List.generate(7, (i) => _ChartPoint(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][i], 0.0));
+      } else if (period == ReportPeriod.month) {
+        final daysInMonth = DateUtils.getDaysInMonth(date.year, date.month);
+        return List.generate(daysInMonth, (i) => _ChartPoint('${i + 1}', 0.0));
+      } else {
+        return List.generate(12, (i) => _ChartPoint(['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][i], 0.0));
+      }
     }
   }
 
   Future<List<_TopItem>> fetchTopItems(ReportPeriod period, DateTime date) async {
-    await Future.delayed(const Duration(milliseconds: 500));
-    final random = Random(date.millisecondsSinceEpoch);
-    
-    final menuItems = [
-      'Ugali Nyama Choma', 'Samosa', 'Tea', 'Chapati', 'Pilau Beef Fry',
-      'Beef Burger', 'Chicken Curry', 'Rice Beans', 'Fish Fillet', 'Fruit Salad'
-    ];
-    
-    if (period == ReportPeriod.day) {
-      return [
-        _TopItem(menuItems[0], 45 + random.nextInt(20)),
-        _TopItem(menuItems[1], 38 + random.nextInt(15)),
-        _TopItem(menuItems[2], 32 + random.nextInt(12)),
-        _TopItem(menuItems[3], 28 + random.nextInt(10)),
-        _TopItem(menuItems[4], 22 + random.nextInt(8)),
-      ];
-    } else if (period == ReportPeriod.week) {
-      return [
-        _TopItem(menuItems[0], 280 + random.nextInt(50)),
-        _TopItem(menuItems[1], 245 + random.nextInt(45)),
-        _TopItem(menuItems[2], 210 + random.nextInt(40)),
-        _TopItem(menuItems[3], 185 + random.nextInt(35)),
-        _TopItem(menuItems[4], 150 + random.nextInt(30)),
-      ];
-    } else if (period == ReportPeriod.month) {
-      return [
-        _TopItem(menuItems[0], 980 + random.nextInt(200)),
-        _TopItem(menuItems[1], 845 + random.nextInt(180)),
-        _TopItem(menuItems[2], 720 + random.nextInt(150)),
-        _TopItem(menuItems[3], 640 + random.nextInt(130)),
-        _TopItem(menuItems[4], 560 + random.nextInt(110)),
-      ];
-    } else {
-      return [
-        _TopItem(menuItems[0], 11500 + random.nextInt(2000)),
-        _TopItem(menuItems[1], 10200 + random.nextInt(1800)),
-        _TopItem(menuItems[2], 8900 + random.nextInt(1500)),
-        _TopItem(menuItems[3], 7800 + random.nextInt(1300)),
-        _TopItem(menuItems[4], 6700 + random.nextInt(1100)),
-      ];
+    try {
+      final supabase = Supabase.instance.client;
+      
+      // Calculate date range
+      DateTime startDate, endDate;
+      
+      if (period == ReportPeriod.day) {
+        startDate = DateTime(date.year, date.month, date.day);
+        endDate = startDate.add(const Duration(days: 1));
+      } else if (period == ReportPeriod.week) {
+        startDate = date.subtract(Duration(days: date.weekday - 1));
+        startDate = DateTime(startDate.year, startDate.month, startDate.day);
+        endDate = startDate.add(const Duration(days: 7));
+      } else if (period == ReportPeriod.month) {
+        startDate = DateTime(date.year, date.month, 1);
+        endDate = DateTime(date.year, date.month + 1, 1);
+      } else {
+        startDate = DateTime(date.year, 1, 1);
+        endDate = DateTime(date.year + 1, 1, 1);
+      }
+      
+      // Fetch order items from delivered orders
+      final response = await supabase
+          .from('order_items')
+          .select('title, quantity, order_id, orders!inner(status, order_date)')
+          .gte('orders.order_date', startDate.toIso8601String())
+          .lt('orders.order_date', endDate.toIso8601String())
+          .eq('orders.status', 'delivered');
+      
+      final items = response as List<dynamic>;
+      
+      // Group by item title and sum quantities
+      final Map<String, int> itemCounts = {};
+      
+      for (var item in items) {
+        final title = item['title'] as String;
+        final quantity = item['quantity'] as int;
+        itemCounts[title] = (itemCounts[title] ?? 0) + quantity;
+      }
+      
+      // Sort by count and take top 5
+      final sortedItems = itemCounts.entries.toList()
+        ..sort((a, b) => b.value.compareTo(a.value));
+      
+      return sortedItems
+          .take(5)
+          .map((e) => _TopItem(e.key, e.value))
+          .toList();
+    } catch (e) {
+      debugPrint('❌ Error fetching top items: $e');
+      return [];
     }
   }
 
@@ -358,16 +428,14 @@ class _ReportsScreenState extends State<ReportsScreen> {
     }
 
     final screenWidth = MediaQuery.of(context).size.width;
-    final perPointWidth = _chartType == ChartType.pie ? 80.0 : 60.0;
+    final perPointWidth = 60.0;
     final chartWidth = max(screenWidth - 32, _chartData.length * perPointWidth);
 
     Widget chart;
     if (_chartType == ChartType.bar) {
       chart = _buildBarChart(_chartData, chartWidth);
-    } else if (_chartType == ChartType.line) {
-      chart = _buildLineChart(_chartData, chartWidth);
     } else {
-      chart = _buildPieChart(_chartData);
+      chart = _buildLineChart(_chartData, chartWidth);
     }
 
     return _GlassCard(
@@ -378,12 +446,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
           const SizedBox(height: 16),
           SizedBox(
             height: 280,
-            child: _chartType == ChartType.pie
-                ? chart
-                : SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: SizedBox(width: chartWidth, child: chart),
-                  ),
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: SizedBox(width: chartWidth, child: chart),
+            ),
           ),
         ],
       ),
@@ -484,31 +550,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
     ));
   }
 
-  Widget _buildPieChart(List<_ChartPoint> data) {
-    final total = data.fold<double>(0, (p, e) => p + e.value);
-
-    if (total <= 0 || data.isEmpty) {
-      return const Center(child: Text('No data'));
-    }
-
-    return LayoutBuilder(builder: (context, constraints) {
-      return PieChart(PieChartData(
-        sections: data.map((point) {
-          final percentage = (point.value / total) * 100;
-          return PieChartSectionData(
-            value: point.value,
-            title: '${percentage.toStringAsFixed(1)}%',
-            color: Colors.primaries[data.indexOf(point) % Colors.primaries.length],
-            radius: 100,
-            titleStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white),
-          );
-        }).toList(),
-        sectionsSpace: 2,
-        centerSpaceRadius: 40,
-      ));
-    });
-  }
-
   Widget _buildTopItemsList() {
     if (_loading) return const SizedBox.shrink();
 
@@ -531,230 +572,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
   }
 
   // ---------------------------
-  // EXPORT / SAVE / SHARE logic
-  // ---------------------------
-
-  Future<void> _onExportPressed() async {
-    setState(() => _loading = true);
-    try {
-      final csvFile = await _saveFile('report.csv', _buildCsv().codeUnits);
-      final pdfFile = await _saveFile('report.pdf', await _buildPdfBytes());
-      await _showExportOptions(context, csvFile, pdfFile);
-    } catch (e, st) {
-      debugPrint('Export error: $e\n$st');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Export failed: $e')),
-      );
-    } finally {
-      if (mounted) setState(() => _loading = false);
-    }
-  }
-
-  Future<void> _showExportOptions(BuildContext ctx, File csvFile, File pdfFile) {
-    return showModalBottomSheet(
-      context: ctx,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.share),
-              title: const Text('Share Files'),
-              onTap: () {
-                Navigator.pop(context);
-                _shareFiles([csvFile, pdfFile]);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.download),
-              title: const Text('Save to Downloads'),
-              onTap: () {
-                Navigator.pop(context);
-                _saveFilesToDownloads([csvFile, pdfFile]);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.remove_red_eye),
-              title: const Text('Preview PDF'),
-              onTap: () {
-                Navigator.pop(context);
-                _previewPdf();
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // Show a fullscreen modal with PdfPreview from the printing package
-  Future<void> _previewPdf() async {
-    await showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      builder: (context) => SizedBox(
-        height: MediaQuery.of(context).size.height * 0.9,
-        child: PdfPreview(build: (format) => _buildPdfBytes()),
-      ),
-    );
-  }
-
-  Future<void> _shareFiles(List<File> files) async {
-    try {
-      final xfiles = files.map((f) => XFile(f.path)).toList();
-      await Share.shareXFiles(xfiles, text: 'Sales report - ${_period.name.toUpperCase()} (${_selectedDate.toIso8601String()})');
-    } catch (e, st) {
-      debugPrint('Share error: $e\n$st');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Share failed: $e')),
-      );
-    }
-  }
-
-  Future<void> _saveFilesToDownloads(List<File> files) async {
-    if (!mounted) return;
-
-    _showCopyingDialog();
-
-    final savedPaths = <String>[];
-    try {
-      for (final file in files) {
-        _updateCopyProgress('Copying ${p.basename(file.path)}...');
-        final dest = await _copyToDownloads(file);
-        savedPaths.add(dest.path);
-      }
-
-      _closeCopyingDialog();
-      
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('${files.length} file(s) saved'),
-          action: SnackBarAction(
-            label: 'Open Folder',
-            onPressed: _openDownloadsFolder,
-          ),
-        ),
-      );
-    } catch (e, st) {
-      debugPrint('Save error: $e\n$st');
-      _closeCopyingDialog();
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Save failed: $e')),
-      );
-    }
-  }
-
-  // show modal dialog with progress indicator
-  void _showCopyingDialog() {
-    if (!mounted) return;
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const CircularProgressIndicator(),
-            const SizedBox(height: 16),
-            Text(_copyProgressMessage),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _updateCopyProgress(String message) {
-    if (!mounted) return;
-    setState(() => _copyProgressMessage = message);
-  }
-
-  void _closeCopyingDialog() {
-    if (!mounted) return;
-    try {
-      Navigator.of(context, rootNavigator: true).pop();
-    } catch (_) {}
-  }
-
-  Future<File> _copyToDownloads(File src) async {
-    try {
-      if (Platform.isAndroid) {
-        final dir = Directory('/storage/emulated/0/Download');
-        if (await dir.exists()) {
-          final dest = File('${dir.path}/${p.basename(src.path)}');
-          await src.copy(dest.path);
-          _lastSavedDir = dir.path;
-          return dest;
-        }
-      }
-    } catch (e) {
-      debugPrint('Copy to downloads error: $e');
-    }
-
-    final tempDir = await getTemporaryDirectory();
-    final dest = File('${tempDir.path}/${p.basename(src.path)}');
-    await src.copy(dest.path);
-    return dest;
-  }
-
-  Future<void> _openDownloadsFolder() async {
-    if (_lastSavedDir == null) return;
-    try {
-      await OpenFilex.open(_lastSavedDir!);
-    } catch (e, st) {
-      debugPrint('Open folder error: $e\n$st');
-    }
-  }
-
-  // ---------------------------
-  // Helpers to build/save CSV & PDF
-  // ---------------------------
-  String _buildCsv() {
-    final buffer = StringBuffer();
-    buffer.writeln('Label,Value');
-    for (var p in _chartData) {
-      buffer.writeln('${p.label},${p.value}');
-    }
-    buffer.writeln();
-    buffer.writeln('Most sold items');
-    buffer.writeln('Item,Count');
-    for (var t in _topItems) {
-      buffer.writeln('${t.name},${t.count}');
-    }
-    return buffer.toString();
-  }
-
-  Future<Uint8List> _buildPdfBytes() async {
-    final doc = pw.Document();
-    final header = 'Report - ${_period.name.toUpperCase()} ${DateFormat.yMMMd().format(_selectedDate)}';
-    doc.addPage(
-      pw.Page(
-        build: (context) => pw.Column(
-          crossAxisAlignment: pw.CrossAxisAlignment.start,
-          children: [
-            pw.Text(header, style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold)),
-            pw.SizedBox(height: 20),
-            pw.Text('Total Revenue: ${currencyFmt.format(_totalRevenue)}'),
-            pw.Text('Total Orders: $_totalOrders'),
-            pw.SizedBox(height: 20),
-            pw.Text('Top Items:', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
-            ..._topItems.map((item) => pw.Text('${item.name}: ${item.count}')),
-          ],
-        ),
-      ),
-    );
-    return doc.save();
-  }
-
-  Future<File> _saveFile(String filename, List<int> bytes) async {
-    final dir = await getTemporaryDirectory();
-    final file = File('${dir.path}/$filename');
-    await file.writeAsBytes(bytes, flush: true);
-    return file;
-  }
-
-  // ---------------------------
   // Build UI
   // ---------------------------
   @override
@@ -766,13 +583,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
         title: const Text('Sales Reports'),
         backgroundColor: AppColors.primary,
         foregroundColor: AppColors.white,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.file_download),
-            onPressed: _onExportPressed,
-            tooltip: 'Export',
-          ),
-        ],
       ),
       body: SingleChildScrollView(
         padding: EdgeInsets.all(isLandscape ? 12 : 16),
@@ -883,7 +693,7 @@ class _GlassCard extends StatelessWidget {
 /// Simple chart point model
 class _ChartPoint {
   final String label;
-  final double value;
+  double value; // Made mutable for aggregation
   _ChartPoint(this.label, this.value);
 }
 

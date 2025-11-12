@@ -14,7 +14,6 @@ class InventoryScreen extends StatefulWidget {
 class _InventoryScreenState extends State<InventoryScreen> {
   final TextEditingController _searchController = TextEditingController();
   String _filter = '';
-  String _selectedCategory = 'All';
   
   // ADDED: State for showing/hiding low stock section
   bool _showLowStockSection = false;
@@ -38,19 +37,12 @@ class _InventoryScreenState extends State<InventoryScreen> {
     return items.where((item) {
       final matchesSearch = item.name.toLowerCase().contains(_filter.toLowerCase()) ||
           item.category.toLowerCase().contains(_filter.toLowerCase());
-      final matchesCategory = _selectedCategory == 'All' || item.category == _selectedCategory;
-      return matchesSearch && matchesCategory;
+      return matchesSearch;
     }).toList();
   }
 
   List<InventoryItem> _getLowStockItems(List<InventoryItem> items) {
     return items.where((item) => item.quantity <= item.lowStockThreshold).toList();
-  }
-
-  List<String> _getDynamicCategories(List<InventoryItem> items) {
-    final categories = items.map((item) => item.category).toSet().toList();
-    categories.sort();
-    return ['All', ...categories];
   }
 
   Widget _buildStatsHeader(List<InventoryItem> items) {
@@ -260,33 +252,6 @@ class _InventoryScreenState extends State<InventoryScreen> {
             ),
           )),
         ],
-      ),
-    );
-  }
-
-  Widget _buildCategoryFilter(List<InventoryItem> items) {
-    final categories = _getDynamicCategories(items);
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      child: Row(
-        children: categories.map((category) => Padding(
-          padding: const EdgeInsets.only(right: 8),
-          child: FilterChip(
-            label: Text(category),
-            selected: _selectedCategory == category,
-            onSelected: (selected) {
-              setState(() {
-                _selectedCategory = selected ? category : 'All';
-              });
-            },
-            selectedColor: AppColors.primary,
-            labelStyle: TextStyle(
-              color: _selectedCategory == category ? Colors.white : AppColors.darkText,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        )).toList(),
       ),
     );
   }
@@ -542,7 +507,6 @@ class _InventoryScreenState extends State<InventoryScreen> {
     final formKey = GlobalKey<FormState>();
     
     final inventoryProvider = Provider.of<InventoryProvider>(context, listen: false);
-    final categories = _getDynamicCategories(inventoryProvider.items);
 
     showDialog(
       context: context,
@@ -587,20 +551,14 @@ class _InventoryScreenState extends State<InventoryScreen> {
                       validator: (value) => value?.isEmpty ?? true ? 'Required' : null,
                     ),
                     const SizedBox(height: 12),
-                    DropdownButtonFormField<String>(
-                      value: categories.contains(categoryController.text) ? categoryController.text : null,
-                      isExpanded: true,
-                      items: categories.skip(1).map((cat) => DropdownMenuItem(
-                        value: cat, 
-                        child: Text(cat, overflow: TextOverflow.ellipsis),
-                      )).toList(),
+                    TextFormField(
+                      controller: categoryController,
                       decoration: InputDecoration(
                         labelText: 'Category',
                         prefixIcon: const Icon(Icons.category, color: AppColors.primary),
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                       ),
-                      onChanged: (value) => categoryController.text = value ?? '',
-                      validator: (value) => value == null ? 'Required' : null,
+                      validator: (value) => value?.isEmpty ?? true ? 'Required' : null,
                     ),
                     const SizedBox(height: 12),
                     Row(
@@ -667,7 +625,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
                 onPressed: () async {
                   if (formKey.currentState!.validate()) {
                     final newItem = InventoryItem(
-                      id: item?.id ?? '',
+                      id: item?.id, // null for new items, existing id for updates
                       name: nameController.text,
                       category: categoryController.text,
                       quantity: double.parse(stockController.text),
@@ -786,12 +744,12 @@ class _InventoryScreenState extends State<InventoryScreen> {
               },
             ),
           ),
-          _buildCategoryFilter(allItems),
           const SizedBox(height: 8),
           Expanded(
             child: filteredItems.isEmpty
                 ? Center(
                     child: Column(
+                      mainAxisSize: MainAxisSize.min,
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Icon(

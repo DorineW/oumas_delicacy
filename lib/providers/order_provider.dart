@@ -1,7 +1,6 @@
 // lib/providers/order_provider.dart
 import 'package:flutter/material.dart';
 import '../models/order.dart'; // CHANGED: Import Order from model
-import 'dart:math';
 import 'notification_provider.dart';
 import '../models/notification_model.dart';
 import 'dart:async';
@@ -47,7 +46,7 @@ class OrderProvider extends ChangeNotifier {
   // REMOVED: seedDemo method - no more fake data!
 
   // UPDATED: Add order and save to Supabase
-  Future<void> addOrder(Order order) async {
+  Future<String> addOrder(Order order) async {
     try {
       debugPrint('💾 Saving order to Supabase...');
       
@@ -130,6 +129,8 @@ class OrderProvider extends ChangeNotifier {
           data: {'orderId': order.id},
         ));
       }
+      
+      return generatedOrderId; // Return the database-generated UUID
     } catch (e, stackTrace) {
       debugPrint('❌ Failed to save order: $e');
       debugPrint('Stack: $stackTrace');
@@ -367,12 +368,6 @@ class OrderProvider extends ChangeNotifier {
     final idx = _orders.indexWhere((o) => o.id == id);
     if (idx == -1) return null;
     return _orders[idx];
-  }
-
-  String generateOrderId() {
-    final rnd = Random().nextInt(9999);
-    final ts = DateTime.now().millisecondsSinceEpoch.remainder(100000);
-    return 'ORD-${ts + rnd}';
   }
 
   // ADDED: Rate an individual order item
