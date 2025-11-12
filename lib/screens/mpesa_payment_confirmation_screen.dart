@@ -6,14 +6,14 @@ import '../constants/colors.dart';
 import '../services/mpesa_service.dart';
 
 class MpesaPaymentConfirmationScreen extends StatefulWidget {
-  final String orderId;
+  final String? orderId; // CHANGED: Made nullable since order created after payment
   final int totalAmount;
   final String checkoutRequestId;
   final String phoneNumber; // ADDED: Customer phone number
 
   const MpesaPaymentConfirmationScreen({
     super.key,
-    required this.orderId,
+    this.orderId, // CHANGED: No longer required
     required this.totalAmount,
     required this.checkoutRequestId,
     required this.phoneNumber, // ADDED
@@ -31,6 +31,7 @@ class _MpesaPaymentConfirmationScreenState
   String _orderStatus = 'pending';
   String? _stkQueryStatus;
   String? _mpesaReceiptNumber; // ADDED: M-Pesa receipt/transaction code
+  String? _actualOrderId; // ADDED: Store actual order ID once created
   int _stkQueryCount = 0;
   int _secondsElapsed = 0;
   final bool _isTestMode = kDebugMode;
@@ -38,6 +39,7 @@ class _MpesaPaymentConfirmationScreenState
   @override
   void initState() {
     super.initState();
+    _actualOrderId = widget.orderId; // Initialize with provided orderId (may be null)
     _startPaymentPolling();
     _startStkQueryPolling();
     _startTimeCounter();
@@ -65,27 +67,49 @@ class _MpesaPaymentConfirmationScreenState
         return;
       }
 
-      final statusResult = await MpesaService.checkOrderStatus(
-        orderId: widget.orderId,
+      // CHANGED: Use checkoutRequestId to check payment status
+      final statusResult = await MpesaService.checkPaymentStatus(
+        checkoutRequestId: widget.checkoutRequestId,
       );
 
       if (statusResult['success'] == true) {
         final status = statusResult['status'];
-        debugPrint('📊 Order status: $status');
+        debugPrint('📊 Payment status: $status');
         
-        setState(() => _orderStatus = status);
+        setState(() {
+          _orderStatus = status;
+          // Update order ID when order is created
+          if (statusResult['orderId'] != null && _actualOrderId == null) {
+            _actualOrderId = statusResult['orderId'];
+            debugPrint('✅ Order created with ID: $_actualOrderId');
+          }
+        });
 
-        if (status == 'confirmed' || status == 'cancelled') {
-          debugPrint('✅ Final status reached: $status');
-          timer.cancel();
-          _stkQueryTimer?.cancel();
-          
-          // Navigate after a short delay
-          Future.delayed(const Duration(seconds: 2), () {
-            if (mounted) {
-              _navigateToHome();
-            }
-          });
+        if (status == 'confirmed' || status == 'cancelled' || status == 'pending') {
+          // If status is 'pending', order was created successfully (awaiting customer confirmation)
+          if (status == 'pending' && _actualOrderId != null) {
+            debugPrint('✅ Order created, awaiting customer confirmation');
+            timer.cancel();
+            _stkQueryTimer?.cancel();
+            
+            // Navigate after a short delay
+            Future.delayed(const Duration(seconds: 2), () {
+              if (mounted) {
+                _navigateToHome();
+              }
+            });
+          } else if (status == 'cancelled') {
+            debugPrint('❌ Payment cancelled/failed');
+            timer.cancel();
+            _stkQueryTimer?.cancel();
+            
+            // Navigate after a short delay
+            Future.delayed(const Duration(seconds: 3), () {
+              if (mounted) {
+                _navigateToHome();
+              }
+            });
+          }
         }
       }
     });
@@ -121,7 +145,7 @@ class _MpesaPaymentConfirmationScreenState
 
   Future<void> _triggerMockCallback(bool success) async {
     final result = await MpesaService.triggerMockCallback(
-      orderId: widget.orderId,
+      checkoutRequestId: widget.checkoutRequestId,
       success: success,
     );
 
@@ -329,7 +353,10 @@ class _MpesaPaymentConfirmationScreenState
                         ),
                       ),
                       const SizedBox(height: 16),
-                      _buildDetailRow('Order ID', widget.orderId.substring(0, 8)),
+                      if (_actualOrderId != null)
+                        _buildDetailRow('Order ID', _actualOrderId!.substring(0, 8))
+                      else
+                        _buildDetailRow('Order ID', 'Creating...'),
                       const SizedBox(height: 12),
                       _buildDetailRow(
                         'Amount',
@@ -527,7 +554,10 @@ class _MpesaPaymentConfirmationScreenState
           const SizedBox(height: 12),
           _buildReceiptRow('Phone Number', widget.phoneNumber),
           const SizedBox(height: 12),
-          _buildReceiptRow('Order ID', widget.orderId.substring(0, 13)),
+          if (_actualOrderId != null)
+            _buildReceiptRow('Order ID', _actualOrderId!.substring(0, 13))
+          else
+            _buildReceiptRow('Order ID', 'N/A'),
           const SizedBox(height: 12),
           _buildReceiptRow('Amount Paid', 'KSh ${widget.totalAmount.toStringAsFixed(2)}'),
           const SizedBox(height: 12),

@@ -518,7 +518,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
     try {
       final auth = context.read<AuthService>();
-      final orderProvider = context.read<OrderProvider>();
       final cartProvider = context.read<CartProvider>();
       final currentUser = auth.currentUser;
       final customerId = currentUser?.id ?? 'guest';
@@ -538,51 +537,46 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           ? DeliveryType.delivery
           : DeliveryType.pickup;
 
-      // Create temporary order ID (will be replaced by database UUID)
-      final tempOrderId = 'temp-${DateTime.now().millisecondsSinceEpoch}';
+      // CHANGED: Prepare order details but DON'T save to database yet
+      // Order will be created by backend after payment succeeds
       
-      // Create order items
-      final orderItems = widget.selectedItems.map((item) => OrderItem(
-        id: item.id,
-        menuItemId: item.menuItemId,
-        title: item.mealTitle,
-        quantity: item.quantity,
-        price: item.price,
-      )).toList();
+      // Create order items data
+      final orderItems = widget.selectedItems.map((item) {
+        return {
+          'id': item.id,
+          'menuItemId': item.menuItemId,
+          'title': item.mealTitle,
+          'quantity': item.quantity,
+          'price': item.price,
+        };
+      }).toList();
 
-      // Create order object
-      final order = Order(
-        id: tempOrderId, // Temporary ID, will be replaced by database UUID
-        customerId: customerId,
-        customerName: customerName,
-        deliveryPhone: _phoneController.text.isNotEmpty ? _phoneController.text : null,
-        items: orderItems,
-        subtotal: subtotalAmount,
-        deliveryFee: orderDeliveryType == DeliveryType.delivery ? _deliveryFee : 0,
-        tax: tax,
-        totalAmount: totalAmount,
-        date: DateTime.now(),
-        status: OrderStatus.pending,
-        deliveryType: orderDeliveryType,
-        deliveryAddress: _deliveryAddressController.text.isNotEmpty
+      // Prepare order details to send to backend
+      final orderDetails = {
+        'customerId': customerId,
+        'customerName': customerName,
+        'deliveryPhone': _phoneController.text.isNotEmpty ? _phoneController.text : null,
+        'items': orderItems,
+        'subtotal': subtotalAmount,
+        'deliveryFee': orderDeliveryType == DeliveryType.delivery ? _deliveryFee : 0,
+        'tax': tax,
+        'totalAmount': totalAmount,
+        'deliveryType': orderDeliveryType.name,
+        'deliveryAddress': _deliveryAddressController.text.isNotEmpty
             ? {'address': _deliveryAddressController.text}
             : null,
-      );
-
-      // Save order to database FIRST (so backend can verify it exists)
-      final dbOrderId = await orderProvider.addOrder(order);
-      debugPrint('✅ Order saved to database with ID: $dbOrderId');
+      };
 
       // Format phone number for M-Pesa
       final formattedPhone = MpesaService.formatPhoneNumber(mpesaPhone);
 
-      // Initiate M-Pesa payment (use database UUID, not ORD-XXXXX)
+      // Initiate M-Pesa payment (backend will create order after payment confirms)
       debugPrint('💳 Initiating M-Pesa payment...');
       final paymentResult = await MpesaService.initiateStkPush(
-        orderId: dbOrderId, // FIXED: Use database UUID instead of ORD-XXXXX
         phoneNumber: mpesaPhone,
         amount: totalAmount,
         userId: customerId,
+        orderDetails: orderDetails, // ADDED: Send order details to backend
       );
 
       if (!mounted) {
@@ -603,19 +597,16 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           context,
           MaterialPageRoute(
             builder: (context) => MpesaPaymentConfirmationScreen(
-              orderId: dbOrderId, // FIXED: Use database UUID
+              orderId: null, // CHANGED: No order ID yet
               totalAmount: totalAmount,
               checkoutRequestId: paymentResult['checkoutRequestID'],
-              phoneNumber: formattedPhone, // UPDATED: Use formatted phone for receipt
+              phoneNumber: formattedPhone,
             ),
           ),
         );
       } else {
         // Payment initiation failed
         debugPrint('❌ Payment initiation failed: ${paymentResult['error']}');
-        
-        // Cancel the order since payment failed
-        orderProvider.cancelOrder(dbOrderId, 'Payment initiation failed'); // FIXED: Use database UUID
         
         if (!mounted) return;
         _showErrorSnackBar(

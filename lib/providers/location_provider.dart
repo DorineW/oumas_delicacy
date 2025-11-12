@@ -113,6 +113,8 @@ class LocationProvider with ChangeNotifier {
         'lat=$lat&lon=$lon&format=json&addressdetails=1&zoom=18'
       );
       
+      debugPrint('🌍 Reverse geocoding: $lat, $lon');
+      
       final response = await http.get(
         url,
         headers: {
@@ -125,13 +127,18 @@ class LocationProvider with ChangeNotifier {
         final data = json.decode(response.body);
         _deliveryAddress = _parseAddress(data);
         _error = null;
+        debugPrint('✅ Address resolved: $_deliveryAddress');
       } else {
-        _deliveryAddress = 'Near Madaraka, Nairobi';
+        // Don't cache fallback - just set generic address
+        _deliveryAddress = 'Lat: ${lat.toStringAsFixed(5)}, Lon: ${lon.toStringAsFixed(5)}';
         _error = 'Could not fetch detailed address';
+        debugPrint('⚠️ Geocoding failed: HTTP ${response.statusCode}');
       }
     } catch (e) {
-      _deliveryAddress = 'Near Madaraka, Nairobi';
+      // Don't cache fallback - show coordinates instead
+      _deliveryAddress = 'Lat: ${lat.toStringAsFixed(5)}, Lon: ${lon.toStringAsFixed(5)}';
       _error = 'Address lookup failed';
+      debugPrint('❌ Geocoding error: $e');
     } finally {
       _isLoading = false;
       // REMOVED: notifyListeners() - caller will handle it
@@ -236,21 +243,43 @@ class LocationProvider with ChangeNotifier {
 
   String _parseAddress(Map<String, dynamic> data) {
     final address = data['address'] as Map<String, dynamic>?;
-    if (address == null) return data['display_name'] ?? 'Unknown Location';
+    if (address == null) {
+      // Use display_name as fallback if no address components
+      return data['display_name'] ?? 'Location: ${_latitude?.toStringAsFixed(5)}, ${_longitude?.toStringAsFixed(5)}';
+    }
 
     // Build address in a user-friendly format for Nairobi
     final parts = <String>[];
     
+    // Priority order: road, neighbourhood, suburb, city/town
     if (address['road'] != null) parts.add(address['road']);
-    if (address['neighbourhood'] != null) parts.add(address['neighbourhood']);
-    if (address['suburb'] != null) parts.add(address['suburb']);
-    if (address['city'] != null) {
-      parts.add(address['city']);
-    } else {
-      parts.add('Nairobi'); // Default to Nairobi if no city
+    if (address['neighbourhood'] != null && address['neighbourhood'] != address['road']) {
+      parts.add(address['neighbourhood']);
+    }
+    if (address['suburb'] != null && address['suburb'] != address['neighbourhood']) {
+      parts.add(address['suburb']);
     }
     
-    return parts.isNotEmpty ? parts.join(', ') : 'Madaraka, Nairobi, Kenya';
+    // Add city/town/village
+    if (address['city'] != null) {
+      parts.add(address['city']);
+    } else if (address['town'] != null) {
+      parts.add(address['town']);
+    } else if (address['village'] != null) {
+      parts.add(address['village']);
+    } else {
+      // Only add "Nairobi" if we're actually in Nairobi County
+      if (address['county'] == 'Nairobi' || address['state'] == 'Nairobi') {
+        parts.add('Nairobi');
+      }
+    }
+    
+    // Final check: if we got nothing useful, show coordinates
+    if (parts.isEmpty) {
+      return 'Location: ${_latitude?.toStringAsFixed(5)}, ${_longitude?.toStringAsFixed(5)}';
+    }
+    
+    return parts.join(', ');
   }
 
   // Check if location is within delivery radius (5km from restaurant)

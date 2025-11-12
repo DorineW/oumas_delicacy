@@ -45,7 +45,7 @@ class InventoryProvider extends ChangeNotifier {
       // Query from 'inventory' table (not 'inventory_items')
       final response = await supabase
           .from('inventory')
-          .select('id, name, category, current_stock, unit, low_stock_threshold, updated_at')
+          .select('id, product_id, name, category, quantity, unit, low_stock_threshold, updated_at')
           .order('name', ascending: true);
 
       debugPrint('✅ Query executed successfully');
@@ -72,10 +72,10 @@ class InventoryProvider extends ChangeNotifier {
           // Map database columns to model fields
           final mappedJson = {
             'id': json['id'],
-            'product_id': null,
+            'product_id': json['product_id'],
             'name': json['name'],
             'category': json['category'],
-            'quantity': json['current_stock'], // Map current_stock to quantity
+            'quantity': json['quantity'], // Map current_stock to quantity
             'unit': json['unit'],
             'low_stock_threshold': json['low_stock_threshold'],
             'updated_at': json['updated_at'],
@@ -121,7 +121,7 @@ class InventoryProvider extends ChangeNotifier {
       final dbData = {
         'name': item.name,
         'category': item.category,
-        'current_stock': item.quantity, // Map quantity to current_stock
+        'quantity': item.quantity, // Map quantity to current_stock
         'unit': item.unit,
         'low_stock_threshold': item.lowStockThreshold,
         'cost_price': 0.0, // Default cost price
@@ -164,7 +164,7 @@ class InventoryProvider extends ChangeNotifier {
       final dbData = {
         'name': item.name,
         'category': item.category,
-        'current_stock': item.quantity, // Map quantity to current_stock
+        'quantity': item.quantity, // Map quantity to current_stock
         'unit': item.unit,
         'low_stock_threshold': item.lowStockThreshold,
         'updated_at': DateTime.now().toIso8601String(),
@@ -215,7 +215,7 @@ class InventoryProvider extends ChangeNotifier {
       await Supabase.instance.client
           .from('inventory')
           .update({
-            'current_stock': newQuantity, // Map to current_stock
+            'quantity': newQuantity, // Map to current_stock
             'updated_at': DateTime.now().toIso8601String(),
           })
           .eq('id', id);

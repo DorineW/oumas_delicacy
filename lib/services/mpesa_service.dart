@@ -5,8 +5,8 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 class MpesaService {
-  // UPDATED: Using your PC's WiFi IP address for real device testing
-  static const String baseUrl = 'http://192.168.0.40:3000/api';
+  // Using ngrok public URL for M-Pesa callbacks
+  static const String baseUrl = 'https://chaim-eared-kaylin.ngrok-free.dev/api';
   // Change to 'http://10.0.2.2:3000/api' if using Android emulator
   // Change to 'https://your-ngrok-url.ngrok.io/api' for production testing
 
@@ -34,17 +34,16 @@ class MpesaService {
 
   /// Initiate STK Push payment
   static Future<Map<String, dynamic>> initiateStkPush({
-    required String orderId,
     required String phoneNumber,
     required int amount,
     required String userId,
+    required Map<String, dynamic> orderDetails, // CHANGED: Added orderDetails
   }) async {
     try {
       // Format phone number to 254XXXXXXXXX
       final formattedPhone = formatPhoneNumber(phoneNumber);
       
       debugPrint('📱 Initiating M-Pesa STK push...');
-      debugPrint('   Order ID: $orderId');
       debugPrint('   Phone: $phoneNumber → $formattedPhone');
       debugPrint('   Amount: KSh $amount');
 
@@ -52,10 +51,10 @@ class MpesaService {
         Uri.parse('$baseUrl/payments/initiate-stk'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
-          'orderId': orderId,
           'phoneNumber': formattedPhone,
           'amount': amount,
           'userId': userId,
+          'orderDetails': orderDetails, // CHANGED: Send order details
         }),
       ).timeout(
         const Duration(seconds: 30),
@@ -133,7 +132,40 @@ class MpesaService {
     }
   }
 
-  /// Check order status
+  /// Check payment status by checkoutRequestId (when order doesn't exist yet)
+  static Future<Map<String, dynamic>> checkPaymentStatus({
+    required String checkoutRequestId,
+  }) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/payments/$checkoutRequestId/status'),
+      ).timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return {
+          'success': true,
+          'status': data['status'],
+          'orderId': data['orderId'],
+          'total': data['total'],
+          'placedAt': data['placedAt'],
+        };
+      } else {
+        return {
+          'success': false,
+          'error': 'Failed to check payment status',
+        };
+      }
+    } catch (e) {
+      debugPrint('❌ Exception checking payment status: $e');
+      return {
+        'success': false,
+        'error': 'Failed to connect to server',
+      };
+    }
+  }
+
+  /// Check order status (legacy - for when order ID is known)
   static Future<Map<String, dynamic>> checkOrderStatus({
     required String orderId,
   }) async {
@@ -172,7 +204,7 @@ class MpesaService {
 
   /// Mock callback for testing (sandbox only)
   static Future<Map<String, dynamic>> triggerMockCallback({
-    required String orderId,
+    required String checkoutRequestId,
     required bool success,
   }) async {
     try {
@@ -182,7 +214,7 @@ class MpesaService {
         Uri.parse('$baseUrl/payments/mock-callback'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
-          'orderId': orderId,
+          'checkoutRequestID': checkoutRequestId,
           'success': success,
         }),
       ).timeout(const Duration(seconds: 10));
