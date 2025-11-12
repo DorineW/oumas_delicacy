@@ -60,12 +60,16 @@ class _MpesaPaymentConfirmationScreenState
 
   void _startPaymentPolling() {
     debugPrint('🔄 Starting payment status polling...');
+    int pollCount = 0;
+    const maxPolls = 36; // 3 minutes max (36 * 5 seconds)
     
     _statusCheckTimer = Timer.periodic(const Duration(seconds: 5), (timer) async {
       if (!mounted) {
         timer.cancel();
         return;
       }
+
+      pollCount++;
 
       // CHANGED: Use checkoutRequestId to check payment status
       final statusResult = await MpesaService.checkPaymentStatus(
@@ -111,6 +115,32 @@ class _MpesaPaymentConfirmationScreenState
             });
           }
         }
+      } else {
+        // Payment check failed - likely no order exists yet or payment failed
+        debugPrint('⚠️ Payment status check failed (poll $pollCount/$maxPolls)');
+        
+        // After 1 minute (12 polls), assume payment failed
+        if (pollCount >= 12 && _actualOrderId == null) {
+          debugPrint('❌ No order created after 1 minute - payment likely failed');
+          setState(() {
+            _orderStatus = 'failed';
+          });
+          timer.cancel();
+          _stkQueryTimer?.cancel();
+          
+          // Show error and navigate
+          Future.delayed(const Duration(seconds: 3), () {
+            if (mounted) {
+              _navigateToHome();
+            }
+          });
+        }
+        
+        // Stop polling after max attempts
+        if (pollCount >= maxPolls) {
+          debugPrint('⏱️ Max polling attempts reached');
+          timer.cancel();
+        }
       }
     });
   }
@@ -118,8 +148,10 @@ class _MpesaPaymentConfirmationScreenState
   void _startStkQueryPolling() {
     debugPrint('🔍 Starting STK query polling...');
     
-    _stkQueryTimer = Timer.periodic(const Duration(seconds: 10), (timer) async {
-      if (!mounted || _stkQueryCount >= 18 || _orderStatus != 'pending') {
+    // REDUCED: Poll every 30 seconds instead of 10 to avoid rate limiting
+    // Safaricom allows max 5 requests per minute
+    _stkQueryTimer = Timer.periodic(const Duration(seconds: 30), (timer) async {
+      if (!mounted || _stkQueryCount >= 6 || _orderStatus != 'pending') {
         timer.cancel();
         return;
       }
@@ -165,7 +197,7 @@ class _MpesaPaymentConfirmationScreenState
 
   void _navigateToHome() {
     Navigator.of(context).pushNamedAndRemoveUntil(
-      '/',
+      '/order-history', // Navigate to order history instead of home
       (route) => false,
     );
   }
@@ -193,6 +225,7 @@ class _MpesaPaymentConfirmationScreenState
           ),
         );
       case 'cancelled':
+      case 'failed':
         return Container(
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
@@ -258,7 +291,26 @@ class _MpesaPaymentConfirmationScreenState
             ),
             SizedBox(height: 8),
             Text(
-              'The payment was not completed',
+              'Your payment was cancelled or failed',
+              style: TextStyle(fontSize: 16, color: AppColors.darkText),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        );
+      case 'failed':
+        return const Column(
+          children: [
+            Text(
+              'Payment Timeout',
+              style: TextStyle(
+                fontSize: 28,
+                fontWeight: FontWeight.bold,
+                color: Colors.red,
+              ),
+            ),
+            SizedBox(height: 8),
+            Text(
+              'No payment received. Please try again.',
               style: TextStyle(fontSize: 16, color: AppColors.darkText),
               textAlign: TextAlign.center,
             ),

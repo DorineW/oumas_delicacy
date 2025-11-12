@@ -38,20 +38,21 @@ class OrderItem {
 
   Map<String, dynamic> toJson() => {
     'id': id,
-    'menu_item_id': menuItemId,
-    'title': title,
+    'product_id': menuItemId, // Match DB column name
+    'name': title, // Match DB column name
     'quantity': quantity,
-    'price': price,
+    'unit_price': price, // Match DB column name
+    'total_price': totalPrice, // Match DB column name
     'rating': rating,
     'review': review,
   };
 
   factory OrderItem.fromJson(Map<String, dynamic> json) => OrderItem(
     id: json['id'],
-    menuItemId: json['menu_item_id'],
-    title: json['title'],
+    menuItemId: json['product_id'], // Match DB column name
+    title: json['name'] ?? json['title'], // Support both for backward compatibility
     quantity: json['quantity'],
-    price: json['price'],
+    price: (json['unit_price'] ?? json['price']) as int, // Support both
     rating: json['rating'],
     review: json['review'],
   );
@@ -60,32 +61,32 @@ class OrderItem {
 class Order {
   final String id;
   final String customerId; // maps to user_auth_id
-  final String customerName;
+  final String customerName; // NOT in DB, will be fetched from users table
   final String? deliveryPhone;
   final List<OrderItem> items;
-  final int subtotal; // ADDED: Match DB
-  final int deliveryFee; // ADDED: Match DB
-  final int tax; // ADDED: Match DB
+  final int subtotal;
+  final int deliveryFee;
+  final int tax;
   final int totalAmount; // maps to total
   final DateTime date; // maps to placed_at
   final OrderStatus status;
   final DeliveryType deliveryType;
-  final Map<String, dynamic>? deliveryAddress; // FIXED: jsonb in DB = Map in Dart
+  final Map<String, dynamic>? deliveryAddress; // jsonb in DB
   final String? riderId;
   final String? riderName;
   final String? cancellationReason;
-  final DateTime? deliveredAt; // ADDED: Match DB
-  final DateTime? cancelledAt; // ADDED: Match DB
+  final DateTime? deliveredAt;
+  final DateTime? cancelledAt;
 
   Order({
     required this.id,
     required this.customerId,
-    required this.customerName,
+    this.customerName = 'Guest', // Default value since not in DB
     this.deliveryPhone,
     required this.items,
-    required this.subtotal, // ADDED
-    required this.deliveryFee, // ADDED
-    required this.tax, // ADDED
+    required this.subtotal,
+    required this.deliveryFee,
+    required this.tax,
     required this.totalAmount,
     required this.date,
     required this.status,

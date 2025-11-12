@@ -143,15 +143,26 @@ class OrderProvider extends ChangeNotifier {
     try {
       debugPrint('📥 Loading orders for user: $userId');
       
+      // JOIN with users table to get customer name
       final data = await Supabase.instance.client
           .from('orders')
-          .select('*, order_items(*)')
+          .select('''
+            *, 
+            order_items(*),
+            users!inner(name)
+          ''')
           .eq('user_auth_id', userId)
           .order('placed_at', ascending: false);
 
       _orders.clear();
       for (final json in data as List) {
-        final order = Order.fromJson(json);
+        // Extract customer name from joined users table
+        final customerName = json['users']?['name'] ?? 'Guest';
+        
+        final order = Order.fromJson({
+          ...json,
+          'customer_name': customerName, // Add customer name to the JSON
+        });
         
         // Load order items
         final items = (json['order_items'] as List).map((item) => OrderItem(

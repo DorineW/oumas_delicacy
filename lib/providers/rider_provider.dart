@@ -65,7 +65,7 @@ class RiderProvider with ChangeNotifier {
       final supabase = Supabase.instance.client;
       debugPrint('✅ Supabase client initialized');
       
-      // Query orders assigned to this rider with all columns explicitly
+      // Query orders assigned to this rider with JOIN to get customer name
       final response = await supabase
           .from('orders')
           .select('''
@@ -83,7 +83,8 @@ class RiderProvider with ChangeNotifier {
             rider_name,
             cancellation_reason,
             delivered_at,
-            cancelled_at
+            cancelled_at,
+            users!inner(name)
           ''')
           .eq('rider_id', riderId)
           .order('placed_at', ascending: false);
@@ -108,8 +109,14 @@ class RiderProvider with ChangeNotifier {
           debugPrint('--- Parsing order ${i + 1}/${response.length} ---');
           debugPrint('Raw JSON: $json');
           
-          // Parse order (without items first)
-          final order = order_model.Order.fromJson(json);
+          // Extract customer name from joined users table
+          final customerName = json['users']?['name'] ?? 'Guest';
+          
+          // Parse order with customer name
+          final order = order_model.Order.fromJson({
+            ...json,
+            'customer_name': customerName,
+          });
           
           // Load order items separately
           final itemsResponse = await supabase

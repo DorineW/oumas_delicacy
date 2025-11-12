@@ -206,7 +206,11 @@ class _AppContentState extends State<_AppContent> {
           '/home': (context) => const HomeScreen(),
           '/rider': (context) => const RiderDashboardScreen(),
           '/admin': (context) => const AdminDashboardScreen(),
-          '/order-history': (context) => const OrderHistoryScreen(), // ADDED
+          '/order-history': (context) {
+            // Get current user ID from auth service
+            final userId = Supabase.instance.client.auth.currentUser?.id;
+            return OrderHistoryScreen(customerId: userId);
+          },
         },
         onUnknownRoute: (settings) {
           return MaterialPageRoute(

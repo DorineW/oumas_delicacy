@@ -26,6 +26,14 @@ class _ReportsScreenState extends State<ReportsScreen> {
   List<_TopItem> _topItems = [];
   double _totalRevenue = 0;
   int _totalOrders = 0;
+  int _completedOrders = 0;
+  int _cancelledOrders = 0;
+  double _avgOrderValue = 0;
+  
+  // Revenue breakdown
+  double _mealsRevenue = 0;
+  double _deliveryRevenue = 0;
+  double _taxCollected = 0;
 
   final currencyFmt = NumberFormat.currency(locale: 'en_US', symbol: 'Ksh ');
   final compactFmt = NumberFormat.compactCurrency(locale: 'en_US', symbol: 'Ksh ');
@@ -42,13 +50,86 @@ class _ReportsScreenState extends State<ReportsScreen> {
     setState(() => _loading = true);
     _chartData = await fetchSalesData(_period, _selectedDate);
     _topItems = await fetchTopItems(_period, _selectedDate);
+    
+    // Calculate totals from chart data
     _totalRevenue = _chartData.fold(0, (sum, point) => sum + point.value);
     _totalOrders = _topItems.fold(0, (sum, item) => sum + item.count);
+    
+    // Fetch aggregated stats from view
+    await _loadAggregatedStats();
+    
     setState(() => _loading = false);
   }
 
+  Future<void> _loadAggregatedStats() async {
+    try {
+      final supabase = Supabase.instance.client;
+      
+      // Calculate date range
+      DateTime startDate, endDate;
+      if (_period == ReportPeriod.day) {
+        startDate = DateTime(_selectedDate.year, _selectedDate.month, _selectedDate.day);
+        endDate = startDate.add(const Duration(days: 1));
+      } else if (_period == ReportPeriod.week) {
+        startDate = _selectedDate.subtract(Duration(days: _selectedDate.weekday - 1));
+        startDate = DateTime(startDate.year, startDate.month, startDate.day);
+        endDate = startDate.add(const Duration(days: 7));
+      } else if (_period == ReportPeriod.month) {
+        startDate = DateTime(_selectedDate.year, _selectedDate.month, 1);
+        endDate = DateTime(_selectedDate.year, _selectedDate.month + 1, 1);
+      } else {
+        startDate = DateTime(_selectedDate.year, 1, 1);
+        endDate = DateTime(_selectedDate.year + 1, 1, 1);
+      }
+      
+      // Use daily_revenue_breakdown view for comprehensive stats with percentages
+      final response = await supabase
+          .from('daily_revenue_breakdown')
+          .select('''
+            order_count, 
+            completed_count, 
+            cancelled_count,
+            daily_revenue, 
+            items_revenue, 
+            delivery_revenue, 
+            tax_collected,
+            avg_order_value,
+            min_order_value,
+            max_order_value,
+            items_revenue_percent,
+            delivery_revenue_percent,
+            tax_percent
+          ''')
+          .gte('order_day', startDate.toIso8601String().split('T')[0])
+          .lt('order_day', endDate.toIso8601String().split('T')[0]);
+      
+      final stats = response as List<dynamic>;
+      
+      // Sum up the stats
+      _totalOrders = stats.fold(0, (sum, s) => sum + ((s['order_count'] as int?) ?? 0));
+      _completedOrders = stats.fold(0, (sum, s) => sum + ((s['completed_count'] as int?) ?? 0));
+      _cancelledOrders = stats.fold(0, (sum, s) => sum + ((s['cancelled_count'] as int?) ?? 0));
+      _totalRevenue = stats.fold(0.0, (sum, s) => sum + ((s['daily_revenue'] as num?)?.toDouble() ?? 0.0));
+      _avgOrderValue = _totalOrders > 0 ? _totalRevenue / _totalOrders : 0.0;
+      
+      // Revenue breakdown (already calculated in view!)
+      _mealsRevenue = stats.fold(0.0, (sum, s) => sum + ((s['items_revenue'] as num?)?.toDouble() ?? 0.0));
+      _deliveryRevenue = stats.fold(0.0, (sum, s) => sum + ((s['delivery_revenue'] as num?)?.toDouble() ?? 0.0));
+      _taxCollected = stats.fold(0.0, (sum, s) => sum + ((s['tax_collected'] as num?)?.toDouble() ?? 0.0));
+      
+      debugPrint('✅ Loaded stats from daily_revenue_breakdown view:');
+      debugPrint('   Total Revenue: $_totalRevenue');
+      debugPrint('   Meals: $_mealsRevenue');
+      debugPrint('   Delivery: $_deliveryRevenue');
+      debugPrint('   Tax: $_taxCollected');
+      
+    } catch (e) {
+      debugPrint('❌ Error loading aggregated stats: $e');
+    }
+  }
+
   // ---------------------------
-  // Real data fetchers from Supabase
+  // Real data fetchers from Supabase using database views
   // ---------------------------
   Future<List<_ChartPoint>> fetchSalesData(ReportPeriod period, DateTime date) async {
     try {
@@ -74,64 +155,74 @@ class _ReportsScreenState extends State<ReportsScreen> {
         endDate = DateTime(date.year + 1, 1, 1);
       }
       
-      // Fetch delivered orders in the date range
+      // Use daily_revenue_breakdown view for comprehensive revenue data
       final response = await supabase
-          .from('orders')
-          .select('id, order_date, total_amount, subtotal, delivery_fee, tax')
-          .eq('status', 'delivered')
-          .gte('order_date', startDate.toIso8601String())
-          .lt('order_date', endDate.toIso8601String())
-          .order('order_date', ascending: true);
+          .from('daily_revenue_breakdown')
+          .select('order_day, daily_revenue, items_revenue, delivery_revenue, order_count')
+          .gte('order_day', startDate.toIso8601String().split('T')[0])
+          .lt('order_day', endDate.toIso8601String().split('T')[0])
+          .order('order_day', ascending: true);
       
-      final orders = response as List<dynamic>;
+      final stats = response as List<dynamic>;
       
-      // Group orders by time period
+      // Group stats by time period
       if (period == ReportPeriod.day) {
-        // Group by hour (24 hours)
+        // Use hourly_order_statistics view for day reports
+        final hourlyResponse = await supabase
+            .from('hourly_order_statistics')
+            .select('order_hour, total_revenue')
+            .eq('order_day', startDate.toIso8601String().split('T')[0])
+            .order('order_hour', ascending: true);
+        
         final hourlyData = List.generate(24, (i) => _ChartPoint('${i.toString().padLeft(2, '0')}:00', 0.0));
         
-        for (var order in orders) {
-          final orderDate = DateTime.parse(order['order_date']);
-          final hour = orderDate.hour;
-          hourlyData[hour].value += (order['total_amount'] as num).toDouble();
+        for (var hourStat in hourlyResponse as List) {
+          final hour = hourStat['order_hour'] as int;
+          if (hour >= 0 && hour < 24) {
+            hourlyData[hour].value = (hourStat['total_revenue'] as num?)?.toDouble() ?? 0.0;
+          }
         }
         
         return hourlyData;
       } else if (period == ReportPeriod.week) {
-        // Group by day of week
+        // Group by day of week using view data
         final days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
         final dailyData = List.generate(7, (i) => _ChartPoint(days[i], 0.0));
         
-        for (var order in orders) {
-          final orderDate = DateTime.parse(order['order_date']);
+        for (var stat in stats) {
+          final orderDate = DateTime.parse(stat['order_day']);
           final dayIndex = orderDate.weekday - 1; // Monday = 0
-          dailyData[dayIndex].value += (order['total_amount'] as num).toDouble();
+          if (dayIndex >= 0 && dayIndex < 7) {
+            dailyData[dayIndex].value += (stat['daily_revenue'] as num?)?.toDouble() ?? 0.0;
+          }
         }
         
         return dailyData;
       } else if (period == ReportPeriod.month) {
-        // Group by day of month
+        // Group by day of month using view data
         final daysInMonth = DateUtils.getDaysInMonth(date.year, date.month);
         final dailyData = List.generate(daysInMonth, (i) => _ChartPoint('${i + 1}', 0.0));
         
-        for (var order in orders) {
-          final orderDate = DateTime.parse(order['order_date']);
+        for (var stat in stats) {
+          final orderDate = DateTime.parse(stat['order_day']);
           final day = orderDate.day - 1; // 0-indexed
-          if (day < dailyData.length) {
-            dailyData[day].value += (order['total_amount'] as num).toDouble();
+          if (day >= 0 && day < dailyData.length) {
+            dailyData[day].value += (stat['daily_revenue'] as num?)?.toDouble() ?? 0.0;
           }
         }
         
         return dailyData;
       } else {
-        // Group by month (12 months)
+        // Group by month using view data (year view)
         final months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
         final monthlyData = List.generate(12, (i) => _ChartPoint(months[i], 0.0));
         
-        for (var order in orders) {
-          final orderDate = DateTime.parse(order['order_date']);
+        for (var stat in stats) {
+          final orderDate = DateTime.parse(stat['order_day']);
           final month = orderDate.month - 1; // 0-indexed
-          monthlyData[month].value += (order['total_amount'] as num).toDouble();
+          if (month >= 0 && month < 12) {
+            monthlyData[month].value += (stat['daily_revenue'] as num?)?.toDouble() ?? 0.0;
+          }
         }
         
         return monthlyData;
@@ -174,36 +265,76 @@ class _ReportsScreenState extends State<ReportsScreen> {
         endDate = DateTime(date.year + 1, 1, 1);
       }
       
-      // Fetch order items from delivered orders
+      // Use popular_menu_items view with date filtering
+      // Note: The view already filters by delivered status
       final response = await supabase
-          .from('order_items')
-          .select('title, quantity, order_id, orders!inner(status, order_date)')
-          .gte('orders.order_date', startDate.toIso8601String())
-          .lt('orders.order_date', endDate.toIso8601String())
-          .eq('orders.status', 'delivered');
+          .from('popular_menu_items')
+          .select('item_name, total_quantity_sold, first_ordered, last_ordered')
+          .gte('last_ordered', startDate.toIso8601String())
+          .lt('first_ordered', endDate.toIso8601String())
+          .order('total_quantity_sold', ascending: false)
+          .limit(5);
       
       final items = response as List<dynamic>;
       
-      // Group by item title and sum quantities
-      final Map<String, int> itemCounts = {};
-      
-      for (var item in items) {
-        final title = item['title'] as String;
-        final quantity = item['quantity'] as int;
-        itemCounts[title] = (itemCounts[title] ?? 0) + quantity;
-      }
-      
-      // Sort by count and take top 5
-      final sortedItems = itemCounts.entries.toList()
-        ..sort((a, b) => b.value.compareTo(a.value));
-      
-      return sortedItems
-          .take(5)
-          .map((e) => _TopItem(e.key, e.value))
+      return items
+          .map((item) => _TopItem(
+                item['item_name'] as String,
+                item['total_quantity_sold'] as int,
+              ))
           .toList();
     } catch (e) {
       debugPrint('❌ Error fetching top items: $e');
-      return [];
+      // Fallback to manual aggregation if view query fails
+      try {
+        final supabase = Supabase.instance.client;
+        DateTime startDate, endDate;
+        
+        if (period == ReportPeriod.day) {
+          startDate = DateTime(date.year, date.month, date.day);
+          endDate = startDate.add(const Duration(days: 1));
+        } else if (period == ReportPeriod.week) {
+          startDate = date.subtract(Duration(days: date.weekday - 1));
+          startDate = DateTime(startDate.year, startDate.month, startDate.day);
+          endDate = startDate.add(const Duration(days: 7));
+        } else if (period == ReportPeriod.month) {
+          startDate = DateTime(date.year, date.month, 1);
+          endDate = DateTime(date.year, date.month + 1, 1);
+        } else {
+          startDate = DateTime(date.year, 1, 1);
+          endDate = DateTime(date.year + 1, 1, 1);
+        }
+        
+        final response = await supabase
+            .from('order_items')
+            .select('name, quantity, orders!inner(status, placed_at)')
+            .gte('orders.placed_at', startDate.toIso8601String())
+            .lt('orders.placed_at', endDate.toIso8601String())
+            .eq('orders.status', 'delivered');
+        
+        final items = response as List<dynamic>;
+        
+        // Group by item name and sum quantities
+        final Map<String, int> itemCounts = {};
+        
+        for (var item in items) {
+          final title = item['name'] as String;
+          final quantity = item['quantity'] as int;
+          itemCounts[title] = (itemCounts[title] ?? 0) + quantity;
+        }
+        
+        // Sort by count and take top 5
+        final sortedItems = itemCounts.entries.toList()
+          ..sort((a, b) => b.value.compareTo(a.value));
+        
+        return sortedItems
+            .take(5)
+            .map((e) => _TopItem(e.key, e.value))
+            .toList();
+      } catch (fallbackError) {
+        debugPrint('❌ Fallback also failed: $fallbackError');
+        return [];
+      }
     }
   }
 
@@ -318,10 +449,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
   Widget _buildChartHeader() {
     if (_chartData.isEmpty) return const SizedBox();
     
-    final totalRevenue = _chartData.fold<double>(0, (sum, point) => sum + point.value);
-    final peakPoint = _chartData.reduce((a, b) => a.value > b.value ? a : b);
-    final averageRevenue = totalRevenue / _chartData.length;
-    
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
       decoration: BoxDecoration(
@@ -331,9 +458,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          _buildMiniStat('Peak', compactFmt.format(peakPoint.value)),
-          _buildMiniStat('Average', compactFmt.format(averageRevenue)),
-          _buildMiniStat('Total', compactFmt.format(totalRevenue)),
+          _buildMiniStat('Total Orders', '$_totalOrders'),
+          _buildMiniStat('Completed', '$_completedOrders'),
+          _buildMiniStat('Cancelled', '$_cancelledOrders'),
+          _buildMiniStat('Avg Value', compactFmt.format(_avgOrderValue)),
         ],
       ),
     );
@@ -591,6 +719,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
           children: [
             _buildStatsCards(),
             const SizedBox(height: 16),
+            _buildRevenueBreakdown(), // NEW: Revenue breakdown
+            const SizedBox(height: 16),
             _buildPeriodSelector(),
             const SizedBox(height: 16),
             _buildChartTypeSelector(),
@@ -656,6 +786,146 @@ class _ReportsScreenState extends State<ReportsScreen> {
           Text(value, style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: color)),
           const SizedBox(height: 4),
           Text(title, style: TextStyle(fontSize: 12, color: AppColors.darkText.withOpacity(0.6))),
+        ],
+      ),
+    );
+  }
+
+  // Revenue Breakdown Widget
+  Widget _buildRevenueBreakdown() {
+    if (_loading) {
+      return const SizedBox();
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.pie_chart, color: AppColors.primary, size: 20),
+              const SizedBox(width: 8),
+              Text(
+                'Revenue Breakdown',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.darkText,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: _buildBreakdownItem(
+                  'Meals',
+                  _mealsRevenue,
+                  Colors.green,
+                  Icons.restaurant,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _buildBreakdownItem(
+                  'Delivery',
+                  _deliveryRevenue,
+                  Colors.blue,
+                  Icons.delivery_dining,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _buildBreakdownItem(
+                  'Tax',
+                  _taxCollected,
+                  Colors.orange,
+                  Icons.receipt,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Divider(color: AppColors.darkText.withOpacity(0.1)),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Total Revenue',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.darkText.withOpacity(0.7),
+                ),
+              ),
+              Text(
+                currencyFmt.format(_totalRevenue),
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.primary,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBreakdownItem(String label, double amount, Color color, IconData icon) {
+    final percentage = _totalRevenue > 0 ? (amount / _totalRevenue * 100) : 0.0;
+    
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Column(
+        children: [
+          Icon(icon, color: color, size: 24),
+          const SizedBox(height: 8),
+          Text(
+            compactFmt.format(amount),
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: color,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              color: AppColors.darkText.withOpacity(0.6),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '${percentage.toStringAsFixed(1)}%',
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.bold,
+              color: color,
+            ),
+          ),
         ],
       ),
     );
