@@ -51,7 +51,7 @@ CREATE TABLE IF NOT EXISTS orders (
     customer_name VARCHAR(255) NOT NULL,
     order_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     total_amount INT NOT NULL,
-    status ENUM('pending', 'confirmed', 'preparing', 'outForDelivery', 'delivered', 'cancelled') DEFAULT 'pending',
+    status ENUM('confirmed', 'preparing', 'outForDelivery', 'delivered', 'cancelled') DEFAULT 'confirmed',
     delivery_type ENUM('delivery', 'pickup') NOT NULL,
     delivery_address TEXT,
     delivery_phone VARCHAR(20),

@@ -9,8 +9,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 class OrderProvider extends ChangeNotifier {
   final List<Order> _orders = [];
   NotificationProvider? _notificationProvider;
-  final Map<String, Timer> _autoConfirmTimers = {}; // ADDED: Track auto-confirm timers
-  final Set<String> _viewedPendingOrders = {}; // ADDED: Track viewed orders
 
   // ADDED: Set notification provider reference
   void setNotificationProvider(NotificationProvider provider) {
@@ -102,11 +100,6 @@ class OrderProvider extends ChangeNotifier {
       _orders.add(updatedOrder);
       notifyListeners();
 
-      // Start auto-confirmation timer
-      if (updatedOrder.status == OrderStatus.pending) {
-        _startAutoConfirmTimer(updatedOrder.id);
-      }
-
       // Send notifications
       if (_notificationProvider != null && updatedOrder.status != OrderStatus.cancelled) {
         _notificationProvider!.addNotification(AppNotification(
@@ -174,11 +167,6 @@ class OrderProvider extends ChangeNotifier {
 
         final loadedOrder = order.copyWith(items: items);
         _orders.add(loadedOrder);
-        
-        // FIXED: Restart auto-confirm timer for pending orders
-        if (loadedOrder.status == OrderStatus.pending) {
-          _startAutoConfirmTimerFromDate(loadedOrder.id, loadedOrder.date);
-        }
       }
       
       debugPrint('✅ Loaded ${_orders.length} orders');
@@ -224,11 +212,6 @@ class OrderProvider extends ChangeNotifier {
 
         final loadedOrder = order.copyWith(items: items);
         _orders.add(loadedOrder);
-        
-        // FIXED: Restart auto-confirm timer for pending orders
-        if (loadedOrder.status == OrderStatus.pending) {
-          _startAutoConfirmTimerFromDate(loadedOrder.id, loadedOrder.date);
-        }
       }
       
       debugPrint('✅ Loaded ${_orders.length} total orders');
@@ -285,91 +268,7 @@ class OrderProvider extends ChangeNotifier {
     }
   }
 
-  // ADDED: Start auto-confirmation timer
-  void _startAutoConfirmTimer(String orderId) {
-    // Cancel existing timer if any
-    _autoConfirmTimers[orderId]?.cancel();
-    
-    // Create new timer
-    _autoConfirmTimers[orderId] = Timer(const Duration(minutes: 5), () {
-      final orderIndex = _orders.indexWhere((o) => o.id == orderId);
-      if (orderIndex == -1) {
-        debugPrint('❌ Order $orderId not found for auto-confirmation');
-        return;
-      }
 
-      final order = _orders[orderIndex];
-      
-      // Only auto-confirm if still pending (not cancelled by customer)
-      if (order.status == OrderStatus.pending) {
-        debugPrint('⏰ Auto-confirming order $orderId after 5 minutes');
-        updateStatus(orderId, OrderStatus.confirmed);
-        
-        // Send notification to customer
-        if (_notificationProvider != null) {
-          _notificationProvider!.addNotification(AppNotification(
-            id: DateTime.now().millisecondsSinceEpoch.toString(),
-            userId: order.customerId,
-            title: 'Order Confirmed',
-            message: 'Your order #$orderId has been confirmed and will be prepared soon',
-            type: 'order_update',
-            timestamp: DateTime.now(),
-            data: {'orderId': orderId},
-          ));
-        }
-      }
-      
-      // Clean up timer
-      _autoConfirmTimers.remove(orderId);
-    });
-  }
-
-  // ADDED: Start auto-confirm timer based on order placed date (for loaded orders)
-  void _startAutoConfirmTimerFromDate(String orderId, DateTime orderDate) {
-    final timeSinceOrder = DateTime.now().difference(orderDate);
-    const cancellationWindow = Duration(minutes: 5);
-    
-    if (timeSinceOrder >= cancellationWindow) {
-      // Time has already passed, auto-confirm immediately
-      debugPrint('⏰ Auto-confirming order $orderId (cancellation window expired)');
-      updateStatus(orderId, OrderStatus.confirmed);
-      return;
-    }
-    
-    // Calculate remaining time
-    final remainingTime = cancellationWindow - timeSinceOrder;
-    debugPrint('⏰ Setting up auto-confirm for $orderId in ${remainingTime.inSeconds}s');
-    
-    // Cancel existing timer if any
-    _autoConfirmTimers[orderId]?.cancel();
-    
-    // Create timer for remaining time
-    _autoConfirmTimers[orderId] = Timer(remainingTime, () {
-      final orderIndex = _orders.indexWhere((o) => o.id == orderId);
-      if (orderIndex == -1) return;
-
-      final order = _orders[orderIndex];
-      
-      if (order.status == OrderStatus.pending) {
-        debugPrint('⏰ Auto-confirming order $orderId');
-        updateStatus(orderId, OrderStatus.confirmed);
-        
-        if (_notificationProvider != null) {
-          _notificationProvider!.addNotification(AppNotification(
-            id: DateTime.now().millisecondsSinceEpoch.toString(),
-            userId: order.customerId,
-            title: 'Order Confirmed',
-            message: 'Your order #$orderId has been confirmed',
-            type: 'order_update',
-            timestamp: DateTime.now(),
-            data: {'orderId': orderId},
-          ));
-        }
-      }
-      
-      _autoConfirmTimers.remove(orderId);
-    });
-  }
 
   // ADDED: Send order status notification helper
   void _sendOrderStatusNotification(String orderId, OrderStatus newStatus) {
@@ -401,8 +300,6 @@ class OrderProvider extends ChangeNotifier {
         title = 'Order Cancelled';
         message = 'Your order #$orderId has been cancelled';
         break;
-      default:
-        return;
     }
 
     _notificationProvider!.addNotification(AppNotification(
@@ -416,75 +313,7 @@ class OrderProvider extends ChangeNotifier {
     ));
   }
 
-  // ADDED: Manually confirm order (by customer or admin)
-  Future<void> confirmOrder(String orderId) async {
-    try {
-      // Cancel the auto-confirm timer since it's being manually confirmed
-      _autoConfirmTimers[orderId]?.cancel();
-      _autoConfirmTimers.remove(orderId);
-      
-      // Update status to confirmed
-      await updateStatus(orderId, OrderStatus.confirmed);
-      
-      debugPrint('✅ Order $orderId manually confirmed');
-    } catch (e) {
-      debugPrint('❌ Failed to confirm order: $e');
-      rethrow;
-    }
-  }
 
-  // ADDED: Cancel order with reason
-  void cancelOrder(String orderId, String reason) {
-    final index = _orders.indexWhere((o) => o.id == orderId);
-    if (index == -1) {
-      debugPrint('❌ Order $orderId not found');
-      return;
-    }
-
-    final order = _orders[index];
-    
-    // ADDED: Cancel auto-confirm timer
-    _autoConfirmTimers[orderId]?.cancel();
-    _autoConfirmTimers.remove(orderId);
-    
-    debugPrint('❌ Cancelling order $orderId with reason: $reason');
-    
-    _orders[index] = Order(
-      id: order.id,
-      customerId: order.customerId,
-      customerName: order.customerName,
-      deliveryPhone: order.deliveryPhone,
-      date: order.date,
-      items: order.items,
-      subtotal: order.subtotal, // FIXED: Added required field
-      deliveryFee: order.deliveryFee, // FIXED: Added required field
-      tax: order.tax, // FIXED: Added required field
-      totalAmount: order.totalAmount,
-      status: OrderStatus.cancelled,
-      deliveryType: order.deliveryType,
-      deliveryAddress: order.deliveryAddress,
-      riderId: order.riderId,
-      riderName: order.riderName,
-      cancellationReason: reason,
-      cancelledAt: DateTime.now(), // FIXED: Set cancellation timestamp
-    );
-
-    notifyListeners();
-    
-    // Send notification to customer
-    if (_notificationProvider != null) {
-      _notificationProvider!.addNotification(
-        AppNotification(
-          id: DateTime.now().millisecondsSinceEpoch.toString(),
-          title: 'Order Cancelled',
-          message: 'Your order $orderId has been cancelled. Reason: $reason',
-          userId: order.customerId,
-          timestamp: DateTime.now(),
-          type: 'order_cancelled',
-        ),
-      );
-    }
-  }
 
   List<Order> ordersForCustomer(String customerId) {
     return _orders.where((o) => o.customerId == customerId).toList();
@@ -620,35 +449,6 @@ class OrderProvider extends ChangeNotifier {
     }
   }
 
-  // ADDED: Clean up timers on dispose
-  @override
-  void dispose() {
-    for (var timer in _autoConfirmTimers.values) {
-      timer.cancel();
-    }
-    _autoConfirmTimers.clear();
-    super.dispose();
-  }
-
-  // ADDED: Get unviewed pending orders count (excludes cancelled)
-  int get unviewedPendingOrdersCount {
-    return _orders
-        .where((o) => 
-            o.status == OrderStatus.pending && 
-            !_viewedPendingOrders.contains(o.id))
-        .length;
-  }
-
-  // ADDED: Mark all current pending orders as viewed
-  void markPendingOrdersAsViewed() {
-    final pendingOrders = _orders.where((o) => o.status == OrderStatus.pending);
-    for (final order in pendingOrders) {
-      _viewedPendingOrders.add(order.id);
-    }
-    debugPrint('✅ Marked ${pendingOrders.length} pending orders as viewed');
-    notifyListeners();
-  }
-
   Future<void> createOrder({
     required List<OrderItem> items,
     required DeliveryType deliveryType,
@@ -667,7 +467,7 @@ class OrderProvider extends ChangeNotifier {
         'id': orderId,
         'user_auth_id': customerId, // CHANGED: use user_auth_id (FK to public.users.auth_id)
         'total_amount': totalAmount,
-        'status': 'pending',
+        'status': 'confirmed',
         'delivery_type': deliveryType.name,
         'delivery_address': deliveryAddress,
         'special_instructions': specialInstructions,

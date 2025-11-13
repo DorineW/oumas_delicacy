@@ -9,7 +9,7 @@ import '../providers/location_provider.dart';
 import '../constants/colors.dart';
 
 class LocationScreen extends StatefulWidget {
-  final dynamic initialPosition;
+  final Map<String, double>? initialPosition;
 
   const LocationScreen({super.key, this.initialPosition});
 
@@ -19,22 +19,16 @@ class LocationScreen extends StatefulWidget {
 
 // FIXED: Changed to TickerProviderStateMixin instead of SingleTickerProviderStateMixin
 class _LocationScreenState extends State<LocationScreen> with TickerProviderStateMixin {
-  LatLng? _selectedPoint;
   MapController mapController = MapController();
   bool _isMapReady = false;
   bool _isLoadingLocation = false;
   final TextEditingController _searchController = TextEditingController();
   List<Map<String, dynamic>> _searchResults = [];
   Timer? _debounceTimer;
-  
-  // Store current address locally
-  String? _currentAddress;
   bool _isLoadingAddress = false;
-
-  // REMOVED: Local state for delivery fee and zone - use provider instead
   
-  // ADDED: Flag to prevent operations after disposal
-  bool _isDisposed = false;
+  // REMOVED: Local state for address and coordinates - use provider as single source of truth
+  // REMOVED: _isDisposed flag - use built-in mounted property instead
 
   @override
   void initState() {
@@ -46,7 +40,6 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
 
   @override
   void dispose() {
-    _isDisposed = true;
     _searchController.dispose();
     _debounceTimer?.cancel();
     super.dispose();
@@ -54,7 +47,7 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
 
   // UPDATED: Better location initialization with permission handling
   void _initializeMap() async {
-    if (!mounted || _isDisposed) return;
+    if (!mounted) return;
 
     setState(() => _isLoadingLocation = true);
 
@@ -68,11 +61,10 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
         // Force fresh location fetch
         await locationProvider.initializeLocation();
 
-        if (!mounted || _isDisposed) return;
+        if (!mounted) return;
 
         if (locationProvider.latitude != null && locationProvider.longitude != null) {
           initialPoint = LatLng(locationProvider.latitude!, locationProvider.longitude!);
-          _currentAddress = locationProvider.deliveryAddress;
           locationFound = true;
         } else {
           initialPoint = const LatLng(
@@ -82,35 +74,28 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
         }
       } else {
         // Use provided initial position and reverse geocode it
-        // FIXED: Access Map using bracket notation instead of property access
-        final lat = widget.initialPosition is Map 
-            ? (widget.initialPosition['latitude'] as double?) ?? LocationProvider.defaultLatitude
-            : LocationProvider.defaultLatitude;
-        final lon = widget.initialPosition is Map 
-            ? (widget.initialPosition['longitude'] as double?) ?? LocationProvider.defaultLongitude
-            : LocationProvider.defaultLongitude;
+        final lat = widget.initialPosition!['latitude'] ?? LocationProvider.defaultLatitude;
+        final lon = widget.initialPosition!['longitude'] ?? LocationProvider.defaultLongitude;
         
         initialPoint = LatLng(lat, lon);
         
         // Get address for initial position
         await locationProvider.setLocation(initialPoint.latitude, initialPoint.longitude);
         
-        if (!mounted || _isDisposed) return;
+        if (!mounted) return;
         
-        _currentAddress = locationProvider.deliveryAddress;
         locationFound = true;
       }
 
-      if (!mounted || _isDisposed) return;
+      if (!mounted) return;
       
       setState(() {
-        _selectedPoint = initialPoint;
         _isMapReady = true;
       });
 
       if (locationFound) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted && !_isDisposed) {
+          if (mounted) {
             _animatedMapMove(initialPoint, 15.0);
           }
         });
@@ -118,27 +103,23 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
     } catch (e) {
       debugPrint('❌ Error initializing map: $e');
 
-      // FIXED: Check mounted and disposed before accessing context
-      if (mounted && !_isDisposed) {
+      if (mounted) {
         setState(() {
-          _selectedPoint = const LatLng(
-            LocationProvider.defaultLatitude,
-            LocationProvider.defaultLongitude,
-          );
           _isMapReady = true;
         });
 
         // Show error after setState to ensure widget tree is stable
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted && !_isDisposed) {
-            ScaffoldMessenger.of(context).showSnackBar(
+          if (mounted) {
+            final messenger = ScaffoldMessenger.of(context);
+            messenger.showSnackBar(
               SnackBar(
                 content: Row(
                   children: [
                     const Icon(Icons.error, color: Colors.white),
                     const SizedBox(width: 12),
                     Expanded(
-                      child: Text('Could not get location: $e'),
+                      child: Text('Could not get location. Please try again.'),
                     ),
                   ],
                 ),
@@ -152,7 +133,7 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
         });
       }
     } finally {
-      if (mounted && !_isDisposed) {
+      if (mounted) {
         setState(() => _isLoadingLocation = false);
       }
     }
@@ -205,23 +186,21 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
 
   // UPDATED: Improved onMapTap with better address handling
   void _onMapTap(BuildContext context, LatLng point) async {
-    if (!mounted || _isDisposed) return;
+    if (!mounted) return;
     
     final locationProvider = context.read<LocationProvider>();
+    final messenger = ScaffoldMessenger.of(context);
 
     setState(() {
-      _selectedPoint = point;
       _isLoadingAddress = true;
-      _currentAddress = null;
     });
 
-    // FIXED: Check mounted and disposed before accessing ScaffoldMessenger
-    if (!mounted || _isDisposed) return;
+    if (!mounted) return;
     
     // Remove any existing snackbar before showing new one
-    ScaffoldMessenger.of(context).clearSnackBars();
+    messenger.clearSnackBars();
     
-    ScaffoldMessenger.of(context).showSnackBar(
+    messenger.showSnackBar(
       SnackBar(
         content: const Row(
           children: [
@@ -247,24 +226,26 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
 
     await locationProvider.setLocation(point.latitude, point.longitude);
 
-    if (mounted && !_isDisposed) {
-      ScaffoldMessenger.of(context).clearSnackBars();
+    if (mounted) {
+      messenger.clearSnackBars();
       setState(() {
-        _currentAddress = locationProvider.deliveryAddress;
         _isLoadingAddress = false;
       });
 
-      debugPrint('📍 Map tap - Address: $_currentAddress, Fee: ${locationProvider.deliveryFee}');
+      debugPrint('📍 Map tap - Address: ${locationProvider.deliveryAddress}, Fee: ${locationProvider.deliveryFee}');
     }
   }
 
   void _confirmLocation(BuildContext context) {
-    if (!mounted || _isDisposed) return;
+    if (!mounted) return;
     
     final locationProvider = context.read<LocationProvider>();
     
-    // FIXED: Check for both address and coordinates
-    if (_currentAddress == null || _currentAddress!.isEmpty || _selectedPoint == null) {
+    // Check for both address and coordinates from provider
+    if (locationProvider.deliveryAddress == null || 
+        locationProvider.deliveryAddress!.isEmpty || 
+        locationProvider.latitude == null || 
+        locationProvider.longitude == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: const Row(
@@ -285,14 +266,13 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
       return;
     }
 
-    // FIXED: Return address with coordinates
-    debugPrint('✅ Confirming location: $_currentAddress');
-    debugPrint('✅ Coordinates: ${_selectedPoint!.latitude}, ${_selectedPoint!.longitude}');
+    debugPrint('✅ Confirming location: ${locationProvider.deliveryAddress}');
+    debugPrint('✅ Coordinates: ${locationProvider.latitude}, ${locationProvider.longitude}');
     
     Navigator.pop(context, {
-      'address': _currentAddress!,
-      'latitude': _selectedPoint!.latitude,
-      'longitude': _selectedPoint!.longitude,
+      'address': locationProvider.deliveryAddress!,
+      'latitude': locationProvider.latitude!,
+      'longitude': locationProvider.longitude!,
       'outsideZone': locationProvider.outsideDeliveryArea,
       'deliveryFee': locationProvider.deliveryFee,
     });
@@ -300,7 +280,7 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
 
   // UPDATED: Refresh current location with better feedback
   Future<void> _currentLocationButtonPressed() async {
-    if (!mounted || _isDisposed) return;
+    if (!mounted) return;
     
     setState(() => _isLoadingLocation = true);
     
@@ -311,7 +291,7 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
       }
 
       if (permission == LocationPermission.deniedForever) {
-        if (!mounted || _isDisposed) return;
+        if (!mounted) return;
         await showDialog(
           context: context,
           builder: (ctx) => AlertDialog(
@@ -329,7 +309,7 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
             ],
           ),
         );
-        if (mounted && !_isDisposed) {
+        if (mounted) {
           setState(() => _isLoadingLocation = false);
         }
         return;
@@ -338,7 +318,7 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
       // If location services are disabled, prompt to enable
       final servicesEnabled = await Geolocator.isLocationServiceEnabled();
       if (!servicesEnabled) {
-        if (!mounted || _isDisposed) return;
+        if (!mounted) return;
         await showDialog(
           context: context,
           builder: (ctx) => AlertDialog(
@@ -359,25 +339,19 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
       }
 
       final locationProvider = context.read<LocationProvider>();
+      final messenger = ScaffoldMessenger.of(context);
       
       // Clear cached location and force fresh fetch with reverse geocoding
       locationProvider.clearLocation();
       await locationProvider.initializeLocation();
       
-      if (!mounted || _isDisposed) return;
+      if (!mounted) return;
       
       if (locationProvider.latitude != null && locationProvider.longitude != null) {
         final newPoint = LatLng(locationProvider.latitude!, locationProvider.longitude!);
         
-        setState(() {
-          _selectedPoint = newPoint;
-          _currentAddress = locationProvider.deliveryAddress; // Sync address from provider
-        });
-        
         _animatedMapMove(newPoint, 16.0); // UPDATED: Zoom in more on current location
         
-        // FIXED: Capture messenger before showing snackbar
-        final messenger = ScaffoldMessenger.of(context);
         messenger.showSnackBar(
           SnackBar(
             content: Row(
@@ -386,8 +360,8 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
-                    _currentAddress != null && _currentAddress!.isNotEmpty
-                        ? 'Location: $_currentAddress'
+                    locationProvider.deliveryAddress != null && locationProvider.deliveryAddress!.isNotEmpty
+                        ? 'Location: ${locationProvider.deliveryAddress}'
                         : 'Location updated!',
                   ),
                 ),
@@ -401,10 +375,8 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
           ),
         );
       } else {
-        if (!mounted || _isDisposed) return;
+        if (!mounted) return;
 
-        // FIXED: Capture messenger before showing snackbar
-        final messenger = ScaffoldMessenger.of(context);
         messenger.showSnackBar(
           SnackBar(
             content: const Row(
@@ -424,9 +396,8 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
         );
       }
     } catch (e) {
-      if (!mounted || _isDisposed) return;
+      if (!mounted) return;
 
-      // FIXED: Capture messenger before showing snackbar
       final messenger = ScaffoldMessenger.of(context);
       messenger.showSnackBar(
         SnackBar(
@@ -444,7 +415,7 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
         ),
       );
     } finally {
-      if (mounted && !_isDisposed) {
+      if (mounted) {
         setState(() => _isLoadingLocation = false);
       }
     }
@@ -452,14 +423,14 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
 
   // UPDATED: Faster search with immediate results on Enter/Done
   Future<void> _searchAddress(String query, {bool immediate = false}) async {
-    if (!mounted || _isDisposed) return;
+    if (!mounted) return;
     
     if (_debounceTimer?.isActive ?? false) {
       _debounceTimer?.cancel();
     }
     
     if (query.isEmpty) {
-      if (mounted && !_isDisposed) {
+      if (mounted) {
         setState(() => _searchResults = []);
       }
       return;
@@ -472,19 +443,19 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
     }
     
     // Otherwise, debounce for typing
-    _debounceTimer = Timer(const Duration(milliseconds: 300), () async { // REDUCED: from 500ms to 300ms
+    _debounceTimer = Timer(const Duration(milliseconds: 300), () async {
       await _performSearch(query);
     });
   }
 
   // ADDED: Extracted search logic
   Future<void> _performSearch(String query) async {
-    if (!mounted || _isDisposed) return;
+    if (!mounted) return;
     
     final locationProvider = context.read<LocationProvider>();
     final results = await locationProvider.searchAddress(query);
     
-    if (mounted && !_isDisposed) {
+    if (mounted) {
       setState(() {
         _searchResults = results;
       });
@@ -493,34 +464,24 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
 
   // UPDATED: Better result selection with immediate address update
   Future<void> _selectSearchResult(Map<String, dynamic> result) async {
-    if (!mounted || _isDisposed) return;
+    if (!mounted) return;
     
     final locationProvider = context.read<LocationProvider>();
     
     final lat = result['lat'] as double;
     final lon = result['lon'] as double;
-    final displayName = result['name'] as String;
 
     setState(() {
       _searchResults = [];
       _searchController.clear();
-      _selectedPoint = LatLng(lat, lon);
-      _currentAddress = displayName;
       _isLoadingAddress = false;
     });
     
-    _animatedMapMove(_selectedPoint!, 16.0);
+    final selectedPoint = LatLng(lat, lon);
+    _animatedMapMove(selectedPoint, 16.0);
     
-    locationProvider.setLocation(lat, lon).then((_) {
-      if (mounted && !_isDisposed) {
-        final reverseAddress = locationProvider.deliveryAddress;
-        if (reverseAddress != null && reverseAddress.length < displayName.length && reverseAddress.isNotEmpty) {
-          setState(() {
-            _currentAddress = reverseAddress;
-          });
-        }
-      }
-    });
+    // Set location in provider - it will update deliveryAddress
+    await locationProvider.setLocation(lat, lon);
   }
 
   Widget _buildAddressCard(LocationProvider provider) {
@@ -557,23 +518,23 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
           
           const SizedBox(height: 12),
           
-          // UPDATED: Address Text using local state
+          // UPDATED: Address Text using provider state as single source of truth
           Text(
             _isLoadingAddress
                 ? "🔄 Getting address..."
-                : (_currentAddress ?? "📍 Tap on map to select location"),
+                : (provider.deliveryAddress ?? "📍 Tap on map to select location"),
             textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w500,
-              color: _currentAddress == null 
+              color: provider.deliveryAddress == null 
                   ? Colors.grey 
                   : AppColors.darkText,
             ),
           ),
           
           // ADDED: Display Delivery Fee or Warning
-          if (_selectedPoint != null && !_isLoadingAddress) ...[
+          if (provider.latitude != null && !_isLoadingAddress) ...[
             const SizedBox(height: 8),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -640,7 +601,7 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
               Expanded(
                 flex: 3,
                 child: ElevatedButton(
-                  onPressed: (_currentAddress == null || _currentAddress!.isEmpty || _isLoadingAddress || _selectedPoint == null)
+                  onPressed: (provider.deliveryAddress == null || provider.deliveryAddress!.isEmpty || _isLoadingAddress || provider.latitude == null)
                       ? null
                       : () => _confirmLocation(context),
                   style: ElevatedButton.styleFrom(
@@ -817,138 +778,144 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
               ),
             ),
 
-          // Outside delivery zone warning
-          if (_isMapReady && provider.outsideDeliveryArea)
-            Positioned(
-              top: _searchResults.isNotEmpty ? 220 : 80,
-              left: 12,
-              right: 12,
-              child: Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.red.withOpacity(0.9),
-                  borderRadius: BorderRadius.circular(8),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.2),
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
-                ),
-                child: const Row(
-                  children: [
-                    Icon(Icons.warning, color: Colors.white),
-                    SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'You are outside our delivery area (5km radius)',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-          // Map
+          // Map container with warning overlay
           Positioned.fill(
-            top: _searchResults.isNotEmpty ? 220 : 80,
-            child: _isMapReady
-                ? FlutterMap(
-                    mapController: mapController,
-                    options: MapOptions(
-                      initialCenter: _selectedPoint ?? 
-                          const LatLng(
-                            LocationProvider.defaultLatitude,
-                            LocationProvider.defaultLongitude,
+            top: _searchResults.isNotEmpty ? 280 : 80,
+            child: Stack(
+              children: [
+                // Map
+                _isMapReady
+                    ? FlutterMap(
+                        mapController: mapController,
+                        options: MapOptions(
+                          initialCenter: (provider.latitude != null && provider.longitude != null)
+                              ? LatLng(provider.latitude!, provider.longitude!)
+                              : const LatLng(
+                                  LocationProvider.defaultLatitude,
+                                  LocationProvider.defaultLongitude,
+                                ),
+                          initialZoom: 15.0,
+                          onTap: (tapPosition, point) => _onMapTap(context, point),
+                          interactionOptions: const InteractionOptions(
+                            flags: ~InteractiveFlag.rotate,
                           ),
-                      initialZoom: 15.0,
-                      onTap: (tapPosition, point) => _onMapTap(context, point),
-                      interactionOptions: const InteractionOptions(
-                        flags: ~InteractiveFlag.rotate,
-                      ),
-                    ),
-                    children: [
-                      TileLayer(
-                        urlTemplate: "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
-                        userAgentPackageName: 'com.yourapp.fooddelivery',
-                        subdomains: const ['a', 'b', 'c'],
-                      ),
-                      
-                      // Delivery radius circle (5km)
-                      CircleLayer(
-                        circles: [
-                          CircleMarker(
-                            point: const LatLng(
-                              LocationProvider.defaultLatitude,
-                              LocationProvider.defaultLongitude,
-                            ),
-                            color: AppColors.primary.withOpacity(0.2),
-                            borderColor: AppColors.primary.withOpacity(0.5),
-                            borderStrokeWidth: 2,
-                            useRadiusInMeter: true,
-                            radius: 5000,
+                        ),
+                        children: [
+                          TileLayer(
+                            urlTemplate: "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+                            userAgentPackageName: 'com.yourapp.fooddelivery',
+                            subdomains: const ['a', 'b', 'c'],
                           ),
-                        ],
-                      ),
-                      
-                      // Restaurant location marker
-                      const MarkerLayer(
-                        markers: [
-                          Marker(
-                            point: LatLng(
-                              LocationProvider.defaultLatitude,
-                              LocationProvider.defaultLongitude,
-                            ),
-                            width: 40,
-                            height: 40,
-                            child: Icon(Icons.restaurant, color: Colors.red, size: 30),
-                          ),
-                        ],
-                      ),
-                      
-                      // Selected location marker
-                      if (_selectedPoint != null)
-                        MarkerLayer(
-                          markers: [
-                            Marker(
-                              point: _selectedPoint!,
-                              width: 50,
-                              height: 50,
-                              alignment: Alignment.center,
-                              child: Stack(
-                                alignment: Alignment.center,
-                                children: [
-                                  Container(
-                                    width: 20,
-                                    height: 20,
-                                    decoration: BoxDecoration(
-                                      color: AppColors.accent.withOpacity(0.3),
-                                      shape: BoxShape.circle,
-                                    ),
-                                  ),
-                                  const Icon(Icons.location_on, color: AppColors.accent, size: 35),
-                                ],
+                          
+                          // Delivery radius circle (5km)
+                          CircleLayer(
+                            circles: [
+                              CircleMarker(
+                                point: const LatLng(
+                                  LocationProvider.defaultLatitude,
+                                  LocationProvider.defaultLongitude,
+                                ),
+                                color: AppColors.primary.withOpacity(0.2),
+                                borderColor: AppColors.primary.withOpacity(0.5),
+                                borderStrokeWidth: 2,
+                                useRadiusInMeter: true,
+                                radius: 5000,
                               ),
+                            ],
+                          ),
+                          
+                          // Restaurant location marker
+                          const MarkerLayer(
+                            markers: [
+                              Marker(
+                                point: LatLng(
+                                  LocationProvider.defaultLatitude,
+                                  LocationProvider.defaultLongitude,
+                                ),
+                                width: 40,
+                                height: 40,
+                                child: Icon(Icons.restaurant, color: Colors.red, size: 30),
+                              ),
+                            ],
+                          ),
+                          
+                          // Selected location marker
+                          if (provider.latitude != null && provider.longitude != null)
+                            MarkerLayer(
+                              markers: [
+                                Marker(
+                                  point: LatLng(provider.latitude!, provider.longitude!),
+                                  width: 50,
+                                  height: 50,
+                                  alignment: Alignment.center,
+                                  child: Stack(
+                                    alignment: Alignment.center,
+                                    children: [
+                                      Container(
+                                        width: 20,
+                                        height: 20,
+                                        decoration: BoxDecoration(
+                                          color: AppColors.accent.withOpacity(0.3),
+                                          shape: BoxShape.circle,
+                                        ),
+                                      ),
+                                      const Icon(Icons.location_on, color: AppColors.accent, size: 35),
+                                    ],
+                                  ),
+                                ),
+                              ],
                             ),
+                        ],
+                      )
+                    : const Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            CircularProgressIndicator(),
+                            SizedBox(height: 16),
+                            Text('Loading map...'),
                           ],
                         ),
-                    ],
-                  )
-                : const Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        CircularProgressIndicator(),
-                        SizedBox(height: 16),
-                        Text('Loading map...'),
-                      ],
+                      ),
+                
+                // Outside delivery zone warning (overlay on map)
+                if (_isMapReady && provider.outsideDeliveryArea)
+                  Positioned(
+                    top: 12,
+                    left: 12,
+                    right: 12,
+                    child: Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.red.withOpacity(0.9),
+                        borderRadius: BorderRadius.circular(8),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.2),
+                            blurRadius: 8,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: const Row(
+                        children: [
+                          Icon(Icons.warning, color: Colors.white),
+                          SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'You are outside our delivery area (5km radius)',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
+              ],
+            ),
           ),
           
           // Current Location FAB

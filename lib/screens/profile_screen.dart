@@ -6,7 +6,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../constants/colors.dart';
 import '../utils/responsive_helper.dart';
 import 'edit_profile_screen.dart';
-import 'payment_methods_screen.dart';
 import 'notifications_screen.dart';
 import '../providers/notification_provider.dart';
 import '../providers/favorites_provider.dart'; // ADDED
@@ -242,16 +241,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             title: "Order History",
                             onTap: () {
                               Navigator.pushNamed(context, '/order-history');
-                            },
-                          ),
-                          _ProfileOption(
-                            icon: Icons.payment,
-                            title: "Payment Methods",
-                            onTap: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(builder: (context) => const PaymentMethodsScreen()),
-                              );
                             },
                           ),
                           Consumer<NotificationProvider>(

@@ -51,21 +51,20 @@ class _ReportsScreenState extends State<ReportsScreen> {
     
     debugPrint('🔄 Loading data for period: $_period, date: $_selectedDate');
     
+    // 1. Load comprehensive aggregated stats first (sets all total fields)
+    await _loadAggregatedStats(); 
+    
+    // 2. Load chart data (relies on date range logic being correct)
     _chartData = await fetchSalesData(_period, _selectedDate);
     debugPrint('📊 Chart data loaded: ${_chartData.length} points');
     
+    // 3. Load top items (relies on date range logic being correct)
     _topItems = await fetchTopItems(_period, _selectedDate);
     debugPrint('🏆 Top items loaded: ${_topItems.length} items');
     
-    // Calculate totals from chart data
-    _totalRevenue = _chartData.fold(0, (sum, point) => sum + point.value);
-    _totalOrders = _topItems.fold(0, (sum, item) => sum + item.count);
-    
-    debugPrint('💰 Chart data total revenue: $_totalRevenue');
-    debugPrint('📦 Total orders from items: $_totalOrders');
-    
-    // Fetch aggregated stats from view
-    await _loadAggregatedStats();
+    // 4. Recalculate Avg Order Value after total is set by _loadAggregatedStats
+    // This ensures Avg Order Value uses the corrected _totalOrders count.
+    _avgOrderValue = _totalOrders > 0 ? _totalRevenue / _totalOrders : 0.0;
     
     debugPrint('✅ Data loading complete');
     debugPrint('   Final Total Revenue: $_totalRevenue');
@@ -123,8 +122,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
       _totalOrders = stats.fold(0, (sum, s) => sum + ((s['order_count'] as int?) ?? 0));
       _completedOrders = stats.fold(0, (sum, s) => sum + ((s['completed_count'] as int?) ?? 0));
       _cancelledOrders = stats.fold(0, (sum, s) => sum + ((s['cancelled_count'] as int?) ?? 0));
+      
+      // Revenue fields are summed here. We no longer calculate _avgOrderValue here, as it belongs in the main setState.
       _totalRevenue = stats.fold(0.0, (sum, s) => sum + ((s['daily_revenue'] as num?)?.toDouble() ?? 0.0));
-      _avgOrderValue = _totalOrders > 0 ? _totalRevenue / _totalOrders : 0.0;
       
       // Revenue breakdown (already calculated in view!)
       _mealsRevenue = stats.fold(0.0, (sum, s) => sum + ((s['items_revenue'] as num?)?.toDouble() ?? 0.0));

@@ -87,22 +87,38 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     if (!mounted) return;
     setState(() => _isLocationLoading = true);
 
+    final messenger = ScaffoldMessenger.of(context);
+    final locationProvider = context.read<LocationProvider>();
+
     try {
       final Position? pos = await LocationService.getCurrentLocation();
       if (!mounted) return;
 
       if (pos != null) {
+        await locationProvider.setLocation(pos.latitude, pos.longitude);
+
+        if (!mounted) return;
+        
         setState(() {
           _deliveryLatLng = LatLng(pos.latitude, pos.longitude);
+          _deliveryAddressController.text = locationProvider.deliveryAddress ?? 'Location selected (details required)';
+          _deliveryFee = locationProvider.deliveryFee;
         });
+        
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text('Location determined: ${locationProvider.deliveryAddress ?? 'Coordinates only'}'),
+            backgroundColor: AppColors.success,
+          ),
+        );
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not obtain current location')),
+        messenger.showSnackBar(
+          const SnackBar(content: Text('Could not obtain current location or permissions denied.')),
         );
       }
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      messenger.showSnackBar(
         SnackBar(content: Text('Location error: $e')),
       );
     } finally {
@@ -224,12 +240,16 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   }
 
   Future<void> _payNow() async {
-    // REQUIRED: Location and payment must be provided
-    
-    // Only check if mounted before showing errors
     if (!mounted) return;
+    
+    // 1. REQUIRED: Run Form Validation first
+    if (!_formKey.currentState!.validate()) {
+      if (!mounted) return;
+      _showErrorSnackBar('Please fix the errors in the form (phone number issues, etc.)');
+      return;
+    }
 
-    // 1. REQUIRED: Validate delivery location is selected
+    // 2. REQUIRED: Validate delivery location is selected
     if (_deliveryLatLng == null) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -247,7 +267,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       return;
     }
 
-    // 2. Validate delivery address details are provided
+    // 3. Validate delivery address details are provided
     if (_deliveryAddressController.text.trim().isEmpty) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -256,25 +276,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       return;
     }
 
-    // 3. REQUIRED: Validate M-Pesa phone number for payment
-    if (_mpesaPhoneController.text.trim().isEmpty) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Row(
-            children: [
-              Icon(Icons.payment, color: Colors.white),
-              SizedBox(width: 8),
-              Expanded(child: Text('Please enter your M-Pesa phone number for payment')),
-            ],
-          ),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
-
-    // 3. Check item availability
+    // 4. Check item availability
     final menuProvider = context.read<MenuProvider>();
     final cartProvider = context.read<CartProvider>();
 
@@ -572,13 +574,13 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             : null,
       };
 
-      // Format phone number for M-Pesa
-      final formattedPhone = MpesaService.formatPhoneNumber(mpesaPhone);
+      // Normalize M-Pesa phone number using PhoneUtils
+      final formattedPhone = PhoneUtils.normalizeKenyan(mpesaPhone);
 
       // Initiate M-Pesa payment (backend will create order after payment confirms)
       debugPrint('💳 Initiating M-Pesa payment...');
       final paymentResult = await MpesaService.initiateStkPush(
-        phoneNumber: mpesaPhone,
+        phoneNumber: formattedPhone,
         amount: totalAmount,
         userId: customerId,
         orderDetails: orderDetails, // ADDED: Send order details to backend
@@ -627,7 +629,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         return;
       }
 
-      _showErrorSnackBar('Order processing failed: $e');
+      // CHANGED: Display a generic error message for the user, while logging the detail.
+      _showErrorSnackBar('Order processing failed due to a network or server issue. Please check your connection and try again.');
       setState(() => _isProcessing = false);
     }
   }
@@ -978,8 +981,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 keyboardType: TextInputType.phone,
                 decoration: InputDecoration(
                   labelText: 'M-Pesa Phone Number *',
-                  hintText: 'Enter your phone number (e.g., 0712345678)',
-                  prefixText: '+254 ',
+                  hintText: '0712345678',
                   prefixIcon: const Icon(Icons.phone_android, color: AppColors.success),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
@@ -996,6 +998,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 validator: (value) {
                   if (value == null || value.trim().isEmpty) {
                     return 'Phone number is required';
+                  }
+                  // Validate using PhoneUtils
+                  final normalized = PhoneUtils.normalizeKenyan(value);
+                  if (!PhoneUtils.isE164Kenyan(normalized)) {
+                    return 'Please enter a valid Kenyan phone number';
                   }
                   return null;
                 },

@@ -7,7 +7,7 @@ import '../providers/favorites_provider.dart'; // ADDED
 import '../providers/menu_provider.dart'; // ADDED
 import '../models/order.dart';
 import '../services/auth_service.dart'; // ADDED
-import '../providers/reviews_provider.dart'; // ADDED
+import '../providers/reviews_provider.dart'; // ADDED: Includes Review model
 import 'order_history_screen.dart';
 import 'meal_detail_screen.dart'; // ADDED
 import '../utils/responsive_helper.dart';
@@ -48,24 +48,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
     
     final isLandscape = ResponsiveHelper.isLandscape(context);
     
-    return PopScope(
-      canPop: false,
-      onPopInvoked: (didPop) {},
-      child: Scaffold(
-        backgroundColor: AppColors.background,
-        appBar: AppBar(
-          title: const Text("Dashboard"),
-          backgroundColor: AppColors.primary,
-          elevation: 0,
-          iconTheme: const IconThemeData(color: AppColors.white),
-          titleTextStyle: const TextStyle(
-            color: AppColors.white,
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-          ),
-          automaticallyImplyLeading: false,
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      appBar: AppBar(
+        title: const Text("Dashboard"),
+        backgroundColor: AppColors.primary,
+        elevation: 0,
+        iconTheme: const IconThemeData(color: AppColors.white),
+        titleTextStyle: const TextStyle(
+          color: AppColors.white,
+          fontSize: 18,
+          fontWeight: FontWeight.bold,
         ),
-        body: SafeArea(
+        automaticallyImplyLeading: false,
+      ),
+      body: SafeArea(
           child: LayoutBuilder(
             builder: (context, constraints) {
               return SingleChildScrollView(
@@ -306,7 +303,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
             },
           ),
         ),
-      ),
     );
   }
 
@@ -745,8 +741,6 @@ class _RecentOrderCard extends StatelessWidget {
 
   Color _getStatusColor(OrderStatus status) {
     switch (status) {
-      case OrderStatus.pending:
-        return Colors.orange;
       case OrderStatus.confirmed:
         return Colors.blue;
       case OrderStatus.preparing: // UPDATED
@@ -762,8 +756,6 @@ class _RecentOrderCard extends StatelessWidget {
 
   String _getStatusText(OrderStatus status) {
     switch (status) {
-      case OrderStatus.pending:
-        return 'PENDING';
       case OrderStatus.confirmed:
         return 'CONFIRMED';
       case OrderStatus.preparing: // UPDATED
@@ -1265,6 +1257,8 @@ class _RatingDialogState extends State<_RatingDialog> {
           rating: rating,
           body: review.isNotEmpty ? review : null,
           createdAt: DateTime.now(),
+          userName: auth.currentUser?.name,
+          isAnonymous: _submitAsAnonymous, // CRITICAL: Pass anonymous flag
         ));
       }
     }

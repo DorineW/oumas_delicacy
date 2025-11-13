@@ -1,3 +1,4 @@
+// lib/screens/admin/admin_chat_list_screen.dart
 import 'package:flutter/material.dart';
 import '../../constants/colors.dart';
 import '../customer_chat_screen.dart';
@@ -66,11 +67,13 @@ class _AdminChatListScreenState extends State<AdminChatListScreen> {
             children: [
               _buildSectionHeader('Active Chats'),
               ...rooms.map((chat) {
-                final roomId = chat['id'] as String;
-                final unreadAdmin = (chat['unread_admin'] ?? 0) as int;
+                final roomId = chat['id'] as String?;
+                if (roomId == null) return const SizedBox.shrink(); // Skip invalid rooms
+                
+                final unreadAdmin = (chat['unread_admin'] as num?)?.toInt() ?? 0;
                 final lastMessageAtStr = chat['last_message_at'] as String?;
                 final lastMessageContent = (chat['last_message_content'] ?? '') as String;
-                  final customerName = (chat['customer_name'] as String?) ?? 'Customer';
+                final customerName = (chat['customer_name'] as String?) ?? 'Customer';
                 final lastTime = lastMessageAtStr == null
                     ? ''
                     : _relativeTime(DateTime.tryParse(lastMessageAtStr));

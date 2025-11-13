@@ -27,10 +27,12 @@ class _MpesaPaymentConfirmationScreenState
     extends State<MpesaPaymentConfirmationScreen> {
   Timer? _statusCheckTimer;
   Timer? _stkQueryTimer;
-  String _orderStatus = 'pending';
+  Timer? _timeCounterTimer;
+  String _orderStatus = 'waiting';
   String? _stkQueryStatus;
   String? _mpesaReceiptNumber; // ADDED: M-Pesa receipt/transaction code
   String? _actualOrderId; // ADDED: Store actual order ID once created
+  DateTime? _paymentCompletedAt; // ADDED: Store exact payment completion time
   int _stkQueryCount = 0;
   int _secondsElapsed = 0;
 
@@ -44,13 +46,13 @@ class _MpesaPaymentConfirmationScreenState
   }
 
   void _startTimeCounter() {
-    Timer.periodic(const Duration(seconds: 1), (timer) {
+    _timeCounterTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (!mounted) {
         timer.cancel();
         return;
       }
       setState(() => _secondsElapsed++);
-      if (_orderStatus != 'pending') {
+      if (_orderStatus != 'waiting') {
         timer.cancel();
       }
     });
@@ -90,11 +92,15 @@ class _MpesaPaymentConfirmationScreenState
             _mpesaReceiptNumber = statusResult['mpesaReceipt'];
             debugPrint('✅ M-Pesa Receipt: $_mpesaReceiptNumber');
           }
+          // Capture payment completion timestamp
+          if (status == 'confirmed' && _paymentCompletedAt == null) {
+            _paymentCompletedAt = DateTime.now();
+          }
         });
 
-        if (status == 'confirmed' || status == 'cancelled' || status == 'pending') {
-          // If status is 'pending', order was created successfully (awaiting customer confirmation)
-          if (status == 'pending' && _actualOrderId != null) {
+        if (status == 'confirmed' || status == 'cancelled') {
+          // Order confirmed via M-Pesa payment
+          if (status == 'confirmed' && _actualOrderId != null) {
             debugPrint('✅ Order created, awaiting customer confirmation');
             timer.cancel();
             _stkQueryTimer?.cancel();
@@ -154,7 +160,7 @@ class _MpesaPaymentConfirmationScreenState
     // REDUCED: Poll every 30 seconds instead of 10 to avoid rate limiting
     // Safaricom allows max 5 requests per minute
     _stkQueryTimer = Timer.periodic(const Duration(seconds: 30), (timer) async {
-      if (!mounted || _stkQueryCount >= 6 || _orderStatus != 'pending') {
+      if (!mounted || _stkQueryCount >= 6 || _orderStatus != 'waiting') {
         timer.cancel();
         return;
       }
@@ -179,23 +185,19 @@ class _MpesaPaymentConfirmationScreenState
   }
 
   void _navigateToHome() {
-    // Navigate to order history, keeping the home route in the stack
+    // Navigate back to the root and clear all previous routes
+    // User lands on the main dashboard/home screen
     Navigator.of(context).pushNamedAndRemoveUntil(
       '/home',
       (route) => false,
     );
-    // Then push order history on top
-    Future.delayed(const Duration(milliseconds: 100), () {
-      if (mounted) {
-        Navigator.of(context).pushNamed('/order-history');
-      }
-    });
   }
 
   @override
   void dispose() {
     _statusCheckTimer?.cancel();
     _stkQueryTimer?.cancel();
+    _timeCounterTimer?.cancel();
     super.dispose();
   }
 
@@ -336,13 +338,13 @@ class _MpesaPaymentConfirmationScreenState
   @override
   Widget build(BuildContext context) {
     return PopScope(
-      canPop: _orderStatus != 'pending',
+      canPop: _orderStatus != 'waiting',
       child: Scaffold(
         backgroundColor: AppColors.background,
         appBar: AppBar(
           title: const Text('M-Pesa Payment'),
           backgroundColor: AppColors.primary,
-          automaticallyImplyLeading: _orderStatus != 'pending',
+          automaticallyImplyLeading: _orderStatus != 'waiting',
           iconTheme: const IconThemeData(color: AppColors.white),
           titleTextStyle: const TextStyle(
             color: AppColors.white,
@@ -415,7 +417,7 @@ class _MpesaPaymentConfirmationScreenState
                 ],
 
                 // STK Query Status
-                if (_stkQueryStatus != null && _orderStatus == 'pending') ...[
+                if (_stkQueryStatus != null && _orderStatus == 'waiting') ...[
                   const SizedBox(height: 16),
                   Container(
                     width: double.infinity,
@@ -444,7 +446,7 @@ class _MpesaPaymentConfirmationScreenState
                 ],
 
                 // Action Button
-                if (_orderStatus != 'pending') ...[
+                if (_orderStatus != 'waiting') ...[
                   const SizedBox(height: 32),
                   SizedBox(
                     width: double.infinity,
@@ -501,7 +503,8 @@ class _MpesaPaymentConfirmationScreenState
 
   // ADDED: Receipt widget
   Widget _buildReceipt() {
-    final now = DateTime.now();
+    // Use the actual payment completion time, fallback to current time
+    final now = _paymentCompletedAt ?? DateTime.now();
     
     return Container(
       width: double.infinity,

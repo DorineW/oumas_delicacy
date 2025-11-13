@@ -27,6 +27,16 @@ class ChatService {
     return inserted['id'] as String;
   }
 
+  /// Stream all chat rooms for admin view with customer names
+  /// 
+  /// NOTE: Current implementation queries users table for each room on every update.
+  /// IMPROVEMENT NEEDED: Use a Supabase JOIN/RPC function or create a database view
+  /// that includes customer names to avoid N+1 queries and improve performance.
+  /// Example SQL View:
+  /// CREATE VIEW chat_rooms_with_names AS
+  ///   SELECT cr.*, u.name as customer_name, u.email as customer_email
+  ///   FROM chat_rooms cr
+  ///   LEFT JOIN users u ON cr.customer_id = u.auth_id;
   Stream<List<Map<String, dynamic>>> streamAdminRooms() {
     return _client
         .from('chat_rooms')

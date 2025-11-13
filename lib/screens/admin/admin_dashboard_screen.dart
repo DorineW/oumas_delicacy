@@ -19,7 +19,6 @@ import 'manage_orders_screen.dart';
 import 'manage_users_screen.dart';
 import 'reports_screen.dart';
 import 'inventory_screen.dart';
-import 'admin_settings_screen.dart';
 import 'admin_menu_management_screen.dart';
 import 'admin_chat_list_screen.dart';
 import '../../providers/menu_provider.dart';
@@ -86,7 +85,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   }
 
   List<Order> _getPendingOrders(OrderProvider provider) {
-    return provider.orders.where((o) => o.status == OrderStatus.pending).toList();
+    return provider.orders.where((o) => o.status == OrderStatus.confirmed).toList();
   }
 
   void _openOrdersModal(BuildContext context, OrderProvider provider) {
@@ -123,7 +122,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
-                      'Pending Orders (${pendingOrders.length})',
+                      'New Orders (${provider.orders.where((o) => o.status == OrderStatus.confirmed).length})',
                       style: const TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
@@ -157,7 +156,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                             ),
                             const SizedBox(height: 16),
                             Text(
-                              'No Pending Orders',
+                              'No New Orders',
                               style: TextStyle(
                                 fontSize: 16,
                                 color: AppColors.darkText.withOpacity(0.5),
@@ -668,7 +667,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     // Use revenue from database view (more accurate than in-memory calculation)
     final todayRevenue = _todayDeliveredRevenue;
 
-    final pendingOrders = provider.orders.where((o) => o.status == OrderStatus.pending).length;
+    final pendingOrders = provider.orders.where((o) => o.status == OrderStatus.confirmed).length;
     final deliveredToday = todayOrders.where((o) => o.status == OrderStatus.delivered).length;
 
     return Container(
@@ -707,7 +706,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                 _buildStatRow('Total Orders', '${todayOrders.length}'),
                 _buildStatRow('Delivered Revenue', 'Ksh ${todayRevenue.toStringAsFixed(0)}'),
                 _buildStatRow('Delivered Today', '$deliveredToday'),
-                _buildStatRow('Pending', '$pendingOrders'),
+                _buildStatRow('Confirmed', '$pendingOrders'),
               ],
             ),
           ),
@@ -848,8 +847,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
   Color _getActivityColor(OrderStatus status) {
     switch (status) {
-      case OrderStatus.pending:
-        return Colors.orange;
       case OrderStatus.confirmed:
         return Colors.blue;
       case OrderStatus.preparing:
@@ -865,8 +862,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
   IconData _getActivityIcon(OrderStatus status) {
     switch (status) {
-      case OrderStatus.pending:
-        return Icons.shopping_cart;
       case OrderStatus.confirmed:
         return Icons.check_circle;
       case OrderStatus.preparing:
@@ -882,8 +877,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
   String _getActivityTitle(Order order) {
     switch (order.status) {
-      case OrderStatus.pending:
-        return 'New order received';
       case OrderStatus.confirmed:
         return 'Order confirmed';
       case OrderStatus.preparing:
@@ -967,14 +960,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                   onTap: () => Navigator.push(
                     context,
                     MaterialPageRoute(builder: (_) => const ReportsScreen()),
-                  ),
-                ),
-                _AdminCard(
-                  title: "Settings",
-                  icon: Icons.settings,
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const AdminSettingsScreen()),
                   ),
                 ),
               ],
@@ -1147,8 +1132,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                         () => _openDrawerTo(context, const ReportsScreen())),
                     _drawerItem(Icons.inventory, 'Inventory',
                         () => _openDrawerTo(context, const InventoryScreen())),
-                    _drawerItem(Icons.settings, 'Settings',
-                        () => _openDrawerTo(context, const AdminSettingsScreen())),
                     const Divider(),
                     _drawerItem(Icons.help, 'Help & Support', () {}),
                     _drawerItem(Icons.info, 'About', () {}),
@@ -1307,8 +1290,6 @@ class _NotificationOrderCard extends StatelessWidget {
 
   Color _getStatusColor(OrderStatus status) {
     switch (status) {
-      case OrderStatus.pending:
-        return Colors.orange;
       case OrderStatus.confirmed:
         return Colors.blue;
       case OrderStatus.preparing:
@@ -1324,8 +1305,6 @@ class _NotificationOrderCard extends StatelessWidget {
 
   String _getStatusText(OrderStatus status) {
     switch (status) {
-      case OrderStatus.pending:
-        return 'Pending';
       case OrderStatus.confirmed:
         return 'Confirmed';
       case OrderStatus.preparing:
@@ -1436,7 +1415,7 @@ class _NotificationOrderCard extends StatelessWidget {
                       foregroundColor: AppColors.success,
                       side: const BorderSide(color: AppColors.success),
                     ),
-                    child: const Text('Confirm Order'),
+                    child: const Text('Acknowledge'),
                   ),
                 ),
                 const SizedBox(width: 8),

@@ -33,370 +33,6 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> with SingleTick
     super.dispose();
   }
 
-  // ADDED: Check if order can be cancelled (within 5 minutes)
-  bool _canOrderBeCancelled(Order order) {
-    if (order.status == OrderStatus.cancelled || 
-        order.status == OrderStatus.delivered) {
-      return false;
-    }
-
-    final timeSinceOrder = DateTime.now().difference(order.date).inMinutes;
-    return timeSinceOrder < 5; // 5-minute cancellation window
-  }
-
-  // ADDED: Get remaining cancellation time in seconds
-  int _getRemainingCancellationTime(Order order) {
-    final timeSinceOrder = DateTime.now().difference(order.date);
-    final remainingSeconds = (5 * 60) - timeSinceOrder.inSeconds;
-    return remainingSeconds > 0 ? remainingSeconds : 0;
-  }
-
-  // ADDED: Confirm order manually
-  void _confirmOrder(BuildContext context, Order order) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Row(
-          children: [
-            Icon(Icons.check_circle, color: AppColors.success),
-            SizedBox(width: 8),
-            Text('Confirm Order'),
-          ],
-        ),
-        content: const Text(
-          'Are you sure you want to confirm this order? '
-          'This will skip the cancellation window and your order will be prepared immediately.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Go Back'),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              Navigator.pop(context);
-              final provider = context.read<OrderProvider>();
-              try {
-                await provider.confirmOrder(order.id);
-                if (!mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Order confirmed successfully!'),
-                    backgroundColor: AppColors.success,
-                  ),
-                );
-              } catch (e) {
-                if (!mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('Failed to confirm order: $e'),
-                    backgroundColor: Colors.red,
-                  ),
-                );
-              }
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.success,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Confirm Order'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ADDED: Cancel order with reason
-  void _cancelOrder(BuildContext context, Order order) async {
-    final reason = await _showCancellationReasonDialog(context, order);
-
-    if (reason != null && reason.isNotEmpty) {
-      final provider = Provider.of<OrderProvider>(context, listen: false);
-      provider.cancelOrder(order.id, reason);
-      
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                const Icon(Icons.check_circle, color: Colors.white),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Text(
-                        'Order cancelled successfully',
-                        style: TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Refund will be processed within 1-3 business days',
-                        style: TextStyle(fontSize: 12, color: Colors.white.withOpacity(0.9)),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            backgroundColor: Colors.orange,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            margin: const EdgeInsets.all(16),
-            duration: const Duration(seconds: 4),
-          ),
-        );
-      }
-    }
-  }
-
-  // ADDED: Show cancellation reason dialog
-  Future<String?> _showCancellationReasonDialog(BuildContext context, Order order) async {
-    String? selectedReason;
-    final TextEditingController customController = TextEditingController();
-    final remainingTime = _getRemainingCancellationTime(order);
-    
-    final result = await showDialog<String>(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) {
-          return AlertDialog(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            title: Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.red.withOpacity(0.2),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(Icons.cancel, color: Colors.red, size: 20),
-                ),
-                const SizedBox(width: 12),
-                const Expanded(
-                  child: Text(
-                    'Cancel Order',
-                    style: TextStyle(fontSize: 16),
-                  ),
-                ),
-              ],
-            ),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Order info and timer
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.orange.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.orange.withOpacity(0.3)),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            const Icon(Icons.restaurant_menu, size: 16, color: Colors.orange),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                'Your Order',
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.orange,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        Row(
-                          children: [
-                            const Icon(Icons.timer, size: 16, color: Colors.orange),
-                            const SizedBox(width: 8),
-                            Text(
-                              'Time remaining: ${_formatTimeLeft(remainingTime)}',
-                              style: const TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.orange,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  // Refund warning notice
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.blue.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.blue.withOpacity(0.3)),
-                    ),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Icon(Icons.info_outline, size: 20, color: Colors.blue),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                'Refund Policy',
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.blue,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                'Your refund will be processed within 1-3 business days to the M-Pesa number used for payment.',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.blue.shade900,
-                                  height: 1.4,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'Please tell us why you want to cancel:',
-                    style: TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 14,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  
-                  // Reason options
-                  ...[
-                    'Changed my mind',
-                    'Ordered by mistake',
-                    'Too expensive',
-                    'Found better alternative',
-                    'Taking too long',
-                    'Other',
-                  ].map((reason) => Container(
-                    margin: const EdgeInsets.only(bottom: 8),
-                    decoration: BoxDecoration(
-                      color: selectedReason == reason 
-                          ? AppColors.primary.withOpacity(0.1)
-                          : Colors.transparent,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(
-                        color: selectedReason == reason
-                            ? AppColors.primary
-                            : AppColors.lightGray.withOpacity(0.3),
-                      ),
-                    ),
-                    child: RadioListTile<String>(
-                      title: Text(
-                        reason,
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: selectedReason == reason
-                              ? AppColors.primary
-                              : AppColors.darkText,
-                          fontWeight: selectedReason == reason
-                              ? FontWeight.w600
-                              : FontWeight.normal,
-                        ),
-                      ),
-                      value: reason,
-                      groupValue: selectedReason,
-                      activeColor: AppColors.primary,
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 8),
-                      onChanged: (value) => setDialogState(() => selectedReason = value),
-                    ),
-                  )),
-                  
-                  // Custom reason input
-                  if (selectedReason == 'Other') ...[
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: customController,
-                      decoration: InputDecoration(
-                        labelText: 'Please specify reason',
-                        hintText: 'Enter your reason...',
-                        prefixIcon: const Icon(Icons.edit, size: 20),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                      ),
-                      maxLines: 2,
-                    ),
-                  ],
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  customController.dispose();
-                  Navigator.pop(context);
-                },
-                child: const Text('Keep Order'),
-              ),
-              ElevatedButton(
-                onPressed: selectedReason == null ? null : () {
-                  String reason = selectedReason!;
-                  
-                  // Use custom reason if "Other" is selected
-                  if (selectedReason == 'Other') {
-                    final custom = customController.text.trim();
-                    if (custom.isEmpty) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Please specify a custom reason'),
-                          backgroundColor: Colors.red,
-                        ),
-                      );
-                      return;
-                    }
-                    reason = custom;
-                  }
-                  
-                  customController.dispose();
-                  Navigator.pop(context, reason);
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.red,
-                  foregroundColor: Colors.white,
-                ),
-                child: const Text('Confirm Cancellation'),
-              ),
-            ],
-          );
-        },
-      ),
-    );
-    
-    return result;
-  }
-
-  // ADDED: Format time left
-  String _formatTimeLeft(int seconds) {
-    final minutes = seconds ~/ 60;
-    final remainingSeconds = seconds % 60;
-    return '${minutes.toString().padLeft(2, '0')}:${remainingSeconds.toString().padLeft(2, '0')}';
-  }
-
   void _reorderItems(Order order) {
     final cartProvider = Provider.of<CartProvider>(context, listen: false);
     cartProvider.clear();
@@ -484,8 +120,6 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> with SingleTick
   // SIMPLIFIED: Order card with only essential information
   Widget _buildOrderCard(Order order) {
     final deliveryFee = order.deliveryType == DeliveryType.delivery ? 100 : 0;
-    final canCancel = _canOrderBeCancelled(order);
-    final remainingTime = canCancel ? _getRemainingCancellationTime(order) : 0;
     
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
@@ -545,35 +179,6 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> with SingleTick
                 ),
               ],
             ),
-            
-            // ADDED: Cancellation timer (only if can cancel)
-            if (canCancel) ...[
-              const SizedBox(height: 12),
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.orange.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.orange.withOpacity(0.3)),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.timer, size: 16, color: Colors.orange),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'Can cancel in: ${_formatTimeLeft(remainingTime)}',
-                        style: const TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.orange,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
             
             const SizedBox(height: 16),
             
@@ -680,70 +285,26 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> with SingleTick
               ),
             ],
             
-            // UPDATED: Action buttons (Reorder and Cancel)
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                // Confirm Order button (for pending orders within cancellation window)
-                if (order.status == OrderStatus.pending) ...[
-                  Expanded(
-                    flex: 3,
-                    child: ElevatedButton.icon(
-                      onPressed: () => _confirmOrder(context, order),
-                      icon: const Icon(Icons.check_circle, size: 18),
-                      label: const Text('Confirm Order'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.success,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
+            // UPDATED: Action buttons (Reorder only for delivered orders)
+            if (order.status == OrderStatus.delivered) ...[
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: () => _reorderItems(order),
+                  icon: const Icon(Icons.replay, size: 18),
+                  label: const Text('Reorder'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
                     ),
                   ),
-                  if (canCancel) const SizedBox(width: 8),
-                ],
-                // Cancel button (only if can cancel)
-                if (canCancel) ...[
-                  Expanded(
-                    flex: 2,
-                    child: OutlinedButton.icon(
-                      onPressed: () => _cancelOrder(context, order),
-                      icon: const Icon(Icons.cancel, size: 16, color: Colors.red),
-                      label: const Text('Cancel', style: TextStyle(color: Colors.red)),
-                      style: OutlinedButton.styleFrom(
-                        side: const BorderSide(color: Colors.red),
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-                // Reorder button (for completed orders)
-                if (order.status == OrderStatus.delivered) ...[
-                  if (canCancel) const SizedBox(width: 8),
-                  Expanded(
-                    flex: 3,
-                    child: ElevatedButton.icon(
-                      onPressed: () => _reorderItems(order),
-                      icon: const Icon(Icons.replay, size: 18),
-                      label: const Text('Reorder'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.primary,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ],
-            ),
+                ),
+              ),
+            ],
           ],
         ),
       ),
@@ -766,8 +327,6 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> with SingleTick
 
   IconData _getStatusIcon(OrderStatus status) {
     switch (status) {
-      case OrderStatus.pending:
-        return Icons.pending;
       case OrderStatus.confirmed:
         return Icons.check_circle;
       case OrderStatus.preparing:
@@ -783,8 +342,6 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> with SingleTick
 
   Color _getStatusColor(OrderStatus status) {
     switch (status) {
-      case OrderStatus.pending:
-        return Colors.orange;
       case OrderStatus.confirmed:
         return Colors.blue;
       case OrderStatus.preparing: // UPDATED
@@ -800,8 +357,6 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> with SingleTick
 
   String _getStatusText(OrderStatus status) {
     switch (status) {
-      case OrderStatus.pending:
-        return 'Pending';
       case OrderStatus.confirmed:
         return 'Confirmed';
       case OrderStatus.preparing: // UPDATED

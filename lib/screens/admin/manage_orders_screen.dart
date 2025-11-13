@@ -46,15 +46,7 @@ class _ManageOrdersScreenState extends State<ManageOrdersScreen>
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _scrollToHighlightedOrder();
-      // ADDED: Mark all pending orders as viewed
-      _markPendingOrdersAsViewed();
     });
-  }
-
-  // ADDED: Mark pending orders as viewed (resets notification count)
-  void _markPendingOrdersAsViewed() {
-    final provider = context.read<OrderProvider>();
-    provider.markPendingOrdersAsViewed();
   }
 
   @override
@@ -225,7 +217,7 @@ class _ManageOrdersScreenState extends State<ManageOrdersScreen>
 
   Widget _buildStatsHeader(OrderProvider provider) {
     final orders = provider.orders;
-    final pendingCount = orders.where((o) => o.status == OrderStatus.pending).length;
+    final pendingCount = orders.where((o) => o.status == OrderStatus.confirmed).length;
     final todayCount = orders.where((o) => _isToday(o.date)).length;
     // FIXED: Only count delivered orders for revenue
     final totalRevenue = orders.where((o) => o.status == OrderStatus.delivered)
@@ -243,7 +235,7 @@ class _ManageOrdersScreenState extends State<ManageOrdersScreen>
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
           _buildStatItem('Total', orders.length.toString(), Icons.receipt, AppColors.primary),
-          _buildStatItem('Pending', pendingCount.toString(), Icons.pending_actions, Colors.orange),
+          _buildStatItem('Confirmed', pendingCount.toString(), Icons.check_circle, Colors.blue),
           _buildStatItem('Today', todayCount.toString(), Icons.today, Colors.blue),
           // FIXED: Changed label from 'Revenue' to 'Delivered'
           _buildStatItem('Delivered', 'Ksh ${totalRevenue.toStringAsFixed(0)}', Icons.check_circle, AppColors.success),
@@ -294,7 +286,7 @@ class _ManageOrdersScreenState extends State<ManageOrdersScreen>
       builder: (context, provider, child) {
         final filteredOrders = _getFilteredOrders(provider.orders);
         
-        final pendingOrders = filteredOrders.where((o) => o.status == OrderStatus.pending).toList();
+        final pendingOrders = filteredOrders.where((o) => o.status == OrderStatus.confirmed).toList();
         final confirmedOrders = filteredOrders.where((o) => o.status == OrderStatus.confirmed).toList();
         final preparingOrders = filteredOrders.where((o) => o.status == OrderStatus.preparing).toList();
         final outForDeliveryOrders = filteredOrders.where((o) => o.status == OrderStatus.outForDelivery).toList();
@@ -325,7 +317,7 @@ class _ManageOrdersScreenState extends State<ManageOrdersScreen>
               indicatorColor: AppColors.white,
               isScrollable: true,
               tabs: const [
-                Tab(text: 'Pending'),
+                Tab(text: 'Confirmed'),
                 Tab(text: 'Confirmed'),
                 Tab(text: 'Preparing'),
                 Tab(text: 'Out for Delivery'),
@@ -426,8 +418,6 @@ class _ManageOrdersScreenState extends State<ManageOrdersScreen>
 
   String _getStatusText(OrderStatus status) {
     switch (status) {
-      case OrderStatus.pending:
-        return 'Pending';
       case OrderStatus.confirmed:
         return 'Confirmed';
       case OrderStatus.preparing:
@@ -443,8 +433,6 @@ class _ManageOrdersScreenState extends State<ManageOrdersScreen>
 
   Color _getStatusColor(OrderStatus status) {
     switch (status) {
-      case OrderStatus.pending:
-        return Colors.orange;
       case OrderStatus.confirmed:
         return Colors.blue;
       case OrderStatus.preparing:
@@ -492,15 +480,6 @@ class _AdminOrderCardState extends State<AdminOrderCard>
       _controller.repeat(reverse: true);
       Future.delayed(const Duration(seconds: 2), () {
         if (mounted) _controller.stop();
-      });
-    }
-
-    // ADDED: Start refresh timer for pending orders to update cancellation time
-    if (widget.order.status == OrderStatus.pending && widget.order.canCancel) {
-      _refreshTimer = Timer.periodic(const Duration(seconds: 10), (timer) {
-        if (mounted) {
-          setState(() {}); // Refresh to update cancellation time
-        }
       });
     }
   }
@@ -599,48 +578,6 @@ class _AdminOrderCardState extends State<AdminOrderCard>
                     ],
                   ),
                   
-                  // ADDED: Cancellation timer warning for pending orders
-                  if (widget.order.status == OrderStatus.pending && widget.order.canCancel) ...[
-                    const SizedBox(height: 8),
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: Colors.orange.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.orange.withOpacity(0.5)),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.timer, size: 16, color: Colors.orange),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Auto-confirms in ${widget.order.cancellationTimeRemaining} min',
-                                  style: const TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.orange,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  'Customer can still cancel',
-                                  style: TextStyle(
-                                    fontSize: 10,
-                                    color: Colors.orange.withOpacity(0.8),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                  
                   const SizedBox(height: 8),
                   Row(
                     children: [
@@ -715,49 +652,6 @@ class _AdminOrderCardState extends State<AdminOrderCard>
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // ADDED: Show pending status warning for admin
-              if (widget.order.status == OrderStatus.pending && widget.order.canCancel) ...[
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  margin: const EdgeInsets.only(bottom: 12),
-                  decoration: BoxDecoration(
-                    color: Colors.orange.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.orange.withOpacity(0.3)),
-                  ),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Icon(Icons.hourglass_bottom, size: 20, color: Colors.orange),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'Pending Confirmation',
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: Colors.orange,
-                                fontSize: 12,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              'This order will auto-confirm in ${widget.order.cancellationTimeRemaining} minutes if not cancelled by customer.',
-                              style: const TextStyle(
-                                color: Colors.orange,
-                                fontSize: 13,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-              
               // ADDED: Show cancellation reason if cancelled
               if (widget.order.status == OrderStatus.cancelled && 
                   widget.order.cancellationReason != null) ...[
@@ -830,28 +724,6 @@ class _AdminOrderCardState extends State<AdminOrderCard>
           ),
         ),
         actions: [
-          // UPDATED: Confirm button for pending orders
-          if (widget.order.status == OrderStatus.pending)
-            ElevatedButton(
-              onPressed: () {
-                Provider.of<OrderProvider>(context, listen: false)
-                    .updateStatus(widget.order.id, OrderStatus.confirmed);
-                Navigator.pop(context);
-                
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('✓ Order confirmed'),
-                    backgroundColor: Colors.blue,
-                  ),
-                );
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blue,
-                foregroundColor: Colors.white,
-              ),
-              child: const Text('Confirm Order'),
-            ),
-
           // ADDED: Start Preparing button for confirmed orders
           if (widget.order.status == OrderStatus.confirmed)
             ElevatedButton(
@@ -1349,7 +1221,7 @@ class _AdminOrderCardState extends State<AdminOrderCard>
                   
                   // Cancel the order with reason
                   Provider.of<OrderProvider>(context, listen: false)
-                      .cancelOrder(order.id, reason);
+                      .updateStatus(order.id, OrderStatus.cancelled);
                   
                   customController.dispose();
                   Navigator.pop(context);
@@ -1415,8 +1287,6 @@ class _AdminOrderCardState extends State<AdminOrderCard>
   // ADDED: Missing helper methods
   Color _getStatusColor(OrderStatus status) {
     switch (status) {
-      case OrderStatus.pending:
-        return Colors.orange;
       case OrderStatus.confirmed:
         return Colors.blue;
       case OrderStatus.preparing:
@@ -1432,8 +1302,6 @@ class _AdminOrderCardState extends State<AdminOrderCard>
 
   String _getStatusText(OrderStatus status) {
     switch (status) {
-      case OrderStatus.pending:
-        return 'Pending';
       case OrderStatus.confirmed:
         return 'Confirmed';
       case OrderStatus.preparing:

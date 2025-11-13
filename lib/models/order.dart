@@ -2,8 +2,7 @@
 //the order model representing customer orders
 
 enum OrderStatus {
-  pending,      // Customer placed order
-  confirmed,    // Admin/auto-confirmed after 5 minutes
+  confirmed,    // Payment confirmed, order ready for preparation
   preparing,    // Kitchen is preparing 
   outForDelivery, // Assigned to rider, on the way
   delivered,    // Successfully delivered
@@ -145,20 +144,6 @@ class Order {
     return id.substring(0, 8).toUpperCase();
   }
 
-  bool get canCancel {
-    if (status == OrderStatus.cancelled || status == OrderStatus.delivered) {
-      return false;
-    }
-    final timeSinceOrder = DateTime.now().difference(date).inMinutes;
-    return timeSinceOrder < 5;
-  }
-
-  int get cancellationTimeRemaining {
-    final timeSinceOrder = DateTime.now().difference(date).inMinutes;
-    final remaining = 5 - timeSinceOrder;
-    return remaining > 0 ? remaining : 0;
-  }
-
   // UPDATED: Match database schema exactly
   factory Order.fromJson(Map<String, dynamic> json) {
     return Order(
@@ -174,7 +159,7 @@ class Order {
       totalAmount: (json['total'] as num?)?.toInt() ?? 0,
       status: OrderStatus.values.firstWhere(
         (e) => e.name == json['status'],
-        orElse: () => OrderStatus.pending,
+        orElse: () => OrderStatus.confirmed,
       ),
       deliveryType: (json['delivery_address'] != null) 
           ? DeliveryType.delivery 

@@ -1,3 +1,4 @@
+// lib/screens/customer_chat_screen.dart
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/chat_service.dart';
@@ -110,10 +111,16 @@ class _CustomerChatScreenState extends State<CustomerChatScreen> {
   String _formatTs(DateTime? dt) {
     if (dt == null) return '';
     final now = DateTime.now();
+    
+    // Format time in 12-hour format with AM/PM
+    final hour12 = dt.hour == 0 ? 12 : (dt.hour > 12 ? dt.hour - 12 : dt.hour);
+    final amPm = dt.hour >= 12 ? 'PM' : 'AM';
+    final timeStr = '${hour12}:${dt.minute.toString().padLeft(2, '0')} $amPm';
+    
     if (now.difference(dt).inDays >= 1) {
-      return '${dt.month}/${dt.day} ${dt.hour.toString().padLeft(2,'0')}:${dt.minute.toString().padLeft(2,'0')}';
+      return '${dt.month}/${dt.day} $timeStr';
     }
-    return '${dt.hour.toString().padLeft(2,'0')}:${dt.minute.toString().padLeft(2,'0')}';
+    return timeStr;
   }
 }
 
@@ -218,15 +225,8 @@ class _MessageInputState extends State<_MessageInput> {
       });
       _controller.clear();
       await ChatService.instance.markRoomRead(roomId);
-      // Remove optimistic that got real match later (simple cleanup)
-      Future.delayed(const Duration(seconds: 2), () {
-        final parent = context.findAncestorStateOfType<_CustomerChatScreenState>();
-        if (parent != null && parent.mounted) {
-          parent.setState(() {
-            parent._optimistic.removeWhere((o) => true); // naive flush
-          });
-        }
-      });
+      // NOTE: Removed problematic optimistic flush - the Supabase stream will
+      // automatically update with the real message, preventing duplicates/disappearances
     } catch (_) {
       // swallow errors for now
     } finally {
