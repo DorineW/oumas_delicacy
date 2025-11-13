@@ -178,11 +178,8 @@ class _AppContentState extends State<_AppContent> {
         final inventoryProvider = Provider.of<InventoryProvider>(context, listen: false);
         await inventoryProvider.loadInventoryItems();
         
-        // ADDED: Load reviews
-        final reviewsProvider = Provider.of<ReviewsProvider>(context, listen: false);
-        await reviewsProvider.loadReviews();
-        
-        // NOTE: Favorites will load per-user after login via FavoritesProvider.setCurrentUser()
+        // NOTE: Favorites and Reviews will load per-user after login
+        // NOTE: Orders will load per-user after login based on role
       }
     });
   }

@@ -160,9 +160,21 @@ class RiderProvider with ChangeNotifier {
       debugPrint('🎉 Successfully loaded ${orders.length} orders for rider');
       
     } catch (e, stackTrace) {
+      // Log detailed error for debugging
       debugPrint('❌ Error loading rider orders: $e');
-      debugPrint('Stack trace: $stackTrace');
-      _error = 'Failed to load orders: $e';
+      if (kDebugMode) {
+        debugPrint('Stack trace: $stackTrace');
+      }
+      
+      // Set user-friendly error message
+      if (e.toString().contains('Connection') || e.toString().contains('network')) {
+        _error = 'Network connection error. Please check your internet.';
+      } else if (e.toString().contains('timeout')) {
+        _error = 'Request timed out. Please try again.';
+      } else {
+        _error = 'Could not load orders. Please try refreshing.';
+      }
+      
       _orders = [];
     } finally {
       _isLoading = false;
@@ -215,8 +227,10 @@ class RiderProvider with ChangeNotifier {
       }
     } catch (e, stackTrace) {
       debugPrint('❌ Failed to update order status: $e');
-      debugPrint('Stack: $stackTrace');
-      _error = 'Failed to update order: $e';
+      if (kDebugMode) {
+        debugPrint('Stack: $stackTrace');
+      }
+      _error = 'Could not update order status. Please try again.';
       notifyListeners();
     }
   }

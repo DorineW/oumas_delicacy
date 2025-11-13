@@ -32,7 +32,31 @@ class ChatService {
         .from('chat_rooms')
         .stream(primaryKey: ['id'])
         .order('last_message_at', ascending: false)
-        .map((rows) => rows);
+        .map((rows) async {
+          // Fetch customer names for each room
+          final enriched = <Map<String, dynamic>>[];
+          for (final row in rows) {
+            final customerId = row['customer_id'] as String?;
+            String? customerName;
+            if (customerId != null) {
+              try {
+                final userRow = await _client
+                    .from('users')
+                    .select('name, email')
+                    .eq('auth_id', customerId)
+                    .maybeSingle();
+                if (userRow != null) {
+                  customerName = (userRow['name'] as String?)?.trim();
+                  if (customerName == null || customerName.isEmpty) {
+                    customerName = userRow['email'] as String?;
+                  }
+                }
+              } catch (_) {}
+            }
+            enriched.add({...row, 'customer_name': customerName ?? 'Customer'});
+          }
+          return enriched;
+        }).asyncMap((future) => future);
   }
 
   Stream<Map<String, dynamic>?> streamSingleRoom(String roomId) {

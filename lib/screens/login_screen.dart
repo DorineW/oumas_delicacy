@@ -9,6 +9,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../constants/colors.dart';
 import '../services/auth_service.dart';
 import '../providers/favorites_provider.dart'; // ADDED: Import FavoritesProvider
+import '../providers/reviews_provider.dart'; // ADDED: Import ReviewsProvider
+import '../providers/order_provider.dart'; // ADDED: Import OrderProvider
 import 'home_screen.dart';
 import 'admin/admin_dashboard_screen.dart';
 import 'rider/rider_dashboard_screen.dart';
@@ -112,12 +114,32 @@ class _LoginScreenState extends State<LoginScreen>
       final user = auth.currentUser;
       debugPrint('👤 Logged in user: ${user?.email} with role: ${user?.role}');
 
-      // ADDED: Load user-specific favorites after login
       if (!mounted) return;
+
+      // ADDED: Load user-specific data after login
       final favoritesProvider = Provider.of<FavoritesProvider>(context, listen: false);
+      final reviewsProvider = Provider.of<ReviewsProvider>(context, listen: false);
+      final orderProvider = Provider.of<OrderProvider>(context, listen: false);
+
       if (user?.id != null) {
+        // Load favorites for all users
         favoritesProvider.setCurrentUser(user!.id);
+        
+        // Load reviews for all users
+        await reviewsProvider.loadReviews();
+        
+        // Load orders based on role
+        if (user.role == 'admin') {
+          debugPrint('📦 Loading all orders for admin');
+          await orderProvider.loadAllOrders();
+        } else if (user.role != 'rider') {
+          // Load customer orders (not for riders - they load separately)
+          debugPrint('📦 Loading orders for customer: ${user.id}');
+          await orderProvider.loadOrders(user.id);
+        }
       }
+
+      if (!mounted) return;
 
       // Route based on role
       if (user?.role == 'admin') {

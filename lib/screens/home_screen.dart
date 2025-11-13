@@ -14,6 +14,7 @@ import '../models/cart_item.dart';
 import '../models/menu_item.dart'; // ADDED
 import '../providers/cart_provider.dart';
 import '../providers/menu_provider.dart';
+import '../providers/favorites_provider.dart'; // ADDED
 import 'dashboard_screen.dart';
 import 'cart_screen.dart';
 import 'meal_detail_screen.dart';
@@ -281,6 +282,12 @@ class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin 
               icon: const Icon(Icons.logout),
               tooltip: 'Logout',
               onPressed: () async {
+                // Clear all provider data
+                final favoritesProvider = Provider.of<FavoritesProvider>(context, listen: false);
+                final cartProvider = Provider.of<CartProvider>(context, listen: false);
+                favoritesProvider.clearFavorites();
+                cartProvider.clearCart();
+                
                 await Provider.of<AuthService>(context, listen: false).logout();
                 if (!mounted) return;
                 Navigator.of(context).pushAndRemoveUntil(
@@ -367,6 +374,12 @@ class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin 
               icon: const Icon(Icons.logout),
               tooltip: 'Logout',
               onPressed: () async {
+                // Clear all provider data
+                final favoritesProvider = Provider.of<FavoritesProvider>(context, listen: false);
+                final cartProvider = Provider.of<CartProvider>(context, listen: false);
+                favoritesProvider.clearFavorites();
+                cartProvider.clearCart();
+                
                 await Provider.of<AuthService>(context, listen: false).logout();
                 if (!mounted) return;
                 Navigator.of(context).pushAndRemoveUntil(
@@ -446,6 +459,12 @@ class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin 
             icon: const Icon(Icons.logout),
             tooltip: 'Logout',
             onPressed: () async {
+              // Clear all provider data
+              final favoritesProvider = Provider.of<FavoritesProvider>(context, listen: false);
+              final cartProvider = Provider.of<CartProvider>(context, listen: false);
+              favoritesProvider.clearFavorites();
+              cartProvider.clearCart();
+              
               await Provider.of<AuthService>(context, listen: false).logout();
               if (!mounted) return;
               Navigator.of(context).pushAndRemoveUntil(

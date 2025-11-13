@@ -11,6 +11,8 @@ class Review {
   final DateTime createdAt;
   int likes;
   bool isLiked;
+  String? userName; // ADDED: Customer name
+  bool isAnonymous; // ADDED: Anonymous flag
 
   Review({
     required this.id,
@@ -21,6 +23,8 @@ class Review {
     required this.createdAt,
     this.likes = 0,
     this.isLiked = false,
+    this.userName,
+    this.isAnonymous = false,
   });
 
   // ADDED: Parse from Supabase JSON (same pattern as MenuItem)
@@ -34,18 +38,18 @@ class Review {
       createdAt: DateTime.parse(json['created_at'] as String),
       likes: 0,
       isLiked: false,
+      userName: json['user_name'] as String?,
+      isAnonymous: (json['is_anonymous'] as bool?) ?? false,
     );
   }
 
-  // ADDED: Convert to JSON for Supabase
+  // ADDED: Convert to JSON for Supabase (exclude id and created_at - let DB handle them)
   Map<String, dynamic> toJson() {
     return {
-      'id': id,
       'user_auth_id': userAuthId,
       'product_id': productId,
       'rating': rating,
       'body': body,
-      'created_at': createdAt.toIso8601String(),
     };
   }
 
@@ -101,6 +105,25 @@ class ReviewsProvider with ChangeNotifier {
           debugPrint('Raw JSON: $json');
           
           final review = Review.fromJson(json);
+          
+          // Fetch user name from users table
+          try {
+            final userRow = await supabase
+                .from('users')
+                .select('name, email')
+                .eq('auth_id', review.userAuthId)
+                .maybeSingle();
+            
+            if (userRow != null) {
+              review.userName = (userRow['name'] as String?)?.trim();
+              if (review.userName == null || review.userName!.isEmpty) {
+                review.userName = (userRow['email'] as String?)?.split('@').first;
+              }
+            }
+          } catch (e) {
+            debugPrint('⚠️ Could not fetch user name: $e');
+          }
+          
           reviews.add(review);
           debugPrint('✅ Successfully parsed: Review ${review.id} - Rating ${review.rating}/5');
         } catch (e, stackTrace) {

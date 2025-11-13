@@ -13,6 +13,8 @@ import '../../constants/colors.dart';
 import '../../services/auth_service.dart';
 import '../../models/order.dart';
 import '../../providers/order_provider.dart';
+import '../../providers/favorites_provider.dart'; // ADDED
+import '../../providers/cart_provider.dart'; // ADDED
 import 'manage_orders_screen.dart';
 import 'manage_users_screen.dart';
 import 'reports_screen.dart';
@@ -45,10 +47,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   @override
   void initState() {
     super.initState();
-    // Load all orders for admin dashboard
+    // Load revenue data (orders already loaded at login)
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final orderProvider = Provider.of<OrderProvider>(context, listen: false);
-      orderProvider.loadAllOrders();
       _loadTodayRevenue(); // Load revenue from view
     });
   }
@@ -1065,6 +1065,12 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             tooltip: 'Logout',
             color: AppColors.white,
             onPressed: () async {
+              // Clear all provider data
+              final favoritesProvider = Provider.of<FavoritesProvider>(context, listen: false);
+              final cartProvider = Provider.of<CartProvider>(context, listen: false);
+              favoritesProvider.clearFavorites();
+              cartProvider.clearCart();
+              
               await Provider.of<AuthService>(context, listen: false).logout();
               if (!mounted) return;
               Navigator.of(context).pushNamedAndRemoveUntil(

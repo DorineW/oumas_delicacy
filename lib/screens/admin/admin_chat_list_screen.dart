@@ -70,8 +70,7 @@ class _AdminChatListScreenState extends State<AdminChatListScreen> {
                 final unreadAdmin = (chat['unread_admin'] ?? 0) as int;
                 final lastMessageAtStr = chat['last_message_at'] as String?;
                 final lastMessageContent = (chat['last_message_content'] ?? '') as String;
-                final customerName = chat['customer_name'] as String? ??
-                    (chat['customer_id'] as String?)?.substring(0, 8) ?? 'Customer';
+                  final customerName = (chat['customer_name'] as String?) ?? 'Customer';
                 final lastTime = lastMessageAtStr == null
                     ? ''
                     : _relativeTime(DateTime.tryParse(lastMessageAtStr));

@@ -798,7 +798,7 @@ class _MealDetailScreenState extends State<MealDetailScreen> {
                     Row(
                       children: [
                         Text(
-                          'User', // UPDATED: Simplified - DB doesn't track user names
+                          review.isAnonymous ? 'Anonymous' : (review.userName ?? 'Customer'),
                           style: const TextStyle(
                             fontWeight: FontWeight.bold,
                             fontSize: 16,

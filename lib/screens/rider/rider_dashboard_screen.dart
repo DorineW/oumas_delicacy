@@ -7,6 +7,8 @@ import '../../constants/colors.dart';
 import '../../services/auth_service.dart';
 import '../../models/order.dart'; // ADDED: Import Order model
 import '../../providers/rider_provider.dart'; // ADDED: Import RiderProvider
+import '../../providers/favorites_provider.dart'; // ADDED
+import '../../providers/cart_provider.dart'; // ADDED
 import 'rider_orders_screen.dart';
 import 'rider_profile_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -84,39 +86,41 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen> {
     // Show error if any
     if (riderProvider.error != null) {
       return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.error_outline, size: 64, color: Colors.red),
-            const SizedBox(height: 16),
-            Text(
-              'Error loading orders',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: AppColors.darkText.withOpacity(0.5),
+        child: Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.error_outline, size: 64, color: Colors.red),
+              const SizedBox(height: 16),
+              const Text(
+                'Unable to Load Orders',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
-            ),
-            const SizedBox(height: 8),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 40),
-              child: Text(
+              const SizedBox(height: 8),
+              Text(
                 riderProvider.error!,
                 textAlign: TextAlign.center,
-                style: TextStyle(color: AppColors.darkText.withOpacity(0.4)),
+                style: TextStyle(
+                  color: AppColors.darkText.withOpacity(0.7),
+                ),
               ),
-            ),
-            const SizedBox(height: 16),
-            ElevatedButton.icon(
-              onPressed: () => riderProvider.refreshOrders(riderId),
-              icon: const Icon(Icons.refresh),
-              label: const Text('Retry'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                foregroundColor: Colors.white,
+              const SizedBox(height: 24),
+              ElevatedButton.icon(
+                onPressed: () => riderProvider.refreshOrders(riderId),
+                icon: const Icon(Icons.refresh),
+                label: const Text('Try Refreshing'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       );
     }
@@ -261,10 +265,29 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen> {
         iconTheme: const IconThemeData(color: AppColors.white),
         titleTextStyle: const TextStyle(color: AppColors.white, fontSize: 18, fontWeight: FontWeight.bold),
         actions: [
+          // Refresh button
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            tooltip: 'Refresh Orders',
+            onPressed: () {
+              final auth = Provider.of<AuthService>(context, listen: false);
+              final riderId = auth.currentUser?.id;
+              if (riderId != null) {
+                final riderProvider = Provider.of<RiderProvider>(context, listen: false);
+                riderProvider.refreshOrders(riderId);
+              }
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.logout),
             tooltip: 'Logout',
             onPressed: () async {
+              // Clear all provider data
+              final favoritesProvider = Provider.of<FavoritesProvider>(context, listen: false);
+              final cartProvider = Provider.of<CartProvider>(context, listen: false);
+              favoritesProvider.clearFavorites();
+              cartProvider.clearCart();
+              
               final navigator = Navigator.of(context); // ADDED: Store navigator
               await Provider.of<AuthService>(context, listen: false).logout();
               if (!mounted) return; // FIXED: Check mounted before navigation

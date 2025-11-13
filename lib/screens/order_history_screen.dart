@@ -24,17 +24,7 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> with SingleTick
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
-    
-    // Load orders from database when screen opens
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final provider = context.read<OrderProvider>();
-      if (widget.customerId != null) {
-        debugPrint('📦 Loading orders for customer: ${widget.customerId}');
-        provider.loadOrders(widget.customerId!);
-      } else {
-        debugPrint('⚠️ No customerId provided to OrderHistoryScreen');
-      }
-    });
+    // Orders already loaded at login, no need to reload here
   }
 
   @override

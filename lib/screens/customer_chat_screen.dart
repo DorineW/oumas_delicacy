@@ -45,7 +45,7 @@ class _CustomerChatScreenState extends State<CustomerChatScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: Text('Chat with Support (${_roomId ?? '...'} )'),
+        title: const Text('Support Chat'),
         backgroundColor: AppColors.primary,
         elevation: 0,
         iconTheme: const IconThemeData(color: AppColors.white),

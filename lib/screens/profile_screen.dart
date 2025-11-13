@@ -9,6 +9,8 @@ import 'edit_profile_screen.dart';
 import 'payment_methods_screen.dart';
 import 'notifications_screen.dart';
 import '../providers/notification_provider.dart';
+import '../providers/favorites_provider.dart'; // ADDED
+import '../providers/cart_provider.dart'; // ADDED
 import '../services/auth_service.dart';
 import '../services/chat_service.dart';
 import '../screens/customer_chat_screen.dart';
@@ -95,10 +97,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
               child: const Text("Cancel"),
             ),
             TextButton(
-              onPressed: () {
+              onPressed: () async {
                 Navigator.of(context).pop();
-                Provider.of<AuthService>(context, listen: false).logout();
-                Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
+                
+                // Clear all provider data before logout
+                final favoritesProvider = Provider.of<FavoritesProvider>(context, listen: false);
+                final cartProvider = Provider.of<CartProvider>(context, listen: false);
+                
+                favoritesProvider.clearFavorites();
+                cartProvider.clearCart();
+                
+                // Logout from auth service
+                await Provider.of<AuthService>(context, listen: false).logout();
+                
+                if (context.mounted) {
+                  Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
+                }
               },
               child: const Text(
                 "Logout",
