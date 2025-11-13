@@ -312,31 +312,50 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
 
       if (permission == LocationPermission.deniedForever) {
         if (!mounted || _isDisposed) return;
-        
-        // FIXED: Capture messenger before async gap
-        final messenger = ScaffoldMessenger.of(context);
-        messenger.showSnackBar(
-          SnackBar(
-            content: const Row(
-              children: [
-                Icon(Icons.error, color: Colors.white),
-                SizedBox(width: 12),
-                Expanded(
-                  child: Text('Location permissions are permanently denied. Please enable in settings.'),
-                ),
-              ],
-            ),
-            backgroundColor: Colors.red,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            margin: const EdgeInsets.all(16),
-            duration: const Duration(seconds: 4),
+        await showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Enable Location Access'),
+            content: const Text('Location permissions are permanently denied. Please enable them in app settings.'),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+              TextButton(
+                onPressed: () async {
+                  Navigator.pop(ctx);
+                  await Geolocator.openAppSettings();
+                },
+                child: const Text('Open Settings'),
+              ),
+            ],
           ),
         );
         if (mounted && !_isDisposed) {
           setState(() => _isLoadingLocation = false);
         }
         return;
+      }
+
+      // If location services are disabled, prompt to enable
+      final servicesEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!servicesEnabled) {
+        if (!mounted || _isDisposed) return;
+        await showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Turn On Location'),
+            content: const Text('Location services are disabled. Turn on location to get your current position.'),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Not Now')),
+              TextButton(
+                onPressed: () async {
+                  Navigator.pop(ctx);
+                  await Geolocator.openLocationSettings();
+                },
+                child: const Text('Open Settings'),
+              ),
+            ],
+          ),
+        );
       }
 
       final locationProvider = context.read<LocationProvider>();
@@ -783,7 +802,7 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
                             return ListTile(
                               leading: const Icon(Icons.location_on, color: AppColors.primary, size: 20),
                               title: Text(
-                                result['display_name'],
+                                result['name'],
                                 style: const TextStyle(fontSize: 13),
                                 maxLines: 2,
                                 overflow: TextOverflow.ellipsis,

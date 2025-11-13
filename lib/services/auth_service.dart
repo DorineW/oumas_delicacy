@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart'; // ADDED
 import '../models/user.dart' as app;
+import '../utils/phone_utils.dart';
 
 class AuthService extends ChangeNotifier {
   final _supabase = Supabase.instance.client;
@@ -112,6 +113,10 @@ class AuthService extends ChangeNotifier {
     int attempt = 0;
     while (true) {
       try {
+        final normalizedPhone = (phone == null || phone.trim().isEmpty)
+            ? null
+            : PhoneUtils.normalizeKenyan(phone);
+
         final res = await _supabase.auth.signUp(
           email: email,
           password: password,
@@ -119,7 +124,7 @@ class AuthService extends ChangeNotifier {
           // ADDED: Pass metadata so trigger can read it
           data: {
             'name': name ?? '',
-            'phone': phone,
+            'phone': normalizedPhone,
             'role': role,
           },
         );
@@ -133,7 +138,7 @@ class AuthService extends ChangeNotifier {
             authId: user.id,
             email: email,
             name: name ?? '',
-            phone: phone,
+            phone: normalizedPhone,
             role: role,
           );
           await _refreshCurrentUserFromProfile();
@@ -177,18 +182,37 @@ class AuthService extends ChangeNotifier {
     required String password,
   }) async {
     try {
+      // ADDED: Clear any existing session first to avoid stale token issues
+      final currentSession = _supabase.auth.currentSession;
+      if (currentSession != null) {
+        debugPrint('⚠️ Clearing existing session before new login');
+        try {
+          await _supabase.auth.signOut(scope: SignOutScope.local);
+        } catch (e) {
+          debugPrint('⚠️ Error clearing session (continuing anyway): $e');
+        }
+      }
+      
+      debugPrint('🔐 Attempting login for: $email');
       final resp = await _supabase.auth.signInWithPassword(
         email: email,
         password: password,
       );
+      
+      debugPrint('✅ Login successful');
       await _refreshCurrentUserFromProfile();
       notifyListeners();
       return resp;
     } on AuthException catch (e) {
+      debugPrint('❌ Login failed: ${e.message}');
       final msg = e.message.toLowerCase();
       // ADDED: Friendly message for unconfirmed email
       if ((e.statusCode == 400) && (msg.contains('email not confirmed'))) {
         throw Exception('Email not confirmed. Please verify your email, then try logging in.');
+      }
+      // Better error message for invalid credentials
+      if ((e.statusCode == 400) && (msg.contains('invalid') || msg.contains('credentials'))) {
+        throw Exception('Invalid email or password. Please try again.');
       }
       rethrow;
     }
@@ -227,6 +251,8 @@ class AuthService extends ChangeNotifier {
   }
 
   Future<void> signOut() async {
+    debugPrint('🚪 Signing out user...');
+    
     // Clear cached profile data on logout
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('name');
@@ -242,7 +268,20 @@ class AuthService extends ChangeNotifier {
     await prefs.remove('cart_items');
     await prefs.remove('order_history');
     
-    await _supabase.auth.signOut();
+    // Sign out from Supabase (clears both local and global sessions)
+    try {
+      await _supabase.auth.signOut(scope: SignOutScope.global);
+      debugPrint('✅ Signed out successfully');
+    } catch (e) {
+      debugPrint('⚠️ Error during sign out: $e');
+      // Try local signout as fallback
+      try {
+        await _supabase.auth.signOut(scope: SignOutScope.local);
+      } catch (e2) {
+        debugPrint('⚠️ Local sign out also failed: $e2');
+      }
+    }
+    
     _currentUser = null;
     notifyListeners();
   }
@@ -257,11 +296,15 @@ class AuthService extends ChangeNotifier {
     String? phone,
     String role = 'customer',
   }) async {
+    final normalizedPhone = (phone == null || phone.trim().isEmpty)
+        ? null
+        : PhoneUtils.normalizeKenyan(phone);
+
     await _supabase.from('users').upsert({
       'auth_id': authId,
       'email': email,
       'name': name,
-      'phone': phone,
+      'phone': normalizedPhone,
       'role': role,
     }, onConflict: 'auth_id', ignoreDuplicates: true);
   }
@@ -397,11 +440,12 @@ class AuthService extends ChangeNotifier {
     required String name,
     required String phone,
   }) async {
+    final normalizedPhone = PhoneUtils.normalizeKenyan(phone);
     await signUpWithEmail(
       email: email,
       password: password,
       name: name,
-      phone: phone,
+      phone: normalizedPhone,
       role: 'customer',
     );
     await _refreshCurrentUserFromProfile();

@@ -19,7 +19,9 @@ import 'reports_screen.dart';
 import 'inventory_screen.dart';
 import 'admin_settings_screen.dart';
 import 'admin_menu_management_screen.dart';
+import 'admin_chat_list_screen.dart';
 import '../../providers/menu_provider.dart';
+import '../../services/chat_service.dart';
 
 /// Models
 class ChartPoint {
@@ -1134,6 +1136,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                         () => _openDrawerTo(context, const AdminMenuManagementScreen())),
                     _drawerItem(Icons.people, 'Manage Users',
                         () => _openDrawerTo(context, const ManageUsersScreen())),
+                    _supportChatsDrawerItem(context),
                     _drawerItem(Icons.bar_chart, 'Reports',
                         () => _openDrawerTo(context, const ReportsScreen())),
                     _drawerItem(Icons.inventory, 'Inventory',
@@ -1158,6 +1161,46 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       leading: Icon(icon, color: AppColors.primary),
       title: Text(title),
       onTap: onTap,
+    );
+  }
+
+  Widget _supportChatsDrawerItem(BuildContext context) {
+    return StreamBuilder<List<Map<String, dynamic>>>(
+      stream: ChatService.instance.streamAdminRooms(),
+      builder: (context, snapshot) {
+        final rooms = snapshot.data ?? const [];
+        int unreadTotal = 0;
+        for (final r in rooms) {
+          final v = r['unread_admin'];
+          if (v is int) unreadTotal += v;
+          else if (v is num) unreadTotal += v.toInt();
+        }
+        return ListTile(
+          leading: const Icon(Icons.support_agent, color: AppColors.primary),
+          title: const Text('Support Chats'),
+          trailing: unreadTotal > 0
+              ? Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: const BoxDecoration(
+                    color: Colors.red,
+                    shape: BoxShape.circle,
+                  ),
+                  constraints: const BoxConstraints(minWidth: 22, minHeight: 22),
+                  child: Center(
+                    child: Text(
+                      unreadTotal > 99 ? '99+' : '$unreadTotal',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                )
+              : null,
+          onTap: () => _openDrawerTo(context, const AdminChatListScreen()),
+        );
+      },
     );
   }
 }

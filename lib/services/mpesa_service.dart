@@ -201,33 +201,4 @@ class MpesaService {
       };
     }
   }
-
-  /// Mock callback for testing (sandbox only)
-  static Future<Map<String, dynamic>> triggerMockCallback({
-    required String checkoutRequestId,
-    required bool success,
-  }) async {
-    try {
-      debugPrint('🧪 Triggering mock callback: ${success ? 'SUCCESS' : 'FAILURE'}');
-
-      final response = await http.post(
-        Uri.parse('$baseUrl/payments/mock-callback'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'checkoutRequestID': checkoutRequestId,
-          'success': success,
-        }),
-      ).timeout(const Duration(seconds: 10));
-
-      if (response.statusCode == 200) {
-        debugPrint('✅ Mock callback sent');
-        return {'success': true};
-      } else {
-        return {'success': false, 'error': 'Failed to send mock callback'};
-      }
-    } catch (e) {
-      debugPrint('❌ Exception during mock callback: $e');
-      return {'success': false, 'error': e.toString()};
-    }
-  }
 }

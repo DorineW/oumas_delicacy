@@ -19,6 +19,7 @@ import '../constants/colors.dart';
 import 'location.dart'; // UPDATED: Use existing LocationScreen
 import '../providers/location_provider.dart'; // ADDED: Import LocationProvider (Removed duplicate import)
 import 'mpesa_payment_confirmation_screen.dart'; // ADDED: M-Pesa confirmation screen
+import '../utils/phone_utils.dart';
 
 class CheckoutScreen extends StatefulWidget {
   final List<CartItem> selectedItems;
@@ -50,8 +51,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   void initState() {
     super.initState();
     final defaultPhone = widget.defaultPhoneNumber ?? '';
-    _phoneController.text = defaultPhone;
-    _mpesaPhoneController.text = defaultPhone; // Auto-fill M-Pesa number
+    final localDefault = defaultPhone.isEmpty ? '' : PhoneUtils.toLocalDisplay(defaultPhone);
+    _phoneController.text = localDefault;
+    _mpesaPhoneController.text = localDefault; // Auto-fill M-Pesa number in local format
 
     _loadDefaultAddress();
   }
@@ -179,8 +181,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
     if (currentUser != null && currentUser.phone != null && currentUser.phone!.isNotEmpty) {
       setState(() {
-        _phoneController.text = currentUser.phone!;
-        _mpesaPhoneController.text = currentUser.phone!;
+        final local = PhoneUtils.toLocalDisplay(currentUser.phone!);
+        _phoneController.text = local;
+        _mpesaPhoneController.text = local;
       });
     }
 
@@ -555,7 +558,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       final orderDetails = {
         'customerId': customerId,
         'customerName': customerName,
-        'deliveryPhone': _phoneController.text.isNotEmpty ? _phoneController.text : null,
+        'deliveryPhone': _phoneController.text.isNotEmpty
+            ? PhoneUtils.normalizeKenyan(_phoneController.text)
+            : null,
         'items': orderItems,
         'subtotal': subtotalAmount,
         'deliveryFee': orderDeliveryType == DeliveryType.delivery ? _deliveryFee : 0,

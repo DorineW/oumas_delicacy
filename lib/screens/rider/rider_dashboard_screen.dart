@@ -9,6 +9,8 @@ import '../../models/order.dart'; // ADDED: Import Order model
 import '../../providers/rider_provider.dart'; // ADDED: Import RiderProvider
 import 'rider_orders_screen.dart';
 import 'rider_profile_screen.dart';
+import 'package:url_launcher/url_launcher.dart';
+import '../../utils/phone_utils.dart';
 
 class RiderDashboardScreen extends StatefulWidget {
   const RiderDashboardScreen({super.key});
@@ -339,13 +341,17 @@ class _OrderCard extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  'Order #${order.id}',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
+                Expanded(
+                  child: Text(
+                    order.customerName,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
+                const SizedBox(width: 8),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
@@ -365,14 +371,6 @@ class _OrderCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 12),
-            Row(
-              children: [
-                const Icon(Icons.person, size: 16, color: Colors.grey),
-                const SizedBox(width: 8),
-                Expanded(child: Text(order.customerName)),
-              ],
-            ),
-            const SizedBox(height: 8),
             
             // ADDED: Customer phone with call button
             if (order.deliveryPhone != null) ...[
@@ -408,7 +406,7 @@ class _OrderCard extends StatelessWidget {
                           ),
                           const SizedBox(height: 2),
                           Text(
-                            order.deliveryPhone!,
+                            PhoneUtils.toLocalDisplay(order.deliveryPhone!),
                             style: const TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.w600,
@@ -451,7 +449,7 @@ class _OrderCard extends StatelessWidget {
                 children: [
                   const Icon(Icons.phone, size: 16, color: Colors.grey),
                   const SizedBox(width: 8),
-                  Text(order.deliveryPhone!),
+                  Text(PhoneUtils.toLocalDisplay(order.deliveryPhone!)),
                 ],
               ),
               const SizedBox(height: 8),
@@ -477,11 +475,12 @@ class _OrderCard extends StatelessWidget {
                 ),
                 ElevatedButton.icon(
                   onPressed: () => _markAsDelivered(context, order),
-                  icon: const Icon(Icons.check_circle, size: 18),
-                  label: const Text('Delivered'),
+                  icon: const Icon(Icons.check_circle_outline, size: 18),
+                  label: const Text('Mark as Delivered'),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.success,
                     foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   ),
                 ),
               ],
@@ -531,7 +530,7 @@ class _OrderCard extends StatelessWidget {
                   const Icon(Icons.phone, size: 16, color: AppColors.primary),
                   const SizedBox(width: 8),
                   Text(
-                    phoneNumber,
+                    PhoneUtils.toLocalDisplay(phoneNumber),
                     style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
@@ -549,31 +548,9 @@ class _OrderCard extends StatelessWidget {
             child: const Text('Cancel'),
           ),
           ElevatedButton.icon(
-            onPressed: () {
+            onPressed: () async {
               Navigator.pop(context);
-              // UPDATED: Directly show feedback without unused variable
-              try {
-                // In production, use url_launcher: launch('tel:$phoneNumber')
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Row(
-                      children: [
-                        const Icon(Icons.phone, color: Colors.white),
-                        const SizedBox(width: 12),
-                        Text('Opening dialer for $phoneNumber'),
-                      ],
-                    ),
-                    backgroundColor: AppColors.success,
-                  ),
-                );
-              } catch (e) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('Could not open dialer: $e'),
-                    backgroundColor: Colors.red,
-                  ),
-                );
-              }
+              await _launchDialer(context, phoneNumber);
             },
             icon: const Icon(Icons.call, size: 18),
             label: const Text('Call Now'),
@@ -585,6 +562,33 @@ class _OrderCard extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  Future<void> _launchDialer(BuildContext context, String phoneNumber) async {
+    final dialable = PhoneUtils.normalizeKenyan(phoneNumber);
+    final uri = Uri(scheme: 'tel', path: dialable);
+    try {
+      final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!launched) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Could not open phone dialer.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Could not open dialer: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   void _markAsDelivered(BuildContext context, Order order) {
@@ -613,7 +617,12 @@ class _OrderCard extends StatelessWidget {
                       children: [
                         const Icon(Icons.check_circle, color: Colors.white),
                         const SizedBox(width: 12),
-                        Text('Order #${order.id} marked as delivered'),
+                        Expanded(
+                          child: Text(
+                            'Order marked as delivered',
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
                       ],
                     ),
                     backgroundColor: AppColors.success,

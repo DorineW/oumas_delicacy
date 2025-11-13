@@ -1,6 +1,5 @@
 // lib/screens/mpesa_payment_confirmation_screen.dart
 import 'dart:async';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../constants/colors.dart';
 import '../services/mpesa_service.dart';
@@ -34,7 +33,6 @@ class _MpesaPaymentConfirmationScreenState
   String? _actualOrderId; // ADDED: Store actual order ID once created
   int _stkQueryCount = 0;
   int _secondsElapsed = 0;
-  final bool _isTestMode = kDebugMode;
 
   @override
   void initState() {
@@ -178,26 +176,6 @@ class _MpesaPaymentConfirmationScreenState
 
       _stkQueryCount++;
     });
-  }
-
-  Future<void> _triggerMockCallback(bool success) async {
-    final result = await MpesaService.triggerMockCallback(
-      checkoutRequestId: widget.checkoutRequestId,
-      success: success,
-    );
-
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            result['success'] == true
-                ? 'Mock ${success ? 'success' : 'failure'} triggered'
-                : 'Failed to trigger mock: ${result['error']}',
-          ),
-          backgroundColor: result['success'] == true ? Colors.green : Colors.red,
-        ),
-      );
-    }
   }
 
   void _navigateToHome() {
@@ -362,10 +340,8 @@ class _MpesaPaymentConfirmationScreenState
       child: Scaffold(
         backgroundColor: AppColors.background,
         appBar: AppBar(
-          title: Text(
-            _isTestMode ? 'M-Pesa Payment (TEST MODE)' : 'M-Pesa Payment',
-          ),
-          backgroundColor: _isTestMode ? Colors.orange : AppColors.primary,
+          title: const Text('M-Pesa Payment'),
+          backgroundColor: AppColors.primary,
           automaticallyImplyLeading: _orderStatus != 'pending',
           iconTheme: const IconThemeData(color: AppColors.white),
           titleTextStyle: const TextStyle(
@@ -461,65 +437,6 @@ class _MpesaPaymentConfirmationScreenState
                               color: Colors.blue,
                             ),
                           ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-
-                // Test Controls (Debug Mode Only)
-                if (_isTestMode && _orderStatus == 'pending') ...[
-                  const SizedBox(height: 24),
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.orange.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.orange),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Row(
-                          children: [
-                            Icon(Icons.science, color: Colors.orange),
-                            SizedBox(width: 8),
-                            Text(
-                              'TEST CONTROLS',
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: Colors.orange,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: ElevatedButton.icon(
-                                onPressed: () => _triggerMockCallback(true),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.green,
-                                  foregroundColor: Colors.white,
-                                ),
-                                icon: const Icon(Icons.check),
-                                label: const Text('Simulate Success'),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: ElevatedButton.icon(
-                                onPressed: () => _triggerMockCallback(false),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.red,
-                                  foregroundColor: Colors.white,
-                                ),
-                                icon: const Icon(Icons.close),
-                                label: const Text('Simulate Failure'),
-                              ),
-                            ),
-                          ],
                         ),
                       ],
                     ),

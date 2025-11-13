@@ -38,7 +38,7 @@ class _ManageOrdersScreenState extends State<ManageOrdersScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
+    _tabController = TabController(length: 6, vsync: this);
 
     _autoRefreshTimer = Timer.periodic(const Duration(seconds: 30), (timer) {
       if (mounted) setState(() {});
@@ -294,12 +294,12 @@ class _ManageOrdersScreenState extends State<ManageOrdersScreen>
       builder: (context, provider, child) {
         final filteredOrders = _getFilteredOrders(provider.orders);
         
-        final allOrders = filteredOrders;
-        final activeOrders = filteredOrders.where((o) => 
-            o.status != OrderStatus.delivered && o.status != OrderStatus.cancelled).toList();
         final pendingOrders = filteredOrders.where((o) => o.status == OrderStatus.pending).toList();
-        final completedOrders = filteredOrders.where((o) => 
-            o.status == OrderStatus.delivered || o.status == OrderStatus.cancelled).toList();
+        final confirmedOrders = filteredOrders.where((o) => o.status == OrderStatus.confirmed).toList();
+        final preparingOrders = filteredOrders.where((o) => o.status == OrderStatus.preparing).toList();
+        final outForDeliveryOrders = filteredOrders.where((o) => o.status == OrderStatus.outForDelivery).toList();
+        final deliveredOrders = filteredOrders.where((o) => o.status == OrderStatus.delivered).toList();
+        final cancelledOrders = filteredOrders.where((o) => o.status == OrderStatus.cancelled).toList();
 
         return Scaffold(
           appBar: AppBar(
@@ -323,11 +323,14 @@ class _ManageOrdersScreenState extends State<ManageOrdersScreen>
               labelColor: AppColors.white,
               unselectedLabelColor: AppColors.white.withOpacity(0.7),
               indicatorColor: AppColors.white,
+              isScrollable: true,
               tabs: const [
-                Tab(text: 'All Orders'),
-                Tab(text: 'Active'),
                 Tab(text: 'Pending'),
-                Tab(text: 'Completed'),
+                Tab(text: 'Confirmed'),
+                Tab(text: 'Preparing'),
+                Tab(text: 'Out for Delivery'),
+                Tab(text: 'Delivered'),
+                Tab(text: 'Cancelled'),
               ],
             ),
           ),
@@ -360,10 +363,12 @@ class _ManageOrdersScreenState extends State<ManageOrdersScreen>
                 child: TabBarView(
                   controller: _tabController,
                   children: [
-                    _buildOrderList(allOrders),
-                    _buildOrderList(activeOrders),
                     _buildOrderList(pendingOrders),
-                    _buildOrderList(completedOrders),
+                    _buildOrderList(confirmedOrders),
+                    _buildOrderList(preparingOrders),
+                    _buildOrderList(outForDeliveryOrders),
+                    _buildOrderList(deliveredOrders),
+                    _buildOrderList(cancelledOrders),
                   ],
                 ),
               ),
@@ -873,8 +878,15 @@ class _AdminOrderCardState extends State<AdminOrderCard>
           if (widget.order.status == OrderStatus.preparing)
             ElevatedButton(
               onPressed: () {
+                // Close this dialog first
                 Navigator.pop(context);
-                _assignRiderDialog(context, widget.order);
+                
+                // Use Navigator.context to get the screen's context (not dialog's)
+                // This context remains mounted after dialog closes
+                final navigatorContext = Navigator.of(context, rootNavigator: true).context;
+                
+                // Show rider assignment dialog using the screen context
+                _assignRiderDialog(navigatorContext, widget.order);
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.indigo,
@@ -933,20 +945,23 @@ class _AdminOrderCardState extends State<AdminOrderCard>
     // Get provider BEFORE showing dialog
     final provider = Provider.of<OrderProvider>(context, listen: false);
     
-    // Fetch riders from Supabase users table
+    // Fetch riders from Supabase riders table
     List<Map<String, dynamic>> riders = [];
     String? errorMessage;
     
     try {
-      debugPrint('📡 Fetching riders from Supabase...');
+      debugPrint('📡 Fetching riders from Supabase riders table...');
       final supabase = Supabase.instance.client;
+      
+      // Fetch riders from riders table
       final response = await supabase
-          .from('users')
-          .select('auth_id, name')
-          .eq('role', 'rider')
+          .from('riders')
+          .select('id, auth_id, name, phone, vehicle, is_available')
+          .eq('is_available', true)
           .order('name');
       
-      debugPrint('✅ Riders fetched: ${response.length} riders found');
+      debugPrint('📊 Found ${response.length} available riders in riders table');
+      
       riders = List<Map<String, dynamic>>.from(response);
       
       // Get rider statuses (check if they have active deliveries)
@@ -957,21 +972,23 @@ class _AdminOrderCardState extends State<AdminOrderCard>
         ).length;
         
         rider['active_deliveries'] = activeDeliveries;
-        rider['is_available'] = activeDeliveries == 0;
         
-        debugPrint('   👤 ${rider['name']}: $activeDeliveries active deliveries');
+        debugPrint('   👤 ${rider['name']}: $activeDeliveries active deliveries (${rider['vehicle'] ?? 'N/A'})');
       }
+      
+      debugPrint('✅ Total riders fetched: ${riders.length}');
     } catch (e) {
       debugPrint('❌ Error fetching riders: $e');
       errorMessage = e.toString();
     }
-
-    debugPrint('🎭 About to show dialog. Riders count: ${riders.length}, Has error: ${errorMessage != null}');
     
+    // Check context TWICE - once before showing dialog, once in the check
     if (!context.mounted) {
-      debugPrint('⚠️ Context not mounted, cannot show dialog');
+      debugPrint('⚠️ Context not mounted after fetching, cannot show dialog');
       return;
     }
+    
+    debugPrint('✅ Context is mounted, showing dialog...');
 
     final selected = await showDialog<Map<String, dynamic>>(
       context: context,
@@ -1040,37 +1057,59 @@ class _AdminOrderCardState extends State<AdminOrderCard>
                 else
                   // Rider list
                   ...riders.map((rider) {
-                    final isAvailable = rider['is_available'] == true;
                     final activeDeliveries = rider['active_deliveries'] as int;
+                    final isAvailable = activeDeliveries == 0;
+                    final vehicle = rider['vehicle'] as String?;
+                    final phone = rider['phone'] as String?;
                     
-                    return ListTile(
-                      leading: Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: isAvailable 
-                            ? AppColors.success.withOpacity(0.1)
-                            : Colors.orange.withOpacity(0.1),
-                          shape: BoxShape.circle,
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      child: ListTile(
+                        leading: Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: isAvailable 
+                              ? AppColors.success.withOpacity(0.1)
+                              : Colors.orange.withOpacity(0.1),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            vehicle?.toLowerCase().contains('bike') ?? false
+                              ? Icons.pedal_bike
+                              : Icons.delivery_dining, 
+                            color: isAvailable ? AppColors.success : Colors.orange,
+                          ),
                         ),
-                        child: Icon(
-                          Icons.delivery_dining, 
+                        title: Text(
+                          rider['name'] ?? 'Unknown Rider',
+                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                        subtitle: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            if (vehicle != null)
+                              Text('🚗 $vehicle', style: const TextStyle(fontSize: 12)),
+                            if (phone != null)
+                              Text('📞 $phone', style: const TextStyle(fontSize: 12)),
+                            Text(
+                              isAvailable 
+                                ? '✅ Available now' 
+                                : '⏱️ Delivering $activeDeliveries order${activeDeliveries > 1 ? 's' : ''}',
+                              style: TextStyle(
+                                color: isAvailable ? AppColors.success : Colors.orange,
+                                fontWeight: FontWeight.w500,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                        trailing: Icon(
+                          isAvailable ? Icons.check_circle : Icons.access_time,
                           color: isAvailable ? AppColors.success : Colors.orange,
+                          size: 20,
                         ),
+                        onTap: () => Navigator.pop(dialogContext, rider),
                       ),
-                      title: Text(rider['name'] ?? 'Unknown Rider'),
-                      subtitle: Text(
-                        isAvailable 
-                          ? 'Available' 
-                          : 'Currently delivering ($activeDeliveries order${activeDeliveries > 1 ? 's' : ''})',
-                        style: TextStyle(
-                          color: isAvailable ? AppColors.success : Colors.orange,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                      trailing: isAvailable 
-                        ? const Icon(Icons.check_circle, color: AppColors.success, size: 20)
-                        : const Icon(Icons.access_time, color: Colors.orange, size: 20),
-                      onTap: () => Navigator.pop(dialogContext, rider),
                     );
                   }),
                 
@@ -1122,7 +1161,7 @@ class _AdminOrderCardState extends State<AdminOrderCard>
     final riderName = selected['name'] as String;
     
     debugPrint('🔔 Assigning order ${order.id} to rider $riderId ($riderName)');
-    provider.assignToRider(order.id, riderId, riderName);
+    await provider.assignToRider(order.id, riderId, riderName);
     debugPrint('✅ Rider assignment initiated');
     
     if (!mounted) return;

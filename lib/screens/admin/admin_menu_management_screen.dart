@@ -1068,6 +1068,7 @@ class _AdminMenuManagementScreenState extends State<AdminMenuManagementScreen> {
         final menuItems = menuProvider.menuItems;
         
         return Scaffold(
+          resizeToAvoidBottomInset: true,
           appBar: AppBar(
             title: const Text('Menu Management'),
             backgroundColor: AppColors.primary,
@@ -1083,7 +1084,11 @@ class _AdminMenuManagementScreenState extends State<AdminMenuManagementScreen> {
           body: Column(
             children: [
               _buildStatsHeader(menuProvider),
-              _buildCategoryManagement(menuProvider),
+              // Make category panel flexible so it can shrink when keyboard shows
+              Flexible(
+                fit: FlexFit.loose,
+                child: _buildCategoryManagement(menuProvider),
+              ),
               Expanded(
                 child: menuItems.isEmpty
                     ? Center(
@@ -1265,22 +1270,50 @@ class _AdminMenuManagementScreenState extends State<AdminMenuManagementScreen> {
       builder: (BuildContext dialogContext) {
         return StatefulBuilder(
           builder: (context, setDialogState) {
-            return AlertDialog(
-              title: Text(isEditing ? 'Edit Menu Item' : 'Add New Menu Item'),
-              contentPadding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
-              // FIXED: Removed hardcoded height - let dialog adapt to keyboard
-              content: ConstrainedBox(
+            return Dialog(
+              insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+              child: Container(
                 constraints: BoxConstraints(
-                  maxHeight: MediaQuery.of(context).size.height * 0.7, // Max height but flexible
-                  maxWidth: MediaQuery.of(context).size.width * 0.9,
+                  maxHeight: MediaQuery.of(context).size.height * 0.85,
+                  maxWidth: 500,
                 ),
-                child: SingleChildScrollView(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  child: Form(
-                    key: _formKey,
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Header
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(24, 20, 16, 12),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              isEditing ? 'Edit Menu Item' : 'Add New Menu Item',
+                              style: const TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.close),
+                            onPressed: () {
+                              Navigator.of(context).pop();
+                              _clearForm();
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Divider(height: 1),
+                    // Content
+                    Flexible(
+                      child: SingleChildScrollView(
+                        padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
+                        child: Form(
+                          key: _formKey,
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
                         // Image picker section
                         Stack(
                           alignment: Alignment.center,
@@ -1403,238 +1436,218 @@ class _AdminMenuManagementScreenState extends State<AdminMenuManagementScreen> {
                         const SizedBox(height: 16),
                         
                         // Category dropdown
-                        // FIXED: Rebuilt to allow local updates inside StatefulBuilder
-                        StatefulBuilder(
-                            builder: (context, setCategoryState) {
-                              return Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  DropdownButtonFormField<String>(
-                                    value: _selectedCategory,
-                                    isExpanded: true,
-                                    decoration: InputDecoration(
-                                      labelText: 'Category',
-                                      border: const OutlineInputBorder(),
-                                      prefixIcon: const Icon(Icons.category, color: AppColors.primary),
-                                      suffixIcon: _selectedCategory != null
-                                          ? IconButton(
-                                              icon: const Icon(Icons.clear, size: 18),
-                                              onPressed: () {
-                                                setCategoryState(() { // Use local state
-                                                  _selectedCategory = null;
-                                                  _showNewCategoryField = false;
-                                                });
-                                                setState(() {}); // Update main state
-                                              },
-                                            )
-                                          : null,
-                                    ),
-                                    hint: const Text('Select a category'),
-                                    items: [
-                                      ...({
-                                        ...menuProvider.menuItems.map((item) => item.category),
-                                        ..._customCategories,
-                                      }.toList()..sort()).map((category) {
-                                        return DropdownMenuItem(
-                                          value: category,
-                                          child: Text(category, overflow: TextOverflow.ellipsis),
-                                        );
-                                      }),
-                                      const DropdownMenuItem(
-                                        value: 'add_new',
-                                        child: Text('Add new category...'),
-                                      ),
-                                    ],
-                                    onChanged: (value) {
-                                      setCategoryState(() { // Use local state
-                                        if (value == 'add_new') {
-                                          _showNewCategoryField = true;
-                                          _selectedCategory = null;
-                                          _newCategoryController.clear();
-                                        } else {
-                                          _selectedCategory = value;
-                                          _showNewCategoryField = false;
-                                        }
-                                      });
-                                      setState(() {}); // Update main state
-                                    },
-                                    validator: (value) {
-                                      if (!_showNewCategoryField && (value == null || value.isEmpty)) {
-                                        return 'Please select a category';
-                                      }
-                                      return null;
-                                    },
-                                  ),
-                                  if (_showNewCategoryField) ...[
-                                    const SizedBox(height: 16),
-                                    TextFormField(
-                                      controller: _newCategoryController,
-                                      decoration: const InputDecoration(
-                                        labelText: 'New Category Name',
-                                        border: OutlineInputBorder(),
-                                        prefixIcon: Icon(Icons.create_new_folder, color: AppColors.primary),
-                                      ),
-                                      validator: (value) {
-                                        if (_showNewCategoryField && (value == null || value.trim().isEmpty)) {
-                                          return 'Please enter a category name';
-                                        }
-                                        return null;
-                                      },
-                                    ),
-                                  ],
-                                ],
-                              );
-                            }),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            DropdownButtonFormField<String>(
+                              value: _selectedCategory,
+                              isExpanded: true,
+                              decoration: InputDecoration(
+                                labelText: 'Category',
+                                border: const OutlineInputBorder(),
+                                prefixIcon: const Icon(Icons.category, color: AppColors.primary),
+                                suffixIcon: _selectedCategory != null
+                                    ? IconButton(
+                                        icon: const Icon(Icons.clear, size: 18),
+                                        onPressed: () {
+                                          setDialogState(() {
+                                            _selectedCategory = null;
+                                            _showNewCategoryField = false;
+                                          });
+                                        },
+                                      )
+                                    : null,
+                              ),
+                              hint: const Text('Select a category'),
+                              items: [
+                                ...({
+                                  ...menuProvider.menuItems.map((item) => item.category),
+                                  ..._customCategories,
+                                }.toList()..sort()).map((category) {
+                                  return DropdownMenuItem(
+                                    value: category,
+                                    child: Text(category, overflow: TextOverflow.ellipsis),
+                                  );
+                                }),
+                                const DropdownMenuItem(
+                                  value: 'add_new',
+                                  child: Text('+ Add new category...'),
+                                ),
+                              ],
+                              onChanged: (value) {
+                                setDialogState(() {
+                                  if (value == 'add_new') {
+                                    _showNewCategoryField = true;
+                                    _selectedCategory = null;
+                                    _newCategoryController.clear();
+                                  } else {
+                                    _selectedCategory = value;
+                                    _showNewCategoryField = false;
+                                  }
+                                });
+                              },
+                              validator: (value) {
+                                if (!_showNewCategoryField && (value == null || value.isEmpty)) {
+                                  return 'Please select a category';
+                                }
+                                return null;
+                              },
+                            ),
+                            if (_showNewCategoryField) ...[
+                              const SizedBox(height: 12),
+                              TextFormField(
+                                controller: _newCategoryController,
+                                decoration: const InputDecoration(
+                                  labelText: 'New Category Name',
+                                  border: OutlineInputBorder(),
+                                  prefixIcon: Icon(Icons.create_new_folder, color: AppColors.primary),
+                                ),
+                                validator: (value) {
+                                  if (_showNewCategoryField && (value == null || value.trim().isEmpty)) {
+                                    return 'Please enter a category name';
+                                  }
+                                  return null;
+                                },
+                              ),
+                            ],
+                          ],
+                        ),
                         const SizedBox(height: 16),
                         
                         // Meal weight selector
-                        // FIXED: Added StatefulBuilder to update locally
-                        StatefulBuilder(
-                          builder: (context, setWeightState) {
-                            return Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Row(
                               children: [
-                                const Row(
+                                Icon(Icons.fitness_center, size: 16, color: AppColors.primary),
+                                SizedBox(width: 8),
+                                Text(
+                                  'Meal Weight',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            Row(
+                              children: MealWeight.values.map<Widget>((weight) {
+                                final isSelected = _selectedMealWeight == weight;
+                                return Expanded(
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                                    child: InkWell(
+                                      onTap: () {
+                                        setDialogState(() {
+                                          _selectedMealWeight = weight;
+                                        });
+                                      },
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+                                        decoration: BoxDecoration(
+                                          color: isSelected
+                                              ? AppColors.primary
+                                              : AppColors.primary.withOpacity(0.1),
+                                          borderRadius: BorderRadius.circular(8),
+                                          border: Border.all(
+                                            color: AppColors.primary,
+                                            width: isSelected ? 2 : 1,
+                                          ),
+                                        ),
+                                        child: Column(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(
+                                              _getMealWeightIcon(weight.name),
+                                              size: 18,
+                                              color: isSelected ? Colors.white : AppColors.primary,
+                                            ),
+                                            const SizedBox(height: 3),
+                                            Text(
+                                              weight.displayName,
+                                              style: TextStyle(
+                                                fontSize: 10,
+                                                fontWeight: FontWeight.w600,
+                                                color: isSelected ? Colors.white : AppColors.primary,
+                                              ),
+                                              textAlign: TextAlign.center,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              }).toList(),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        
+                        // Availability toggle
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: _isAvailable
+                                ? Colors.green.withOpacity(0.05)
+                                : Colors.red.withOpacity(0.05),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: _isAvailable
+                                  ? Colors.green.withOpacity(0.3)
+                                  : Colors.red.withOpacity(0.3),
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                _isAvailable ? Icons.check_circle : Icons.block,
+                                color: _isAvailable ? Colors.green : Colors.red,
+                                size: 20,
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Icon(Icons.fitness_center, size: 16, color: AppColors.primary),
-                                    SizedBox(width: 8),
-                                    Text(
-                                      'Meal Weight',
+                                    const Text(
+                                      'Availability',
                                       style: TextStyle(
                                         fontSize: 14,
                                         fontWeight: FontWeight.w600,
+                                        color: AppColors.darkText,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      _isAvailable
+                                          ? 'Available for customers'
+                                          : 'Out of stock',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: AppColors.darkText.withOpacity(0.6),
                                       ),
                                     ),
                                   ],
                                 ),
-                                const SizedBox(height: 8),
-                                Row(
-                                  children: MealWeight.values.map<Widget>((weight) {
-                                    final isSelected = _selectedMealWeight == weight;
-                                    return Expanded(
-                                      child: Padding(
-                                        padding: const EdgeInsets.symmetric(horizontal: 4),
-                                        child: InkWell(
-                                          onTap: () {
-                                            setState(() { // Update main state
-                                              _selectedMealWeight = weight;
-                                            });
-                                            setWeightState(() { // Update dialog state
-                                              _selectedMealWeight = weight;
-                                            });
-                                          },
-                                          child: Container(
-                                            padding: const EdgeInsets.symmetric(vertical: 12),
-                                            decoration: BoxDecoration(
-                                              color: isSelected
-                                                  ? AppColors.primary
-                                                  : AppColors.primary.withOpacity(0.1),
-                                              borderRadius: BorderRadius.circular(8),
-                                              border: Border.all(
-                                                color: AppColors.primary,
-                                                width: isSelected ? 2 : 1,
-                                              ),
-                                            ),
-                                            child: Column(
-                                              children: [
-                                                Icon(
-                                                  _getMealWeightIcon(weight.name),
-                                                  size: 20,
-                                                  color: isSelected ? Colors.white : AppColors.primary,
-                                                ),
-                                                const SizedBox(height: 4),
-                                                Text(
-                                                  weight.displayName,
-                                                  style: TextStyle(
-                                                    fontSize: 11,
-                                                    fontWeight: FontWeight.w600,
-                                                    color: isSelected ? Colors.white : AppColors.primary,
-                                                  ),
-                                                  textAlign: TextAlign.center,
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                    );
-                                  }).toList(),
-                                ),
-                              ],
-                            );
-                          }
-                        ),
-                        const SizedBox(height: 16),
-                        const SizedBox(height: 16),
-                        
-                        // Availability toggle
-                        // FIXED: Added StatefulBuilder to update locally
-                        StatefulBuilder(
-                          builder: (context, setAvailabilityState) {
-                            return Container(
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color: _isAvailable
-                                    ? Colors.green.withOpacity(0.05)
-                                    : Colors.red.withOpacity(0.05),
-                                borderRadius: BorderRadius.circular(8),
-                                border: Border.all(
-                                  color: _isAvailable
-                                      ? Colors.green.withOpacity(0.3)
-                                      : Colors.red.withOpacity(0.3),
-                                ),
                               ),
-                              child: Row(
-                                children: [
-                                  Icon(
-                                    _isAvailable ? Icons.check_circle : Icons.block,
-                                    color: _isAvailable ? Colors.green : Colors.red,
-                                    size: 20,
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        const Text(
-                                          'Availability',
-                                          style: TextStyle(
-                                            fontSize: 14,
-                                            fontWeight: FontWeight.w600,
-                                            color: AppColors.darkText,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 2),
-                                        Text(
-                                          _isAvailable
-                                              ? 'Item is available for customers'
-                                              : 'Item is out of stock',
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            color: AppColors.darkText.withOpacity(0.6),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  Switch(
-                                    value: _isAvailable,
-                                    activeColor: Colors.green,
-                                    onChanged: (value) {
-                                      setState(() { // Update main state
-                                        _isAvailable = value;
-                                      });
-                                      setAvailabilityState(() { // Update dialog state
-                                        _isAvailable = value;
-                                      });
-                                    },
-                                  ),
-                                ],
+                              Switch(
+                                value: _isAvailable,
+                                activeColor: Colors.green,
+                                onChanged: (value) {
+                                  setDialogState(() {
+                                    _isAvailable = value;
+                                  });
+                                },
                               ),
-                            );
-                          },
+                            ],
+                          ),
                         ),
-                        const SizedBox(height: 16),
+                        const SizedBox(height: 12),
                         
                         // Description field
                         TextFormField(
@@ -1645,36 +1658,48 @@ class _AdminMenuManagementScreenState extends State<AdminMenuManagementScreen> {
                             prefixIcon: Icon(Icons.description, color: AppColors.primary),
                           ),
                           maxLines: 3,
+                          minLines: 2,
                         ),
-                        const SizedBox(height: 20),
+                        const SizedBox(height: 8),
                       ],
                     ),
                   ),
                 ),
               ),
-              actionsPadding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
-              actions: [
-                TextButton(
-                  onPressed: () {
-                    Navigator.of(context).pop();
-                    _clearForm();
-                  },
-                  child: const Text('Cancel'),
+              // Actions
+              const Divider(height: 1),
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(
+                      onPressed: () {
+                        Navigator.of(context).pop();
+                        _clearForm();
+                      },
+                      child: const Text('Cancel'),
+                    ),
+                    const SizedBox(width: 12),
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.primary,
+                        foregroundColor: Colors.white,
+                      ),
+                      onPressed: () {
+                        if (_formKey.currentState!.validate()) {
+                          _submitForm();
+                        }
+                      },
+                      child: Text(isEditing ? 'Update Item' : 'Add Item'),
+                    ),
+                  ],
                 ),
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primary,
-                    foregroundColor: Colors.white,
-                  ),
-                  onPressed: () {
-                    if (_formKey.currentState!.validate()) {
-                      _submitForm();
-                    }
-                  },
-                  child: Text(isEditing ? 'Update Item' : 'Add Item'),
-                ),
-              ],
-            );
+              ),
+            ],
+          ),
+        ),
+      );
           },
         );
       },

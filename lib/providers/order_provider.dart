@@ -545,7 +545,7 @@ class OrderProvider extends ChangeNotifier {
   }
 
   // UPDATED: Assign to rider - FIXED to include all required fields
-  void assignToRider(String orderId, String riderId, String riderName) {
+  Future<void> assignToRider(String orderId, String riderId, String riderName) async {
     final index = _orders.indexWhere((o) => o.id == orderId);
     if (index == -1) {
       debugPrint('❌ Order $orderId not found');
@@ -554,6 +554,26 @@ class OrderProvider extends ChangeNotifier {
 
     final order = _orders[index];
     
+    // Update in database first
+    try {
+      debugPrint('📝 Updating order in database...');
+      await Supabase.instance.client
+          .from('orders')
+          .update({
+            'rider_id': riderId,
+            'rider_name': riderName,
+            'status': 'outForDelivery',
+            'updated_at': DateTime.now().toIso8601String(),
+          })
+          .eq('id', orderId);
+      
+      debugPrint('✅ Database updated successfully');
+    } catch (e) {
+      debugPrint('❌ Error updating database: $e');
+      return;
+    }
+    
+    // Update local state
     _orders[index] = Order(
       id: order.id,
       customerId: order.customerId,

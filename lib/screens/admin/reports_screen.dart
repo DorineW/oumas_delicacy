@@ -48,15 +48,29 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
   Future<void> _loadDataForCurrentSelection() async {
     setState(() => _loading = true);
+    
+    debugPrint('🔄 Loading data for period: $_period, date: $_selectedDate');
+    
     _chartData = await fetchSalesData(_period, _selectedDate);
+    debugPrint('📊 Chart data loaded: ${_chartData.length} points');
+    
     _topItems = await fetchTopItems(_period, _selectedDate);
+    debugPrint('🏆 Top items loaded: ${_topItems.length} items');
     
     // Calculate totals from chart data
     _totalRevenue = _chartData.fold(0, (sum, point) => sum + point.value);
     _totalOrders = _topItems.fold(0, (sum, item) => sum + item.count);
     
+    debugPrint('💰 Chart data total revenue: $_totalRevenue');
+    debugPrint('📦 Total orders from items: $_totalOrders');
+    
     // Fetch aggregated stats from view
     await _loadAggregatedStats();
+    
+    debugPrint('✅ Data loading complete');
+    debugPrint('   Final Total Revenue: $_totalRevenue');
+    debugPrint('   Final Total Orders: $_totalOrders');
+    debugPrint('   Completed Orders: $_completedOrders');
     
     setState(() => _loading = false);
   }
@@ -265,76 +279,36 @@ class _ReportsScreenState extends State<ReportsScreen> {
         endDate = DateTime(date.year + 1, 1, 1);
       }
       
-      // Use popular_menu_items view with date filtering
-      // Note: The view already filters by delivered status
+      // Query order_items directly with date filtering since views aggregate all data
       final response = await supabase
-          .from('popular_menu_items')
-          .select('item_name, total_quantity_sold, first_ordered, last_ordered')
-          .gte('last_ordered', startDate.toIso8601String())
-          .lt('first_ordered', endDate.toIso8601String())
-          .order('total_quantity_sold', ascending: false)
-          .limit(5);
+          .from('order_items')
+          .select('name, quantity, orders!inner(status, placed_at)')
+          .gte('orders.placed_at', startDate.toIso8601String())
+          .lt('orders.placed_at', endDate.toIso8601String())
+          .eq('orders.status', 'delivered');
       
       final items = response as List<dynamic>;
       
-      return items
-          .map((item) => _TopItem(
-                item['item_name'] as String,
-                item['total_quantity_sold'] as int,
-              ))
+      // Group by item name and sum quantities
+      final Map<String, int> itemCounts = {};
+      
+      for (var item in items) {
+        final title = item['name'] as String;
+        final quantity = item['quantity'] as int;
+        itemCounts[title] = (itemCounts[title] ?? 0) + quantity;
+      }
+      
+      // Sort by count and take top 5
+      final sortedItems = itemCounts.entries.toList()
+        ..sort((a, b) => b.value.compareTo(a.value));
+      
+      return sortedItems
+          .take(5)
+          .map((e) => _TopItem(e.key, e.value))
           .toList();
     } catch (e) {
       debugPrint('❌ Error fetching top items: $e');
-      // Fallback to manual aggregation if view query fails
-      try {
-        final supabase = Supabase.instance.client;
-        DateTime startDate, endDate;
-        
-        if (period == ReportPeriod.day) {
-          startDate = DateTime(date.year, date.month, date.day);
-          endDate = startDate.add(const Duration(days: 1));
-        } else if (period == ReportPeriod.week) {
-          startDate = date.subtract(Duration(days: date.weekday - 1));
-          startDate = DateTime(startDate.year, startDate.month, startDate.day);
-          endDate = startDate.add(const Duration(days: 7));
-        } else if (period == ReportPeriod.month) {
-          startDate = DateTime(date.year, date.month, 1);
-          endDate = DateTime(date.year, date.month + 1, 1);
-        } else {
-          startDate = DateTime(date.year, 1, 1);
-          endDate = DateTime(date.year + 1, 1, 1);
-        }
-        
-        final response = await supabase
-            .from('order_items')
-            .select('name, quantity, orders!inner(status, placed_at)')
-            .gte('orders.placed_at', startDate.toIso8601String())
-            .lt('orders.placed_at', endDate.toIso8601String())
-            .eq('orders.status', 'delivered');
-        
-        final items = response as List<dynamic>;
-        
-        // Group by item name and sum quantities
-        final Map<String, int> itemCounts = {};
-        
-        for (var item in items) {
-          final title = item['name'] as String;
-          final quantity = item['quantity'] as int;
-          itemCounts[title] = (itemCounts[title] ?? 0) + quantity;
-        }
-        
-        // Sort by count and take top 5
-        final sortedItems = itemCounts.entries.toList()
-          ..sort((a, b) => b.value.compareTo(a.value));
-        
-        return sortedItems
-            .take(5)
-            .map((e) => _TopItem(e.key, e.value))
-            .toList();
-      } catch (fallbackError) {
-        debugPrint('❌ Fallback also failed: $fallbackError');
-        return [];
-      }
+      return [];
     }
   }
 

@@ -8,7 +8,7 @@
 -- 1. First, delete all order items (child table)
 DELETE FROM public.order_items;
 
--- 2. Then, delete all orders (parent table)
+-- 2. Then, delete all orders (parent table)a
 DELETE FROM public.orders;
 
 -- 3. Reset sequences if you want IDs to start from 1 again (optional)

@@ -10,6 +10,7 @@ import 'package:supabase_flutter/supabase_flutter.dart'; // ADDED
 import '../constants/colors.dart';
 import '../services/auth_service.dart';
 import 'location.dart'; // ADDED
+import '../utils/phone_utils.dart';
 
 class EditProfileScreen extends StatefulWidget {
   const EditProfileScreen({super.key});
@@ -62,7 +63,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       setState(() {
         _nameController.text = currentUser.name ?? ''; // FIXED: Handle null
         _emailCont.text = currentUser.email;
-        _phoneCont.text = currentUser.phone ?? '';
+        _phoneCont.text = currentUser.phone == null
+            ? ''
+            : PhoneUtils.toLocalDisplay(currentUser.phone!);
       });
     }
     
@@ -78,7 +81,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         _emailCont.text = prefs.getString('email') ?? '';
       }
       if (_phoneCont.text.isEmpty) {
-        _phoneCont.text = prefs.getString('phone') ?? '';
+        final p = prefs.getString('phone');
+        _phoneCont.text = p == null ? '' : PhoneUtils.toLocalDisplay(p);
       }
       
       _notificationsEnabled = prefs.getBool('notifications') ?? true;
@@ -137,11 +141,13 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       if (userId == null) throw Exception('Not logged in');
 
       // Update in Supabase
+      final normalizedPhone = PhoneUtils.normalizeKenyan(_phoneCont.text);
+
       await Supabase.instance.client
           .from('users')
           .update({
             'name': _nameController.text.trim(),
-            'phone': _phoneCont.text.trim(),
+        'phone': normalizedPhone,
             'updated_at': DateTime.now().toIso8601String(),
           })
           .eq('auth_id', userId);
@@ -150,7 +156,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('name', _nameController.text.trim());
       await prefs.setString('email', _emailCont.text.trim());
-      await prefs.setString('phone', _phoneCont.text.trim());
+      await prefs.setString('phone', normalizedPhone);
       await prefs.setBool('notifications', _notificationsEnabled);
       
       // Save addresses

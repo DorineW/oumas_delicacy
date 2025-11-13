@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../constants/colors.dart';
 import '../../models/order.dart';
-import '../../providers/order_provider.dart';
+import '../../providers/rider_provider.dart';
 import '../../services/auth_service.dart';
 
 class RiderOrdersScreen extends StatefulWidget {
@@ -14,19 +14,19 @@ class RiderOrdersScreen extends StatefulWidget {
   State<RiderOrdersScreen> createState() => _RiderOrdersScreenState();
 }
 
-class _RiderOrdersScreenState extends State<RiderOrdersScreen> with SingleTickerProviderStateMixin {
-  late TabController _tabController;
-
+class _RiderOrdersScreenState extends State<RiderOrdersScreen> {
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
-  }
-
-  @override
-  void dispose() {
-    _tabController.dispose();
-    super.dispose();
+    // Load rider orders after first frame when context is ready
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final auth = Provider.of<AuthService>(context, listen: false);
+      final riderId = auth.currentUser?.id;
+      if (riderId != null) {
+        Provider.of<RiderProvider>(context, listen: false)
+            .loadOrdersForRider(riderId);
+      }
+    });
   }
 
   Widget _buildStatItem(String label, String value, IconData icon, Color color) {
@@ -101,20 +101,37 @@ class _RiderOrdersScreenState extends State<RiderOrdersScreen> with SingleTicker
         return Card(
           margin: const EdgeInsets.only(bottom: 12),
           child: ListTile(
-            title: Text('Order #${order.id}'),
+            title: Text(order.customerName),
             subtitle: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(order.customerName),
                 Text('Ksh ${order.totalAmount}'),
+                const SizedBox(height: 4),
+                Text(
+                  order.status == OrderStatus.outForDelivery
+                      ? '🚚 In Transit'
+                      : order.status == OrderStatus.delivered
+                          ? '✅ Delivered'
+                          : order.status.name.toUpperCase(),
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: order.status == OrderStatus.outForDelivery
+                        ? Colors.blue
+                        : order.status == OrderStatus.delivered
+                            ? AppColors.success
+                            : Colors.grey,
+                  ),
+                ),
               ],
             ),
             trailing: order.status == OrderStatus.outForDelivery // UPDATED: Use outForDelivery
                 ? IconButton(
-                    icon: const Icon(Icons.check_circle, color: AppColors.success),
+                    icon: const Icon(Icons.check_circle_outline, color: Colors.blue),
+                    tooltip: 'Mark as Delivered',
                     onPressed: () {
-                      Provider.of<OrderProvider>(context, listen: false)
-                          .updateStatus(order.id, OrderStatus.delivered);
+                      Provider.of<RiderProvider>(context, listen: false)
+                          .updateOrderStatus(order.id, OrderStatus.delivered);
                     },
                   )
                 : Icon(
@@ -131,14 +148,14 @@ class _RiderOrdersScreenState extends State<RiderOrdersScreen> with SingleTicker
 
   @override
   Widget build(BuildContext context) {
-    final provider = context.watch<OrderProvider>();
+    final riderProvider = context.watch<RiderProvider>();
     final auth = context.watch<AuthService>();
     final riderId = auth.currentUser?.id ?? '';
 
-    // Get orders for this rider
-    final allOrders = provider.orders.where((o) => o.riderId == riderId).toList();
-    final activeOrders = allOrders.where((o) => o.status == OrderStatus.outForDelivery).toList(); // UPDATED
-    final completedOrders = allOrders.where((o) => o.status == OrderStatus.delivered).toList();
+    // Get orders for this rider from RiderProvider
+    final allOrders = riderProvider.ordersForRider(riderId);
+    final activeOrders = riderProvider.activeOrdersForRider(riderId);
+    final completedOrders = riderProvider.completedOrdersForRider(riderId);
 
     return Scaffold(
       appBar: AppBar(
@@ -168,34 +185,63 @@ class _RiderOrdersScreenState extends State<RiderOrdersScreen> with SingleTicker
           ),
           
           Expanded(
-            child: allOrders.isEmpty 
-                ? _buildOrderList(allOrders)
-                : DefaultTabController(
-                    length: 3,
-                    child: Column(
-                      children: [
-                        TabBar(
-                          labelColor: AppColors.primary,
-                          unselectedLabelColor: AppColors.darkText.withOpacity(0.6),
-                          indicatorColor: AppColors.primary,
-                          tabs: const [
-                            Tab(text: 'All'),
-                            Tab(text: 'Active'),
-                            Tab(text: 'Completed'),
+            child: riderProvider.isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : riderProvider.error != null
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.error_outline, size: 48, color: Colors.red),
+                            const SizedBox(height: 8),
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 24),
+                              child: Text(
+                                riderProvider.error!,
+                                textAlign: TextAlign.center,
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            ElevatedButton.icon(
+                              onPressed: () => riderProvider.refreshOrders(riderId),
+                              icon: const Icon(Icons.refresh),
+                              label: const Text('Retry'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppColors.primary,
+                                foregroundColor: Colors.white,
+                              ),
+                            ),
                           ],
                         ),
-                        Expanded(
-                          child: TabBarView(
-                            children: [
-                              _buildOrderList(allOrders),
-                              _buildOrderList(activeOrders),
-                              _buildOrderList(completedOrders),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+                      )
+                    : (allOrders.isEmpty
+                        ? _buildOrderList(allOrders)
+                        : DefaultTabController(
+                            length: 3,
+                            child: Column(
+                              children: [
+                                TabBar(
+                                  labelColor: AppColors.primary,
+                                  unselectedLabelColor: AppColors.darkText.withOpacity(0.6),
+                                  indicatorColor: AppColors.primary,
+                                  tabs: const [
+                                    Tab(text: 'Active'),
+                                    Tab(text: 'Completed'),
+                                    Tab(text: 'All'),
+                                  ],
+                                ),
+                                Expanded(
+                                  child: TabBarView(
+                                    children: [
+                                      _buildOrderList(activeOrders),
+                                      _buildOrderList(completedOrders),
+                                      _buildOrderList(allOrders),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          )),
           ),
         ],
       ),

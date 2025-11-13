@@ -66,6 +66,7 @@ class RiderProvider with ChangeNotifier {
       debugPrint('✅ Supabase client initialized');
       
       // Query orders assigned to this rider with JOIN to get customer name
+      // Use users!fk_orders_user_auth to specify which relationship (customer, not rider)
       final response = await supabase
           .from('orders')
           .select('''
@@ -84,7 +85,7 @@ class RiderProvider with ChangeNotifier {
             cancellation_reason,
             delivered_at,
             cancelled_at,
-            users!inner(name)
+            users!fk_orders_user_auth(name)
           ''')
           .eq('rider_id', riderId)
           .order('placed_at', ascending: false);

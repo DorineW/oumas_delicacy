@@ -10,6 +10,8 @@ import 'payment_methods_screen.dart';
 import 'notifications_screen.dart';
 import '../providers/notification_provider.dart';
 import '../services/auth_service.dart';
+import '../services/chat_service.dart';
+import '../screens/customer_chat_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -22,6 +24,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   String _userName = 'Guest User';
   String _userEmail = 'guest@example.com';
   File? _profileImage;
+  String? _chatRoomId;
 
   @override
   void initState() {
@@ -29,8 +32,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         _loadProfile();
+        _initChatRoom();
       }
     });
+  }
+
+  Future<void> _initChatRoom() async {
+    try {
+      final id = await ChatService.instance.getOrCreateCustomerRoom();
+      if (mounted) {
+        setState(() => _chatRoomId = id);
+      }
+    } catch (_) {
+      // ignore badge errors for now
+    }
   }
 
   Future<void> _loadProfile() async {
@@ -161,6 +176,48 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       padding: const EdgeInsets.only(bottom: 100),
                       child: Column(
                         children: [
+                          // Support Chat option with unread badge
+                          _ProfileOption(
+                            icon: Icons.chat_bubble_outline,
+                            title: "Support Chat",
+                            trailing: _chatRoomId == null
+                                ? const Icon(Icons.arrow_forward_ios, size: 16)
+                                : StreamBuilder<Map<String, dynamic>?>(
+                                    stream: ChatService.instance.streamSingleRoom(_chatRoomId!),
+                                    builder: (context, snapshot) {
+                                      final unread = (snapshot.data?['unread_customer'] ?? 0) as int;
+                                      return Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          if (unread > 0)
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                              decoration: BoxDecoration(
+                                                color: Colors.red,
+                                                borderRadius: BorderRadius.circular(12),
+                                              ),
+                                              child: Text(
+                                                unread > 99 ? '99+' : '$unread',
+                                                style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                                              ),
+                                            ),
+                                          const SizedBox(width: 8),
+                                          const Icon(Icons.arrow_forward_ios, size: 16),
+                                        ],
+                                      );
+                                    },
+                                  ),
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => _chatRoomId == null
+                                      ? const CustomerChatScreen()
+                                      : CustomerChatScreen(chatId: _chatRoomId),
+                                ),
+                              );
+                            },
+                          ),
                           _ProfileOption(
                             icon: Icons.edit,
                             title: "Edit Profile",

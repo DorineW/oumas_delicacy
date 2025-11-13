@@ -34,7 +34,6 @@ class _LoginScreenState extends State<LoginScreen>
   bool _obscurePassword = true; // ADDED: Track password visibility
 
   late AnimationController _slideController;
-  late Animation<Offset> _slideAnimation;
 
   // ADDED: OAuth auth state listener subscription
   StreamSubscription? _oauthListener;
@@ -49,14 +48,6 @@ class _LoginScreenState extends State<LoginScreen>
       vsync: this,
       duration: const Duration(seconds: 3),
     )..repeat(reverse: true);
-
-    _slideAnimation = Tween<Offset>(
-      begin: const Offset(-0.2, 0),
-      end: const Offset(0.2, 0),
-    ).animate(CurvedAnimation(
-      parent: _slideController,
-      curve: Curves.easeInOut,
-    ));
 
     // ADDED: Handle deep links when app is opened from email confirmation
     _oauthListener = Supabase.instance.client.auth.onAuthStateChange.listen((data) async {
@@ -256,21 +247,6 @@ class _LoginScreenState extends State<LoginScreen>
                     },
                   ),
                   const SizedBox(height: 24),
-
-                  // Sliding slogan
-                  SlideTransition(
-                    position: _slideAnimation,
-                    child: const Text(
-                      "Make Meals Magical!",
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 22,
-                        fontStyle: FontStyle.italic,
-                        color: AppColors.darkText,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 30),
 
                   // Bike animation
                   const SizedBox(

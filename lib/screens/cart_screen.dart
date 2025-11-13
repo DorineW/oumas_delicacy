@@ -8,6 +8,7 @@ import '../constants/colors.dart';
 import '../providers/cart_provider.dart';
 import '../providers/menu_provider.dart'; // ADDED: Import menu provider
 import 'checkout_screen.dart';
+// Removed delivery fee from cart; no location dependency needed here
 
 class CartScreen extends StatelessWidget {
   const CartScreen({super.key});
@@ -78,8 +79,7 @@ class CartScreen extends StatelessWidget {
     });
 
     final subtotal = _subtotal(items);
-    const int deliveryFee = 150;
-    final grandTotal = subtotal + (items.isEmpty ? 0 : deliveryFee);
+    final grandTotal = subtotal; // Cart shows subtotal only; delivery fee calculated at checkout
     
     final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
 
@@ -201,7 +201,7 @@ class CartScreen extends StatelessWidget {
                                   const SizedBox(height: 16),
                                   _buildSummaryRow('Subtotal', 'Ksh $subtotal'),
                                   const SizedBox(height: 8),
-                                  _buildSummaryRow('Delivery Fee', 'Ksh $deliveryFee'),
+                                  // Delivery fee removed from cart summary
                                   const Divider(color: AppColors.white, height: 24, thickness: 0.5),
                                   Row(
                                     mainAxisAlignment: MainAxisAlignment.spaceBetween,

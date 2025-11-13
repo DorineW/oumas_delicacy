@@ -1,8 +1,11 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:provider/provider.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../constants/colors.dart';
+import '../../services/auth_service.dart';
+import '../../utils/phone_utils.dart';
 
 class RiderProfileScreen extends StatefulWidget {
   const RiderProfileScreen({super.key});
@@ -13,15 +16,17 @@ class RiderProfileScreen extends StatefulWidget {
 
 class _RiderProfileScreenState extends State<RiderProfileScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _nameController = TextEditingController(text: 'John Rider');
-  final _emailCont = TextEditingController(text: 'rider@example.com');
-  final _phoneCont = TextEditingController(text: '+254712345678');
-  final _vehicleController = TextEditingController(text: 'Motorcycle');
-  final _plateController = TextEditingController(text: 'KAA 123B');
+  final _nameController = TextEditingController();
+  final _emailCont = TextEditingController();
+  final _phoneCont = TextEditingController();
+  final _vehicleController = TextEditingController();
+  final _plateController = TextEditingController();
   
   File? _profileImageFile;
   final ImagePicker _picker = ImagePicker();
   bool _isSaving = false;
+  bool _isLoading = true;
+  String? _riderId;
 
   @override
   void initState() {
@@ -40,18 +45,62 @@ class _RiderProfileScreenState extends State<RiderProfileScreen> {
   }
 
   Future<void> _loadProfile() async {
-    final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      _nameController.text = prefs.getString('rider_name') ?? _nameController.text;
-      _emailCont.text = prefs.getString('rider_email') ?? _emailCont.text;
-      _phoneCont.text = prefs.getString('rider_phone') ?? _phoneCont.text;
+    try {
+      final auth = Provider.of<AuthService>(context, listen: false);
+      final authId = auth.currentUser?.id;
       
-      final profilePath = prefs.getString('rider_profileImagePath');
-      if (profilePath != null && profilePath.isNotEmpty) {
-        final f = File(profilePath);
-        if (f.existsSync()) _profileImageFile = f;
+      if (authId == null) {
+        debugPrint('❌ No auth user found');
+        setState(() => _isLoading = false);
+        return;
       }
-    });
+
+      debugPrint('🔄 Loading rider profile for auth_id: $authId');
+      
+      final supabase = Supabase.instance.client;
+      
+      // Get rider data from riders table
+      final riderData = await supabase
+          .from('riders')
+          .select('id, auth_id, name, phone, vehicle')
+          .eq('auth_id', authId)
+          .maybeSingle();
+
+      if (riderData == null) {
+        debugPrint('❌ No rider record found for auth_id: $authId');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Rider profile not found')),
+          );
+        }
+        setState(() => _isLoading = false);
+        return;
+      }
+
+      debugPrint('✅ Rider data loaded: $riderData');
+
+      // Get email from auth.users
+      final authUser = supabase.auth.currentUser;
+      
+      setState(() {
+        _riderId = riderData['id'];
+        _nameController.text = riderData['name'] ?? '';
+        final p = riderData['phone'] as String?;
+        _phoneCont.text = p == null ? '' : PhoneUtils.toLocalDisplay(p);
+        _vehicleController.text = riderData['vehicle'] ?? '';
+        _emailCont.text = authUser?.email ?? '';
+        _isLoading = false;
+      });
+      
+    } catch (e) {
+      debugPrint('❌ Error loading rider profile: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error loading profile: $e')),
+        );
+      }
+      setState(() => _isLoading = false);
+    }
   }
 
   Future<void> _pickImage(ImageSource source) async {
@@ -69,34 +118,57 @@ class _RiderProfileScreenState extends State<RiderProfileScreen> {
 
   Future<void> _saveProfile() async {
     if (!_formKey.currentState!.validate()) return;
+    if (_riderId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No rider profile found')),
+      );
+      return;
+    }
 
     setState(() => _isSaving = true);
 
     try {
-      await Future.delayed(const Duration(seconds: 1));
+      debugPrint('🔄 Saving rider profile...');
+      
+      final supabase = Supabase.instance.client;
+      
+      // Update riders table
+      final normalizedPhone = PhoneUtils.normalizeKenyan(_phoneCont.text);
 
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('rider_name', _nameController.text.trim());
-      await prefs.setString('rider_email', _emailCont.text.trim());
-      await prefs.setString('rider_phone', _phoneCont.text.trim());
+      await supabase
+          .from('riders')
+          .update({
+            'name': _nameController.text.trim(),
+        'phone': normalizedPhone,
+            'vehicle': _vehicleController.text.trim(),
+            'updated_at': DateTime.now().toIso8601String(),
+          })
+          .eq('id', _riderId!);
 
-      if (_profileImageFile != null) {
-        await prefs.setString('rider_profileImagePath', _profileImageFile!.path);
-      }
+      debugPrint('✅ Rider profile updated successfully');
 
-      if (context.mounted) {
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Profile saved successfully')),
+          const SnackBar(
+            content: Text('Profile saved successfully'),
+            backgroundColor: AppColors.success,
+          ),
         );
       }
     } catch (e) {
-      if (context.mounted) {
+      debugPrint('❌ Error saving profile: $e');
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error saving profile: $e')),
+          SnackBar(
+            content: Text('Error saving profile: $e'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     } finally {
-      setState(() => _isSaving = false);
+      if (mounted) {
+        setState(() => _isSaving = false);
+      }
     }
   }
 
@@ -110,7 +182,11 @@ class _RiderProfileScreenState extends State<RiderProfileScreen> {
         iconTheme: const IconThemeData(color: AppColors.white),
         titleTextStyle: const TextStyle(color: AppColors.white, fontSize: 18, fontWeight: FontWeight.bold),
       ),
-      body: SingleChildScrollView(
+      body: _isLoading
+          ? const Center(
+              child: CircularProgressIndicator(),
+            )
+          : SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.all(16),
         child: Form(
@@ -144,7 +220,10 @@ class _RiderProfileScreenState extends State<RiderProfileScreen> {
                       radius: 52,
                       backgroundImage: _profileImageFile != null
                           ? FileImage(_profileImageFile!) as ImageProvider
-                          : const AssetImage('assets/images/profile.jpg'),
+                          : null,
+                      child: _profileImageFile == null
+                          ? const Icon(Icons.person, size: 48, color: AppColors.primary)
+                          : null,
                     ),
                   ),
                   Positioned(
@@ -192,6 +271,7 @@ class _RiderProfileScreenState extends State<RiderProfileScreen> {
                 label: 'Email',
                 icon: Icons.email_outlined,
                 keyboardType: TextInputType.emailAddress,
+                enabled: false, // Email can't be changed
               ),
               const SizedBox(height: 12),
               
@@ -274,6 +354,7 @@ class _RiderProfileScreenState extends State<RiderProfileScreen> {
     required IconData icon,
     TextInputType? keyboardType,
     String? Function(String?)? validator,
+    bool enabled = true,
   }) {
     return Container(
       decoration: BoxDecoration(
@@ -291,6 +372,7 @@ class _RiderProfileScreenState extends State<RiderProfileScreen> {
         controller: controller,
         keyboardType: keyboardType,
         validator: validator,
+        enabled: enabled,
         decoration: InputDecoration(
           labelText: label,
           prefixIcon: Icon(icon, color: AppColors.primary),
@@ -299,7 +381,7 @@ class _RiderProfileScreenState extends State<RiderProfileScreen> {
             borderSide: BorderSide.none,
           ),
           filled: true,
-          fillColor: AppColors.white,
+          fillColor: enabled ? AppColors.white : Colors.grey[100],
           contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
         ),
       ),
