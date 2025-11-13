@@ -96,100 +96,110 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (_) {
-        return Container(
-          height: MediaQuery.of(context).size.height * 0.8,
-          margin: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Column(
-            children: [
-              // Drag handle
-              Container(
-                width: 40,
-                height: 4,
-                margin: const EdgeInsets.symmetric(vertical: 12),
-                decoration: BoxDecoration(
-                  color: Colors.grey[300],
-                  borderRadius: BorderRadius.circular(2),
-                ),
+        return DraggableScrollableSheet(
+          initialChildSize: 0.7,
+          minChildSize: 0.5,
+          maxChildSize: 0.9,
+          builder: (_, scrollController) {
+            return Container(
+              margin: const EdgeInsets.symmetric(horizontal: 16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
               ),
-              // Header
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'New Orders (${provider.orders.where((o) => o.status == OrderStatus.confirmed).length})',
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Drag handle
+                  Container(
+                    width: 40,
+                    height: 4,
+                    margin: const EdgeInsets.symmetric(vertical: 12),
+                    decoration: BoxDecoration(
+                      color: Colors.grey[300],
+                      borderRadius: BorderRadius.circular(2),
                     ),
-                    if (pendingOrders.isNotEmpty)
-                      TextButton(
-                        onPressed: () {
-                          Navigator.of(context).pop();
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(builder: (_) => const ManageOrdersScreen()),
-                          );
-                        },
-                        child: const Text('View All'),
-                      ),
-                  ],
-                ),
-              ),
-              // Content
-              Expanded(
-                child: pendingOrders.isEmpty
-                    ? Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.notifications_off,
-                              size: 60,
-                              color: AppColors.darkText.withOpacity(0.3),
+                  ),
+                  // Header
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Flexible(
+                          child: Text(
+                            'New Orders (${provider.orders.where((o) => o.status == OrderStatus.confirmed).length})',
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
                             ),
-                            const SizedBox(height: 16),
-                            Text(
-                              'No New Orders',
-                              style: TextStyle(
-                                fontSize: 16,
-                                color: AppColors.darkText.withOpacity(0.5),
-                              ),
-                            ),
-                          ],
+                          ),
                         ),
-                      )
-                    : ListView.builder(
-                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                        itemCount: pendingOrders.length,
-                        itemBuilder: (_, index) {
-                          final order = pendingOrders[index];
-                          return _NotificationOrderCard(
-                            order: order,
-                            onMarkHandled: () => _markOrderHandled(order.id, provider),
-                            onViewOrder: () {
+                        if (pendingOrders.isNotEmpty)
+                          TextButton(
+                            onPressed: () {
                               Navigator.of(context).pop();
                               Navigator.push(
                                 context,
-                                MaterialPageRoute(
-                                  builder: (_) => ManageOrdersScreen(
-                                    highlightOrderId: order.id,
-                                  ),
-                                ),
+                                MaterialPageRoute(builder: (_) => const ManageOrdersScreen()),
                               );
                             },
-                          );
-                        },
-                      ),
+                            child: const Text('View All'),
+                          ),
+                      ],
+                    ),
+                  ),
+                  // Content
+                  Expanded(
+                    child: pendingOrders.isEmpty
+                        ? Center(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.notifications_off,
+                                  size: 60,
+                                  color: AppColors.darkText.withOpacity(0.3),
+                                ),
+                                const SizedBox(height: 16),
+                                Text(
+                                  'No New Orders',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    color: AppColors.darkText.withOpacity(0.5),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          )
+                        : ListView.builder(
+                            controller: scrollController,
+                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                            itemCount: pendingOrders.length,
+                            itemBuilder: (_, index) {
+                              final order = pendingOrders[index];
+                              return _NotificationOrderCard(
+                                order: order,
+                                onMarkHandled: () => _markOrderHandled(order.id, provider),
+                                onViewOrder: () {
+                                  Navigator.of(context).pop();
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => ManageOrdersScreen(
+                                        highlightOrderId: order.id,
+                                      ),
+                                    ),
+                                  );
+                                },
+                              );
+                            },
+                          ),
+                  ),
+                ],
               ),
-            ],
-          ),
+            );
+          },
         );
       },
     );

@@ -202,7 +202,7 @@ class _AdminMenuManagementScreenState extends State<AdminMenuManagementScreen> {
             ),
             onPressed: () async {
               try {
-                await menuProvider.deleteMenuItem(title);
+                await menuProvider.deleteMenuItem(item); // Pass the full item object
                 if (!mounted) return;
                 Navigator.of(context).pop();
                 _showSuccessSnackBar('"$title" deleted successfully', Colors.red);
@@ -250,26 +250,31 @@ class _AdminMenuManagementScreenState extends State<AdminMenuManagementScreen> {
       }
 
       // Building the new MenuItem
+      final menuProvider = Provider.of<MenuProvider>(context, listen: false);
+      final String? existingId = _editingIndex != null 
+          ? menuProvider.menuItems[_editingIndex!].id 
+          : null;
+
       final newItem = MenuItem(
+        id: existingId, // Preserve ID when editing
         title: _titleController.text.trim(),
         // FIXED: Price must be an integer (as per the model definition)
         price: int.parse(_priceController.text.trim()),
         // NOTE: The logic for rating calculation here seems non-standard but is kept.
         rating: _editingIndex != null
-            ? Provider.of<MenuProvider>(context, listen: false)
-                  .menuItems[_editingIndex!].rating
+            ? menuProvider.menuItems[_editingIndex!].rating
             : 4.5,
         category: category,
         mealWeight: _selectedMealWeight!,
         description: _descriptionController.text.isNotEmpty
             ? _descriptionController.text.trim()
             : 'Delicious ${_titleController.text.trim()}',
-        // FIX: Image logic - pass selected bytes OR existing string, if both are null, it's null
-        imageUrl: _selectedImageBytes != null ? null : _editingImageString,
+        // CRITICAL FIX: Only include imageUrl if NO new image bytes exist
+        // If imageBytes exist, provider will upload and set the URL
+        // If no imageBytes, preserve existing URL (or null for new items)
+        imageUrl: _selectedImageBytes == null ? _editingImageString : null,
         isAvailable: _isAvailable,
       );
-
-      final menuProvider = Provider.of<MenuProvider>(context, listen: false);
       
       if (_editingIndex != null) {
         // Only show update confirmation if meaningful changes were made
@@ -453,9 +458,8 @@ class _AdminMenuManagementScreenState extends State<AdminMenuManagementScreen> {
 
   void _performUpdate(MenuProvider menuProvider, MenuItem newItem) async {
     try {
-      // You'll need to update your MenuProvider to handle image bytes if provided
-      // For now, we assume your MenuProvider handles the item with the provided imageUrl logic
-      await menuProvider.updateMenuItem(newItem);
+      // Pass the selected image bytes to upload to storage
+      await menuProvider.updateMenuItem(newItem, _selectedImageBytes);
       if (!mounted) return;
       _showSuccessSnackBar('"${newItem.title}" updated successfully');
       _clearForm();
@@ -469,8 +473,8 @@ class _AdminMenuManagementScreenState extends State<AdminMenuManagementScreen> {
 
   void _performAdd(MenuProvider menuProvider, MenuItem newItem) async {
     try {
-      // You'll need to update your MenuProvider to handle image bytes if provided
-      await menuProvider.addMenuItem(newItem);
+      // Pass the selected image bytes to upload to storage
+      await menuProvider.addMenuItem(newItem, _selectedImageBytes);
       if (!mounted) return;
       _showSuccessSnackBar('"${newItem.title}" added to menu');
       _clearForm();

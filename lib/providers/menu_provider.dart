@@ -1,4 +1,5 @@
 // lib/providers/menu_provider.dart
+import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -98,14 +99,62 @@ class MenuProvider extends ChangeNotifier {
     await loadMenuItems();
   }
 
+  /// Helper method to upload an image and get its public URL
+  Future<String?> _uploadImage(Uint8List imageBytes, String itemName) async {
+    final supabase = Supabase.instance.client;
+    // 1. Define your bucket name (MAKE SURE THIS BUCKET EXISTS IN YOUR SUPABASE PROJECT)
+    const bucket = 'menu_images';
+
+    // 2. Create a unique file path
+    final fileExtension = 'jpg'; // Or 'png'. Depends on your compression
+    final cleanItemName = itemName.replaceAll(' ', '_').replaceAll(RegExp(r'[^a-zA-Z0-9_]'), '');
+    final filePath = '$cleanItemName-${DateTime.now().millisecondsSinceEpoch}.$fileExtension';
+
+    try {
+      debugPrint('📤 Uploading image to Storage...');
+      // 3. Upload the bytes
+      await supabase.storage.from(bucket).uploadBinary(
+            filePath,
+            imageBytes,
+            fileOptions: const FileOptions(
+              cacheControl: '3600',
+              upsert: false,
+              contentType: 'image/jpeg', // Use 'image/png' if you prefer
+            ),
+          );
+      debugPrint('✅ Image uploaded, getting URL...');
+
+      // 4. Get the public URL
+      final publicUrl = supabase.storage.from(bucket).getPublicUrl(filePath);
+      debugPrint('🔗 Public URL: $publicUrl');
+
+      return publicUrl;
+
+    } catch (e) {
+      debugPrint('❌ Error uploading image: $e');
+      _error = 'Failed to upload image: $e';
+      notifyListeners();
+      return null;
+    }
+  }
+
   // Add a new menu item
-  Future<bool> addMenuItem(MenuItem item) async {
+  Future<bool> addMenuItem(MenuItem item, Uint8List? imageBytes) async {
     try {
       debugPrint('➕ Adding new menu item: ${item.title}');
       
+      final dataToInsert = item.toJson();
+
+      // Upload image first if provided
+      if (imageBytes != null) {
+        final imageUrl = await _uploadImage(imageBytes, item.title);
+        if (imageUrl == null) return false; // Upload failed
+        dataToInsert['image_url'] = imageUrl;
+      }
+      
       final response = await Supabase.instance.client
           .from('menu_items')
-          .insert(item.toJson())
+          .insert(dataToInsert)
           .select()
           .single();
 
@@ -121,17 +170,28 @@ class MenuProvider extends ChangeNotifier {
   }
 
   // Update a menu item
-  Future<bool> updateMenuItem(MenuItem item) async {
+  Future<bool> updateMenuItem(MenuItem item, Uint8List? imageBytes) async {
     try {
       debugPrint('🔄 Updating menu item: ${item.title}');
       
+      final dataToUpdate = item.toJson();
+
+      // Check if a *new* image was picked
+      if (imageBytes != null) {
+        final newImageUrl = await _uploadImage(imageBytes, item.title);
+        if (newImageUrl == null) return false; // Upload failed
+        dataToUpdate['image_url'] = newImageUrl;
+      }
+      // If imageBytes is null, dataToUpdate['image_url'] already contains
+      // the old URL (from the item object), so it will be preserved.
+
       await Supabase.instance.client
           .from('menu_items')
-          .update(item.toJson())
-          .eq('id', item.id!);
+          .update(dataToUpdate)
+          .eq('id', item.id!); // We need the ID to update!
 
       debugPrint('✅ Menu item updated');
-      await loadMenuItems(); // Reload to get fresh data
+      await loadMenuItems();
       return true;
     } catch (e) {
       debugPrint('❌ Error updating menu item: $e');
@@ -142,16 +202,30 @@ class MenuProvider extends ChangeNotifier {
   }
 
   // Delete a menu item
-  Future<bool> deleteMenuItem(String id) async {
+  Future<bool> deleteMenuItem(MenuItem item) async {
     try {
-      debugPrint('🗑️ Deleting menu item: $id');
+      debugPrint('🗑️ Deleting menu item: ${item.id}');
       
+      // TODO: Delete image from storage first, if it exists
+      // if (item.imageUrl != null) {
+      //   try {
+      //     const bucket = 'menu_images';
+      //     final client = Supabase.instance.client;
+      //     // You need to parse the file name from the URL to delete it
+      //     final fileName = item.imageUrl!.split('$bucket/').last;
+      //     await client.storage.from(bucket).remove([fileName]);
+      //     debugPrint('✅ Image deleted from storage');
+      //   } catch (e) {
+      //     debugPrint('⚠️ Could not delete image from storage: $e');
+      //   }
+      // }
+
       await Supabase.instance.client
           .from('menu_items')
           .delete()
-          .eq('id', id);
+          .eq('id', item.id!);
 
-      debugPrint('✅ Menu item deleted');
+      debugPrint('✅ Menu item deleted from table');
       await loadMenuItems(); // Reload to get fresh data
       return true;
     } catch (e) {

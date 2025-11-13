@@ -105,6 +105,7 @@ class MenuItem extends Equatable {
       'description': description,
       'image_url': imageUrl,
       'available': isAvailable, // ✅ 'available' in DB
+      // DON'T include updated_at - let database trigger handle it automatically
     };
     
     // Include IDs only if they exist (for updates)
