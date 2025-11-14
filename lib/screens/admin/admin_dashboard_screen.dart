@@ -1171,8 +1171,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         int unreadTotal = 0;
         for (final r in rooms) {
           final v = r['unread_admin'];
-          if (v is int) unreadTotal += v;
-          else if (v is num) unreadTotal += v.toInt();
+          if (v is int) {
+            unreadTotal += v;
+          } else if (v is num) unreadTotal += v.toInt();
         }
         return ListTile(
           leading: const Icon(Icons.support_agent, color: AppColors.primary),

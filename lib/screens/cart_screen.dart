@@ -434,8 +434,9 @@ class _CartItemCard extends StatelessWidget {
               ),
               image: item.mealImage.isNotEmpty
                   ? DecorationImage(
-                      image: AssetImage(item.mealImage),
+                      image: NetworkImage(item.mealImage),
                       fit: BoxFit.cover,
+                      onError: (_, __) {},
                     )
                   : null,
             ),

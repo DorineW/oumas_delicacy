@@ -10,6 +10,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart'; // ADDED: Environment variables
 
 // ADDED: All necessary screen imports
+import 'screens/auth_wrapper.dart'; // ADDED: For session persistence
 import 'screens/login_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/rider/rider_dashboard_screen.dart';
@@ -18,6 +19,7 @@ import 'screens/order_history_screen.dart'; // ADDED
 
 // ADDED: All necessary service and provider imports
 import 'services/auth_service.dart';
+import 'services/notification_service.dart'; // ADDED: Import NotificationService
 import 'providers/cart_provider.dart';
 import 'providers/menu_provider.dart';
 import 'providers/inventory_provider.dart'; // ADDED: Inventory provider import
@@ -134,6 +136,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => AuthService()),
+        ChangeNotifierProvider(create: (_) => NotificationService()), // ADDED: Notification preferences service
         ChangeNotifierProvider(create: (_) => CartProvider()),
         ChangeNotifierProvider(create: (_) => MenuProvider()),
         ChangeNotifierProvider(create: (_) => InventoryProvider()), // ADDED: Inventory provider
@@ -171,6 +174,10 @@ class _AppContentState extends State<_AppContent> {
     // FIXED: Now we can access providers because we're inside MultiProvider
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (mounted) {
+        // Initialize notification preferences service
+        final notificationService = Provider.of<NotificationService>(context, listen: false);
+        await notificationService.init();
+        
         final menuProvider = Provider.of<MenuProvider>(context, listen: false);
         await menuProvider.loadMenuItems();
         
@@ -197,7 +204,8 @@ class _AppContentState extends State<_AppContent> {
           ),
           useMaterial3: true,
         ),
-        initialRoute: '/login',
+        // FIXED: Use AuthWrapper as home to check for saved session
+        home: const AuthWrapper(),
         routes: {
           '/login': (context) => const LoginScreen(),
           '/home': (context) => const HomeScreen(),

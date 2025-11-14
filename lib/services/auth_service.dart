@@ -51,6 +51,7 @@ class AuthService extends ChangeNotifier {
 
       debugPrint('🔄 Refreshing user profile from Supabase...');
       debugPrint('🔑 User auth_id: ${authUser.id}');
+      debugPrint('📧 User email: ${authUser.email}');
       
       final profile = await _supabase
           .from('users')
@@ -59,7 +60,7 @@ class AuthService extends ChangeNotifier {
           .maybeSingle();
 
       debugPrint('✅ Query executed successfully');
-      debugPrint('📊 Response type: ${profile.runtimeType}');
+      debugPrint('📊 Response: $profile');
       
       if (profile != null) {
         debugPrint('📋 Raw user profile from DB: $profile');
@@ -86,12 +87,25 @@ class AuthService extends ChangeNotifier {
           role: 'customer',
           phone: null,
         );
+        debugPrint('✅ Created default user profile for: ${authUser.email}');
       }
       notifyListeners();
     } catch (e, stackTrace) {
       debugPrint('❌ Error refreshing user profile: $e');
-      debugPrint('Stack: $stackTrace');
-      // silent - don't throw
+      debugPrint('📍 Stack trace: $stackTrace');
+      // Set a basic user profile so auth doesn't completely fail
+      final authUser = _supabase.auth.currentUser;
+      if (authUser != null) {
+        _currentUser = app.User(
+          id: authUser.id,
+          email: authUser.email ?? '',
+          name: '',
+          role: 'customer',
+          phone: null,
+        );
+        debugPrint('⚠️ Using fallback user profile due to error');
+        notifyListeners();
+      }
     }
   }
 

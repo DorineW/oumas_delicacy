@@ -25,8 +25,7 @@ class LoginScreen extends StatefulWidget {
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen>
-    with SingleTickerProviderStateMixin {
+class _LoginScreenState extends State<LoginScreen> {
   // ADDED: Form key
   final _formKey = GlobalKey<FormState>();
   
@@ -35,8 +34,6 @@ class _LoginScreenState extends State<LoginScreen>
   bool _isLoading = false;
   bool _obscurePassword = true; // ADDED: Track password visibility
 
-  late AnimationController _slideController;
-
   // ADDED: OAuth auth state listener subscription
   StreamSubscription? _oauthListener;
   bool _deepLinkProcessed = false; // ADDED: Prevent re-processing the same token
@@ -44,12 +41,6 @@ class _LoginScreenState extends State<LoginScreen>
   @override
   void initState() {
     super.initState();
-    
-    // Slogan animation
-    _slideController = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 3),
-    )..repeat(reverse: true);
 
     // ADDED: Handle deep links when app is opened from email confirmation
     _oauthListener = Supabase.instance.client.auth.onAuthStateChange.listen((data) async {
@@ -81,7 +72,6 @@ class _LoginScreenState extends State<LoginScreen>
   void dispose() {
     _emailController.dispose();
     _passwordController.dispose();
-    _slideController.dispose();
     _oauthListener?.cancel(); // ADDED
     super.dispose();
   }
@@ -138,6 +128,9 @@ class _LoginScreenState extends State<LoginScreen>
           await orderProvider.loadOrders(user.id);
         }
       }
+
+      // ADDED: Small delay after data loading before routing to ensure UI state is ready
+      await Future.delayed(const Duration(milliseconds: 100));
 
       if (!mounted) return;
 
@@ -278,8 +271,19 @@ class _LoginScreenState extends State<LoginScreen>
                   const SizedBox(height: 30),
 
                   // Email field
-                  TextField(
+                  TextFormField(
                     controller: _emailController,
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return 'Please enter your email';
+                      }
+                      // Basic email check
+                      if (!value.contains('@') || !value.contains('.')) {
+                        return 'Please enter a valid email';
+                      }
+                      return null;
+                    },
+                    autofillHints: const [AutofillHints.email],
                     decoration: InputDecoration(
                       labelText: 'Email',
                       prefixIcon: const Icon(Icons.email),
@@ -294,8 +298,17 @@ class _LoginScreenState extends State<LoginScreen>
                   const SizedBox(height: 16),
                   
                   // UPDATED: Password field with visibility toggle
-                  TextField(
+                  TextFormField(
                     controller: _passwordController,
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return 'Please enter your password';
+                      }
+                      return null;
+                    },
+                    autofillHints: const [AutofillHints.password],
+                    textInputAction: TextInputAction.done,
+                    onFieldSubmitted: (_) => _handleLogin(),
                     decoration: InputDecoration(
                       labelText: 'Password',
                       prefixIcon: const Icon(Icons.lock),

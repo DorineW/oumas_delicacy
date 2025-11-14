@@ -39,9 +39,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   
   final List<Widget> _screens = [
     const _HomeTab(),
-    const DashboardScreen(),
-    const CartScreen(),
-    const ProfileScreen(),
+    DashboardScreen(),
+    CartScreen(),
+    ProfileScreen(),
   ];
 
   @override
@@ -201,7 +201,7 @@ class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin 
           title: const Text("Ouma's Delicacy"),
           backgroundColor: AppColors.primary,
           elevation: 4,
-          iconTheme: const IconThemeData(color: AppColors.white),
+          automaticallyImplyLeading: false,
           titleTextStyle: const TextStyle(color: AppColors.white, fontSize: 18, fontWeight: FontWeight.bold),
           actions: [
             // ADDED: Refresh button
@@ -220,15 +220,10 @@ class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin 
               onPressed: menuProvider.isLoading ? null : () => menuProvider.refreshMenuItems(),
             ),
             IconButton(
-              icon: const Icon(Icons.logout),
-              tooltip: 'Logout',
-              onPressed: () async {
-                await Provider.of<AuthService>(context, listen: false).logout();
-                if (!mounted) return;
-                Navigator.of(context).pushAndRemoveUntil(
-                  MaterialPageRoute(builder: (_) => const LoginScreen()),
-                  (route) => false,
-                );
+              icon: const Icon(Icons.close),
+              tooltip: 'Close App',
+              onPressed: () {
+                SystemNavigator.pop();
               },
             ),
           ],
@@ -260,7 +255,7 @@ class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin 
           title: const Text("Ouma's Delicacy"),
           backgroundColor: AppColors.primary,
           elevation: 4,
-          iconTheme: const IconThemeData(color: AppColors.white),
+          automaticallyImplyLeading: false,
           titleTextStyle: const TextStyle(color: AppColors.white, fontSize: 18, fontWeight: FontWeight.bold),
           actions: [
             // ADDED: Refresh button
@@ -279,21 +274,10 @@ class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin 
               onPressed: menuProvider.isLoading ? null : () => menuProvider.refreshMenuItems(),
             ),
             IconButton(
-              icon: const Icon(Icons.logout),
-              tooltip: 'Logout',
-              onPressed: () async {
-                // Clear all provider data
-                final favoritesProvider = Provider.of<FavoritesProvider>(context, listen: false);
-                final cartProvider = Provider.of<CartProvider>(context, listen: false);
-                favoritesProvider.clearFavorites();
-                cartProvider.clearCart();
-                
-                await Provider.of<AuthService>(context, listen: false).logout();
-                if (!mounted) return;
-                Navigator.of(context).pushAndRemoveUntil(
-                  MaterialPageRoute(builder: (_) => const LoginScreen()),
-                  (route) => false,
-                );
+              icon: const Icon(Icons.close),
+              tooltip: 'Close App',
+              onPressed: () {
+                SystemNavigator.pop();
               },
             ),
           ],
@@ -304,10 +288,10 @@ class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin 
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(
+                const Icon(
                   Icons.error_outline,
                   size: 80,
-                  color: AppColors.darkText.withOpacity(0.3),
+                  color: AppColors.lightGray,
                 ),
                 const SizedBox(height: 16),
                 const Text(
@@ -352,7 +336,7 @@ class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin 
           title: const Text("Ouma's Delicacy"),
           backgroundColor: AppColors.primary,
           elevation: 4,
-          iconTheme: const IconThemeData(color: AppColors.white),
+          automaticallyImplyLeading: false,
           titleTextStyle: const TextStyle(color: AppColors.white, fontSize: 18, fontWeight: FontWeight.bold),
           actions: [
             // ADDED: Refresh button
@@ -371,21 +355,10 @@ class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin 
               onPressed: menuProvider.isLoading ? null : () => menuProvider.refreshMenuItems(),
             ),
             IconButton(
-              icon: const Icon(Icons.logout),
-              tooltip: 'Logout',
-              onPressed: () async {
-                // Clear all provider data
-                final favoritesProvider = Provider.of<FavoritesProvider>(context, listen: false);
-                final cartProvider = Provider.of<CartProvider>(context, listen: false);
-                favoritesProvider.clearFavorites();
-                cartProvider.clearCart();
-                
-                await Provider.of<AuthService>(context, listen: false).logout();
-                if (!mounted) return;
-                Navigator.of(context).pushAndRemoveUntil(
-                  MaterialPageRoute(builder: (_) => const LoginScreen()),
-                  (route) => false,
-                );
+              icon: const Icon(Icons.close),
+              tooltip: 'Close App',
+              onPressed: () {
+                SystemNavigator.pop();
               },
             ),
           ],
@@ -437,7 +410,7 @@ class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin 
         title: const Text("Ouma's Delicacy"),
         backgroundColor: AppColors.primary,
         elevation: 4,
-        iconTheme: const IconThemeData(color: AppColors.white),
+        automaticallyImplyLeading: false,
         titleTextStyle: const TextStyle(color: AppColors.white, fontSize: 18, fontWeight: FontWeight.bold),
         actions: [
           // ADDED: Refresh button
@@ -451,83 +424,18 @@ class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin 
                       valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                     ),
                   )
-                : const Icon(Icons.refresh),
+                : const Icon(Icons.refresh, color: Colors.white),
             tooltip: 'Refresh Menu',
             onPressed: menuProvider.isLoading ? null : () => menuProvider.refreshMenuItems(),
           ),
           IconButton(
-            icon: const Icon(Icons.logout),
-            tooltip: 'Logout',
-            onPressed: () async {
-              // Clear all provider data
-              final favoritesProvider = Provider.of<FavoritesProvider>(context, listen: false);
-              final cartProvider = Provider.of<CartProvider>(context, listen: false);
-              favoritesProvider.clearFavorites();
-              cartProvider.clearCart();
-              
-              await Provider.of<AuthService>(context, listen: false).logout();
-              if (!mounted) return;
-              Navigator.of(context).pushAndRemoveUntil(
-                MaterialPageRoute(builder: (_) => const LoginScreen()),
-                (route) => false,
-              );
+            icon: const Icon(Icons.close, color: Colors.white),
+            tooltip: 'Close App',
+            onPressed: () {
+              SystemNavigator.pop();
             },
           ),
         ],
-      ),
-      drawer: Drawer(
-        child: SafeArea(
-          child: Container(
-            color: AppColors.background,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Container(
-                  height: 160,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        AppColors.primary,
-                        AppColors.primary.withOpacity(0.8),
-                      ],
-                    ),
-                  ),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Image.asset('assets/images/app_icon.png', width: 64, height: 64),
-                      const SizedBox(height: 12),
-                      const Text('Ouma\'s Delicacy',
-                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.white)),
-                    ],
-                  ),
-                ),
-                Expanded(
-                  child: ListView(
-                    padding: EdgeInsets.zero,
-                    children: [
-                      _drawerItem(Icons.home, 'Home', () => Navigator.pop(context)),
-                      _drawerItem(Icons.dashboard, 'Dashboard', () {
-                        Navigator.pop(context);
-                        Navigator.push(context, MaterialPageRoute(builder: (_) => const DashboardScreen()));
-                      }),
-                      _drawerItem(Icons.shopping_cart, 'Cart', () {
-                        Navigator.pop(context);
-                        Navigator.push(context, MaterialPageRoute(builder: (_) => const CartScreen()));
-                      }),
-                      _drawerItem(Icons.person, 'Profile', () {
-                        Navigator.pop(context);
-                        Navigator.push(context, MaterialPageRoute(builder: (_) => const ProfileScreen()));
-                      }),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
       ),
       body: SafeArea(
         child: LayoutBuilder(
@@ -552,11 +460,20 @@ class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin 
                     child: TextField(
                       controller: _searchCtrl,
                       onChanged: (v) => setState(() => _search = v),
-                      decoration: const InputDecoration(
+                      decoration: InputDecoration(
                         hintText: 'Search meals…',
-                        prefixIcon: Icon(Icons.search, color: AppColors.lightGray),
+                        prefixIcon: const Icon(Icons.search, color: AppColors.lightGray),
+                        suffixIcon: _search.isNotEmpty
+                            ? IconButton(
+                                icon: const Icon(Icons.clear, color: AppColors.lightGray),
+                                onPressed: () {
+                                  _searchCtrl.clear();
+                                  setState(() => _search = '');
+                                },
+                              )
+                            : null,
                         border: InputBorder.none,
-                        contentPadding: EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+                        contentPadding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
                       ),
                     ),
                   ),
@@ -736,7 +653,7 @@ class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin 
     
     final combined = [...preferredMeals, ...otherMeals];
     combined.shuffle();
-    return combined;
+    return combined.take(4).toList(); // ✅ Ensure maximum of 4 items are returned
   }
 
   // ADDED: Get meal period name
@@ -750,15 +667,6 @@ class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin 
     } else {
       return 'Dinner';
     }
-  }
-
-  // UPDATED: Drawer item
-  Widget _drawerItem(IconData icon, String title, VoidCallback onTap) {
-    return ListTile(
-      leading: Icon(icon, color: AppColors.primary),
-      title: Text(title, style: const TextStyle(color: AppColors.darkText)),
-      onTap: onTap,
-    );
   }
 
   // UPDATED: Carousel card with meal period name
@@ -1335,7 +1243,7 @@ class _RiderStyleMealCardState extends State<_RiderStyleMealCard>
                   const SizedBox(height: 2),
                   // Price
                   Text(
-                    'Ksh ${m.price}',
+                    'Ksh ${m.price.toStringAsFixed(2)}',
                     style: TextStyle(
                       fontSize: isLandscape ? 12 : 14,
                       fontWeight: FontWeight.bold,
@@ -1431,7 +1339,10 @@ class _RiderStyleMealCardState extends State<_RiderStyleMealCard>
     return IconButton(
       padding: EdgeInsets.zero,
       iconSize: isLandscape ? 13 : 14,
-      onPressed: onTap, // Missing closing parenthesis here
+      onPressed: () {
+        HapticFeedback.lightImpact();
+        onTap();
+      },
       icon: Icon(icon, color: AppColors.primary),
     );
   }

@@ -60,16 +60,47 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     final currentUser = auth.currentUser;
     
     if (currentUser != null) {
-      setState(() {
-        _nameController.text = currentUser.name ?? ''; // FIXED: Handle null
-        _emailCont.text = currentUser.email;
-        _phoneCont.text = currentUser.phone == null
-            ? ''
-            : PhoneUtils.toLocalDisplay(currentUser.phone!);
-      });
+      // Fetch user data including addresses from Supabase
+      try {
+        final userData = await Supabase.instance.client
+            .from('users')
+            .select('name, email, phone, addresses, default_address_index')
+            .eq('auth_id', currentUser.id)
+            .single();
+        
+        setState(() {
+          _nameController.text = userData['name'] ?? '';
+          _emailCont.text = userData['email'] ?? '';
+          final phone = userData['phone'];
+          _phoneCont.text = phone == null ? '' : PhoneUtils.toLocalDisplay(phone);
+          
+          // Load addresses from database
+          if (userData['addresses'] != null) {
+            final addressesFromDb = userData['addresses'];
+            if (addressesFromDb is List) {
+              _addresses = List<String>.from(addressesFromDb);
+            }
+          }
+          
+          // Load default address index from database
+          if (userData['default_address_index'] != null && userData['default_address_index'] < _addresses.length) {
+            _defaultAddressIndex = userData['default_address_index'];
+          }
+        });
+      } catch (e) {
+        debugPrint('⚠️ Error loading user data from Supabase: $e');
+        // Fallback to basic user info
+        setState(() {
+          _nameController.text = currentUser.name ?? '';
+          _emailCont.text = currentUser.email;
+          _phoneCont.text = currentUser.phone == null
+              ? ''
+              : PhoneUtils.toLocalDisplay(currentUser.phone!);
+        });
+      }
     }
     
-    // THEN load local preferences (addresses, payment, image)
+    // THEN load local preferences (notifications, payment, image) - not addresses anymore
     final prefs = await SharedPreferences.getInstance();
 
     setState(() {
@@ -87,9 +118,17 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       
       _notificationsEnabled = prefs.getBool('notifications') ?? true;
 
-      final addressesJson = prefs.getStringList('addresses') ?? [];
-      _addresses = List<String>.from(addressesJson);
-      _defaultAddressIndex = prefs.getInt('defaultAddressIndex');
+      // Keep addresses from SharedPreferences as fallback if database didn't have them
+      if (_addresses.isEmpty) {
+        final addressesJson = prefs.getStringList('addresses') ?? [];
+        _addresses = List<String>.from(addressesJson);
+        
+        // FIXED: Add bounds checking for default address index
+        final savedDefaultIndex = prefs.getInt('defaultAddressIndex');
+        if (savedDefaultIndex != null && savedDefaultIndex < _addresses.length) {
+          _defaultAddressIndex = savedDefaultIndex;
+        }
+      }
 
       final pmJson = prefs.getString('paymentMethod');
       if (pmJson != null) {
@@ -115,19 +154,27 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   }
 
   Future<void> _pickImage(ImageSource source) async {
-    final XFile? picked = await _picker.pickImage(
-      source: source,
-      imageQuality: 80,
-      maxWidth: 800,
-    );
-    if (picked != null) {
-      setState(() {
-        _profileImageFile = File(picked.path);
-      });
+    try {
+      final XFile? picked = await _picker.pickImage(
+        source: source,
+        imageQuality: 80,
+        maxWidth: 800,
+      );
+      if (picked != null) {
+        setState(() {
+          _profileImageFile = File(picked.path);
+        });
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to pick image: ${e.toString()}'),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
   }
-
-  String _maskCard(String last4) => '**** **** **** $last4';
 
   Future<void> _saveProfile() async {
     if (!_formKey.currentState!.validate()) return;
@@ -148,6 +195,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           .update({
             'name': _nameController.text.trim(),
         'phone': normalizedPhone,
+            'addresses': _addresses, // ADDED: Save addresses to database
+            'default_address_index': _defaultAddressIndex, // ADDED: Save default address index
             'updated_at': DateTime.now().toIso8601String(),
           })
           .eq('auth_id', userId);
@@ -161,8 +210,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       
       // Save addresses
       await prefs.setStringList('addresses', _addresses);
-      if (_defaultAddressIndex != null) {
+      if (_defaultAddressIndex != null && _addresses.isNotEmpty) {
         await prefs.setInt('defaultAddressIndex', _defaultAddressIndex!);
+      } else {
+        await prefs.remove('defaultAddressIndex'); // FIXED: Remove index if list is empty
       }
       
       // Save payment method
@@ -207,44 +258,56 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   }
 
   Future<void> _changePasswordDialog() async {
+    final formKey = GlobalKey<FormState>();
     _oldPasswordCont.clear();
     _newPasswordCont.clear();
     await showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Change Password'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: _oldPasswordCont,
-              obscureText: true,
-              decoration: const InputDecoration(labelText: 'Current Password'),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _newPasswordCont,
-              obscureText: true,
-              decoration: const InputDecoration(labelText: 'New Password'),
-            ),
-          ],
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Change Password', style: TextStyle(fontWeight: FontWeight.bold)),
+        content: Form(
+          key: formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextFormField(
+                controller: _oldPasswordCont,
+                obscureText: true,
+                decoration: const InputDecoration(labelText: 'Current Password'),
+                validator: (v) => (v == null || v.isEmpty) ? 'Current password required' : null,
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _newPasswordCont,
+                obscureText: true,
+                decoration: const InputDecoration(labelText: 'New Password'),
+                validator: (v) {
+                  if (v == null || v.isEmpty) return 'New password required';
+                  if (v.length < 6) return 'Must be at least 6 characters';
+                  return null;
+                },
+              ),
+            ],
+          ),
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              foregroundColor: AppColors.white,
+            ),
             onPressed: () {
-              final newPass = _newPasswordCont.text.trim();
-              if (newPass.length < 6) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('New password must be at least 6 characters')),
-                );
-                return;
-              }
+              if (!formKey.currentState!.validate()) return;
+              
               // In real app, call API to change password; here we simulate success
               Navigator.pop(ctx);
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Password changed')),
+                const SnackBar(
+                  content: Text('Password changed successfully'),
+                  backgroundColor: AppColors.success,
+                ),
               );
             },
             child: const Text('Save'),
@@ -256,21 +319,35 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
   Future<void> _addAddressDialog() async {
     final controller = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+    
     await showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Add Delivery Address'),
-        content: TextField(
-          controller: controller,
-          decoration: const InputDecoration(hintText: 'e.g. 12 Baker St, Nairobi'),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Add Delivery Address', style: TextStyle(fontWeight: FontWeight.bold)),
+        content: Form(
+          key: formKey,
+          child: TextFormField(
+            controller: controller,
+            decoration: const InputDecoration(
+              hintText: 'e.g. 12 Baker St, Nairobi',
+              labelText: 'Address Detail',
+            ),
+            validator: (v) => (v == null || v.trim().isEmpty) ? 'Address cannot be empty' : null,
+          ),
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              foregroundColor: AppColors.white,
+            ),
             onPressed: () {
+              if (!formKey.currentState!.validate()) return;
+              
               final val = controller.text.trim();
-              if (val.isEmpty) return;
               setState(() {
                 _addresses.add(val);
                 // if this is first address, set default
@@ -279,45 +356,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               Navigator.pop(ctx);
             },
             child: const Text('Add'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _addPaymentDialog() async {
-    final brandCtrl = TextEditingController();
-    final last4Ctrl = TextEditingController();
-    await showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Add Payment Method'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(controller: brandCtrl, decoration: const InputDecoration(labelText: 'Card Brand (e.g. Visa)')),
-            TextField(controller: last4Ctrl, decoration: const InputDecoration(labelText: 'Last 4 digits')),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary),
-            onPressed: () {
-              final brand = brandCtrl.text.trim();
-              final last4 = last4Ctrl.text.trim();
-              if (brand.isEmpty || last4.length != 4) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Enter brand and valid last 4 digits')),
-                );
-                return;
-              }
-              setState(() {
-                _paymentMethod = {'brand': brand, 'last4': last4};
-              });
-              Navigator.pop(ctx);
-            },
-            child: const Text('Save'),
           ),
         ],
       ),
@@ -492,12 +530,14 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 ),
                 SizedBox(height: isLandscape ? 10 : 12),
                 
+                // IMPROVEMENT: Email field is read-only since email changes require re-authentication
                 _buildModernTextField(
                   controller: _emailCont,
                   label: 'Email',
                   icon: Icons.email_outlined,
                   keyboardType: TextInputType.emailAddress,
                   validator: _validateEmail,
+                  readOnly: true, // ADDED: Email changes require re-authentication in Supabase
                 ),
                 SizedBox(height: isLandscape ? 10 : 12),
                 
@@ -592,13 +632,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     ],
                   ),
                 
-                SizedBox(height: isLandscape ? 16 : 20),
-
-                // UPDATED: Payment section
-                _buildSectionHeader('Payment Method', Icons.credit_card, onAdd: _addPaymentDialog),
-                SizedBox(height: isLandscape ? 8 : 12),
-                
-                _buildPaymentCard(),
                 SizedBox(height: isLandscape ? 16 : 20),
 
                 // UPDATED: Change password button
@@ -706,6 +739,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     required IconData icon,
     TextInputType? keyboardType,
     String? Function(String?)? validator,
+    bool readOnly = false, // ADDED: readOnly parameter
   }) {
     return Container(
       decoration: BoxDecoration(
@@ -723,6 +757,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         controller: controller,
         keyboardType: keyboardType,
         validator: validator,
+        readOnly: readOnly, // ADDED: Apply readOnly flag
+        style: TextStyle(
+          color: readOnly ? AppColors.darkText.withOpacity(0.6) : AppColors.darkText, // ADDED: Gray out read-only text
+        ),
         decoration: InputDecoration(
           labelText: label,
           prefixIcon: Icon(icon, color: AppColors.primary),
@@ -798,70 +836,39 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   }
 
   // NEW: Modern payment card
-  Widget _buildPaymentCard() {
-    return Container(
-      decoration: BoxDecoration(
-        color: AppColors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.lightGray.withOpacity(0.3)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: ListTile(
-        leading: Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: AppColors.primary.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: const Icon(Icons.credit_card, color: AppColors.primary, size: 20),
-        ),
-        title: Text(
-          _paymentMethod != null
-              ? '${_paymentMethod!['brand']} • ${_maskCard(_paymentMethod!['last4']!)}'
-              : 'No payment method',
-          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
-        ),
-        subtitle: _paymentMethod != null ? const Text('Primary card', style: TextStyle(fontSize: 12)) : null,
-        trailing: _paymentMethod != null
-            ? IconButton(
-                onPressed: () {
-                  setState(() => _paymentMethod = null);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Payment method removed')),
-                  );
-                },
-                icon: const Icon(Icons.delete_outline, color: Colors.red),
-              )
-            : null,
-      ),
-    );
-  }
-
   // ...existing helper methods (_validateEmail, _validatePhone, etc.)...
 
   Future<void> _editAddressDialog(int idx) async {
     final controller = TextEditingController(text: _addresses[idx]);
+    final formKey = GlobalKey<FormState>();
+    
     await showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Edit Delivery Address'),
-        content: TextField(
-          controller: controller,
-          decoration: const InputDecoration(hintText: 'e.g. 12 Baker St, Nairobi'),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Edit Delivery Address', style: TextStyle(fontWeight: FontWeight.bold)),
+        content: Form(
+          key: formKey,
+          child: TextFormField(
+            controller: controller,
+            decoration: const InputDecoration(
+              hintText: 'e.g. 12 Baker St, Nairobi',
+              labelText: 'Address Detail',
+            ),
+            validator: (v) => (v == null || v.trim().isEmpty) ? 'Address cannot be empty' : null,
+          ),
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              foregroundColor: AppColors.white,
+            ),
             onPressed: () {
+              if (!formKey.currentState!.validate()) return;
+              
               final val = controller.text.trim();
-              if (val.isEmpty) return;
               setState(() {
                 _addresses[idx] = val;
               });

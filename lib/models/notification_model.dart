@@ -2,13 +2,13 @@
 //the notification model representing app notifications
 class AppNotification {
   final String id;
-  final String userId;
-  final String title;
-  final String message;
-  final String type; // 'order_update', 'promotion', 'delivery'
+  final String userId; // Maps to user_auth_id in database
+  final String title; // Extracted from payload
+  final String message; // Extracted from payload
+  final String type; // Direct text field: 'order_update', 'promotion', 'delivery', 'system'
   final DateTime timestamp;
-  final bool isRead;
-  final Map<String, dynamic>? data; // Extra data like orderId
+  final bool isRead; // Maps to 'seen' in database
+  final Map<String, dynamic>? payload; // JSONB data (order_id, etc.)
 
   AppNotification({
     required this.id,
@@ -18,8 +18,39 @@ class AppNotification {
     required this.type,
     required this.timestamp,
     this.isRead = false,
-    this.data,
+    this.payload,
   });
+
+  // Factory constructor to create from database row
+  factory AppNotification.fromJson(Map<String, dynamic> json) {
+    final payloadData = json['payload'] as Map<String, dynamic>? ?? {};
+    
+    return AppNotification(
+      id: json['id'] as String,
+      userId: json['user_auth_id'] as String,
+      title: payloadData['title'] as String? ?? 'Notification',
+      message: payloadData['message'] as String? ?? '',
+      type: json['type'] as String? ?? 'system',
+      timestamp: DateTime.parse(json['created_at'] as String),
+      isRead: json['seen'] as bool? ?? false,
+      payload: payloadData,
+    );
+  }
+
+  // Convert to JSON for database insertion
+  Map<String, dynamic> toJson() {
+    return {
+      'user_auth_id': userId,
+      'type': type,
+      'payload': {
+        'title': title,
+        'message': message,
+        ...?payload,
+      },
+      'seen': isRead,
+      'created_at': timestamp.toIso8601String(),
+    };
+  }
 
   AppNotification copyWith({
     String? id,
@@ -29,7 +60,7 @@ class AppNotification {
     String? type,
     DateTime? timestamp,
     bool? isRead,
-    Map<String, dynamic>? data,
+    Map<String, dynamic>? payload,
   }) {
     return AppNotification(
       id: id ?? this.id,
@@ -39,7 +70,10 @@ class AppNotification {
       type: type ?? this.type,
       timestamp: timestamp ?? this.timestamp,
       isRead: isRead ?? this.isRead,
-      data: data ?? this.data,
+      payload: payload ?? this.payload,
     );
   }
+  
+  // Helper to get order_id from payload
+  String? get orderId => payload?['order_id'] as String?;
 }

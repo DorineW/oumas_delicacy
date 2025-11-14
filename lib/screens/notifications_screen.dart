@@ -5,8 +5,15 @@ import '../providers/notification_provider.dart';
 import '../services/auth_service.dart'; // FIXED: Changed from providers to services
 import '../models/notification_model.dart';
 
-class NotificationsScreen extends StatelessWidget {
+class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});
+
+  @override
+  State<NotificationsScreen> createState() => _NotificationsScreenState();
+}
+
+class _NotificationsScreenState extends State<NotificationsScreen> {
+  bool _hasLoadedOnce = false;
 
   IconData _getNotificationIcon(String type) {
     switch (type) {
@@ -54,6 +61,14 @@ class NotificationsScreen extends StatelessWidget {
 
     return Consumer<NotificationProvider>(
       builder: (context, provider, child) {
+        // Load notifications only once when first entering the screen
+        if (!_hasLoadedOnce && !provider.isLoading) {
+          _hasLoadedOnce = true;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            provider.loadNotificationsForUser(userId);
+          });
+        }
+
         final notifications = provider.notificationsForUser(userId);
         final unreadCount = provider.unreadCountForUser(userId);
 
@@ -65,12 +80,13 @@ class NotificationsScreen extends StatelessWidget {
               title: const Text('Notifications'),
               backgroundColor: AppColors.primary,
               elevation: 0,
-              iconTheme: const IconThemeData(color: AppColors.white),
+              automaticallyImplyLeading: true,
               titleTextStyle: const TextStyle(
                 color: AppColors.white,
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
               ),
+              iconTheme: const IconThemeData(color: AppColors.white),
               actions: [
                 if (unreadCount > 0)
                   TextButton(
@@ -80,56 +96,115 @@ class NotificationsScreen extends StatelessWidget {
                       style: TextStyle(color: AppColors.white),
                     ),
                   ),
+                IconButton(
+                  icon: const Icon(Icons.refresh),
+                  tooltip: 'Refresh',
+                  onPressed: () => provider.loadNotificationsForUser(userId),
+                ),
               ],
             ),
-            body: notifications.isEmpty
-                ? Center(
+            body: provider.isLoading && notifications.isEmpty
+                ? const Center(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(
-                          Icons.notifications_off,
-                          size: 80,
-                          color: AppColors.darkText.withOpacity(0.3),
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          'No Notifications',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: AppColors.darkText.withOpacity(0.5),
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'You\'ll receive notifications about your orders here',
-                          style: TextStyle(
-                            color: AppColors.darkText.withOpacity(0.4),
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
+                        CircularProgressIndicator(color: AppColors.primary),
+                        SizedBox(height: 16),
+                        Text('Loading notifications...'),
                       ],
                     ),
                   )
-                : ListView.builder(
-                    padding: const EdgeInsets.all(16),
-                    itemCount: notifications.length,
-                    itemBuilder: (context, index) {
-                      final notification = notifications[index];
-                      return _NotificationCard(
-                        notification: notification,
-                        icon: _getNotificationIcon(notification.type),
-                        iconColor: _getNotificationColor(notification.type),
-                        time: _formatTime(notification.timestamp),
-                        onTap: () {
-                          if (!notification.isRead) {
-                            provider.markAsRead(notification.id);
-                          }
-                        },
-                      );
-                    },
-                  ),
+                : provider.error != null && notifications.isEmpty
+                    ? Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(24.0),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.error_outline,
+                                size: 80,
+                                color: AppColors.darkText.withOpacity(0.3),
+                              ),
+                              const SizedBox(height: 16),
+                              const Text(
+                                'Failed to Load Notifications',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                  color: AppColors.darkText,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                provider.error ?? 'Unknown error',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  color: AppColors.darkText.withOpacity(0.6),
+                                ),
+                              ),
+                              const SizedBox(height: 24),
+                              ElevatedButton.icon(
+                                onPressed: () => provider.loadNotificationsForUser(userId),
+                                icon: const Icon(Icons.refresh),
+                                label: const Text('Retry'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppColors.primary,
+                                  foregroundColor: Colors.white,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      )
+                    : notifications.isEmpty
+                        ? Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.notifications_off,
+                                  size: 80,
+                                  color: AppColors.darkText.withOpacity(0.3),
+                                ),
+                                const SizedBox(height: 16),
+                                Text(
+                                  'No Notifications',
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                    color: AppColors.darkText.withOpacity(0.5),
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  'You\'ll receive notifications about your orders here',
+                                  style: TextStyle(
+                                    color: AppColors.darkText.withOpacity(0.4),
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                              ],
+                            ),
+                          )
+                        : ListView.builder(
+                            padding: const EdgeInsets.all(16),
+                            itemCount: notifications.length,
+                            itemBuilder: (context, index) {
+                              final notification = notifications[index];
+                              return _NotificationCard(
+                                notification: notification,
+                                icon: _getNotificationIcon(notification.type),
+                                iconColor: _getNotificationColor(notification.type),
+                                time: _formatTime(notification.timestamp),
+                                onTap: () {
+                                  if (!notification.isRead) {
+                                    provider.markAsRead(notification.id);
+                                  }
+                                },
+                              );
+                            },
+                          ),
           ),
         );
       },

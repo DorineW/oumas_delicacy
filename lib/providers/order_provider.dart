@@ -109,7 +109,7 @@ class OrderProvider extends ChangeNotifier {
           message: 'Your order #${updatedOrder.id} has been placed successfully',
           type: 'order_update',
           timestamp: DateTime.now(),
-          data: {'orderId': order.id},
+          payload: {'orderId': order.id},
         ));
 
         _notificationProvider!.addNotification(AppNotification(
@@ -119,7 +119,7 @@ class OrderProvider extends ChangeNotifier {
           message: 'New order #${order.id} from ${order.customerName}',
           type: 'new_order',
           timestamp: DateTime.now(),
-          data: {'orderId': order.id},
+          payload: {'orderId': order.id},
         ));
       }
       
@@ -309,7 +309,7 @@ class OrderProvider extends ChangeNotifier {
       message: message,
       type: 'order_update',
       timestamp: DateTime.now(),
-      data: {'orderId': orderId},
+      payload: {'orderId': orderId},
     ));
   }
 
@@ -434,7 +434,7 @@ class OrderProvider extends ChangeNotifier {
         message: 'Order #$orderId has been assigned to you',
         type: 'new_delivery',
         timestamp: DateTime.now(),
-        data: {'orderId': orderId},
+        payload: {'orderId': orderId},
       ));
 
       _notificationProvider!.addNotification(AppNotification(
@@ -444,7 +444,7 @@ class OrderProvider extends ChangeNotifier {
         message: 'Your order #$orderId is on its way!',
         type: 'order_update',
         timestamp: DateTime.now(),
-        data: {'orderId': orderId},
+        payload: {'orderId': orderId},
       ));
     }
   }

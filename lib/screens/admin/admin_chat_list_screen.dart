@@ -93,7 +93,7 @@ class _AdminChatListScreenState extends State<AdminChatListScreen> {
                     );
                   },
                 );
-              }).toList(),
+              }),
             ],
           );
         },

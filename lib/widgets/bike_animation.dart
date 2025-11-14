@@ -12,6 +12,11 @@ class BikeAnimation extends StatefulWidget {
 
 class _BikeAnimationState extends State<BikeAnimation> 
     with SingleTickerProviderStateMixin {
+  // Animation constants for better maintainability
+  static const double _dustOffsetMultiplier = 0.4;
+  static const double _dustWidthMultiplier = 0.8;
+  static const double _dustHeightMultiplier = 0.3;
+  
   late AnimationController _controller;
   late Animation<Offset> _slideAnimation;
   late Animation<double> _revAnimation;
@@ -121,46 +126,72 @@ class _BikeAnimationState extends State<BikeAnimation>
   
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      alignment: Alignment.center,
-      children: [
-        // Dust trail
-        AnimatedBuilder(
-          animation: _controller,
-          builder: (context, child) {
-            return Opacity(
-              opacity: _dustOpacityAnimation.value,
-              child: Transform.translate(
-                offset: Offset(_slideAnimation.value.dx * widget.size - widget.size * 0.7, 0),
-                child: Image.asset(
-                  "assets/images/dust.png", // Add a dust trail image to your assets
-                  width: widget.size * 0.8,
-                  height: widget.size * 0.3,
-                  fit: BoxFit.fitWidth,
+    return Semantics(
+      label: 'Delivery bike animation',
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          // Dust trail
+          AnimatedBuilder(
+            animation: _controller,
+            child: Image.asset(
+              "assets/images/dust.png",
+              width: widget.size * _dustWidthMultiplier,
+              height: widget.size * _dustHeightMultiplier,
+              fit: BoxFit.fitWidth,
+              errorBuilder: (context, error, stackTrace) {
+                // Silent fallback - no dust if asset missing
+                return const SizedBox.shrink();
+              },
+            ),
+            builder: (context, child) {
+              return Opacity(
+                opacity: _dustOpacityAnimation.value,
+                child: Transform.translate(
+                  offset: Offset(
+                    _slideAnimation.value.dx * widget.size - (widget.size * _dustOffsetMultiplier),
+                    0,
+                  ),
+                  child: child,
                 ),
-              ),
-            );
-          },
-        ),
-        
-        // Bike with sliding and revving animations
-        AnimatedBuilder(
-          animation: _controller,
-          builder: (context, child) {
-            return Transform.translate(
-              offset: Offset(
-                _slideAnimation.value.dx * widget.size,
-                _revAnimation.value,
+              );
+            },
+          ),
+          
+          // Bike with sliding and revving animations
+          AnimatedBuilder(
+            animation: _controller,
+            child: ColorFiltered(
+              colorFilter: const ColorFilter.mode(
+                Color(0xFFE57373), // Reddish-orange tint
+                BlendMode.modulate,
               ),
               child: Image.asset(
                 "assets/images/bike.png",
                 width: widget.size,
                 height: widget.size,
+                errorBuilder: (context, error, stackTrace) {
+                  // Fallback to motorcycle icon if asset missing
+                  return Icon(
+                    Icons.two_wheeler,
+                    size: widget.size * 0.8,
+                    color: const Color(0xFFE57373),
+                  );
+                },
               ),
-            );
-          },
-        ),
-      ],
+            ),
+            builder: (context, child) {
+              return Transform.translate(
+                offset: Offset(
+                  _slideAnimation.value.dx * widget.size,
+                  _revAnimation.value,
+                ),
+                child: child,
+              );
+            },
+          ),
+        ],
+      ),
     );
   }
 }

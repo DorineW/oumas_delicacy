@@ -1,6 +1,7 @@
 //lib/screens/profile_screen.dart
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart'; // ADDED for navigation handling
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../constants/colors.dart';
@@ -22,8 +23,6 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  String _userName = 'Guest User';
-  String _userEmail = 'guest@example.com';
   File? _profileImage;
   String? _chatRoomId;
 
@@ -32,7 +31,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
-        _loadProfile();
+        _loadImagePath(); // CLEANUP: Only load local file path
         _initChatRoom();
       }
     });
@@ -49,29 +48,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
-  Future<void> _loadProfile() async {
+  // CLEANUP: Simplified to only load the profile image path
+  Future<void> _loadImagePath() async {
     final prefs = await SharedPreferences.getInstance();
-    final auth = Provider.of<AuthService>(context, listen: false);
     
+    final profilePath = prefs.getString('profileImagePath');
+    File? loadedImage;
+
+    if (profilePath != null && profilePath.isNotEmpty) {
+      final f = File(profilePath);
+      if (f.existsSync()) {
+        loadedImage = f;
+      }
+    }
+
     if (mounted) {
       setState(() {
-        _userName = auth.currentUser?.name ?? prefs.getString('name') ?? 'Guest';
-        _userEmail = auth.currentUser?.email ?? prefs.getString('email') ?? 'guest@example.com';
-        
-        final profilePath = prefs.getString('profileImagePath');
-        if (profilePath != null && profilePath.isNotEmpty) {
-          final f = File(profilePath);
-          if (f.existsSync()) {
-            _profileImage = f;
-          } else {
-            _profileImage = null;
-          }
-        } else {
-          _profileImage = null;
-        }
+        _profileImage = loadedImage;
       });
-      
-      debugPrint('📱 Profile loaded: $_userName ($_userEmail)');
+      debugPrint('📱 Profile image path loaded.');
     }
   }
 
@@ -80,7 +75,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
       context,
       MaterialPageRoute(builder: (context) => const EditProfileScreen()),
     );
-    await _loadProfile();
+    // After returning from EditProfileScreen, force a reload of the image path.
+    await _loadImagePath();
+    // Since name/email are watched via Provider in build(), no manual update needed here.
   }
 
   void _showLogoutDialog(BuildContext context) {
@@ -88,11 +85,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           title: const Text("Logout"),
-          content: const Text("Are you sure you want to logout?"),
+          content: const Text("Are you sure you want to logout? This will clear your local cart and favorites."),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
+              style: TextButton.styleFrom(foregroundColor: AppColors.primary),
               child: const Text("Cancel"),
             ),
             TextButton(
@@ -100,14 +99,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 Navigator.of(context).pop();
                 
                 // Clear all provider data before logout
-                final favoritesProvider = Provider.of<FavoritesProvider>(context, listen: false);
-                final cartProvider = Provider.of<CartProvider>(context, listen: false);
+                final favoritesProvider = context.read<FavoritesProvider>();
+                final cartProvider = context.read<CartProvider>();
                 
                 favoritesProvider.clearFavorites();
                 cartProvider.clearCart();
                 
                 // Logout from auth service
-                await Provider.of<AuthService>(context, listen: false).logout();
+                await context.read<AuthService>().logout();
                 
                 if (context.mounted) {
                   Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
@@ -127,8 +126,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   Widget build(BuildContext context) {
     final isLandscape = ResponsiveHelper.isLandscape(context);
-    final auth = context.watch<AuthService>();
+    final auth = context.watch<AuthService>(); // FIXED: Use context.watch to react to auth changes
+    
+    // FIXED: Use direct values from the watched provider
+    final userName = auth.currentUser?.name ?? 'Guest User';
+    final userEmail = auth.currentUser?.email ?? 'guest@example.com';
     final userId = auth.currentUser?.id ?? 'guest';
+
+    // This ensures that if auth.currentUser is null, we redirect to login
+    if (auth.currentUser == null) {
+      // Delay navigation back to login if user is logged out while on this screen
+      SchedulerBinding.instance.addPostFrameCallback((_) {
+        if (mounted && ModalRoute.of(context)?.isCurrent == true) {
+          debugPrint('🔴 User signed out, redirecting to login.');
+          Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
+        }
+      });
+    }
     
     return PopScope(
       canPop: false,
@@ -170,7 +184,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     SizedBox(height: isLandscape ? 12 : 16),
                     // User name
                     Text(
-                      _userName,
+                      userName, // FIXED: Use local variable from provider
                       style: TextStyle(
                         fontSize: isLandscape ? 20 : 22,
                         fontWeight: FontWeight.bold,
@@ -178,7 +192,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                     // User email
                     Text(
-                      _userEmail,
+                      userEmail, // FIXED: Use local variable from provider
                       style: TextStyle(
                         fontSize: isLandscape ? 14 : 16,
                         color: Colors.grey,
@@ -189,53 +203,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       padding: const EdgeInsets.only(bottom: 100),
                       child: Column(
                         children: [
-                          // Support Chat option with unread badge
-                          _ProfileOption(
-                            icon: Icons.chat_bubble_outline,
-                            title: "Support Chat",
-                            trailing: _chatRoomId == null
-                                ? const Icon(Icons.arrow_forward_ios, size: 16)
-                                : StreamBuilder<Map<String, dynamic>?>(
-                                    stream: ChatService.instance.streamSingleRoom(_chatRoomId!),
-                                    builder: (context, snapshot) {
-                                      final unread = (snapshot.data?['unread_customer'] ?? 0) as int;
-                                      return Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          if (unread > 0)
-                                            Container(
-                                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                              decoration: BoxDecoration(
-                                                color: Colors.red,
-                                                borderRadius: BorderRadius.circular(12),
-                                              ),
-                                              child: Text(
-                                                unread > 99 ? '99+' : '$unread',
-                                                style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
-                                              ),
-                                            ),
-                                          const SizedBox(width: 8),
-                                          const Icon(Icons.arrow_forward_ios, size: 16),
-                                        ],
-                                      );
-                                    },
-                                  ),
-                            onTap: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => _chatRoomId == null
-                                      ? const CustomerChatScreen()
-                                      : CustomerChatScreen(chatId: _chatRoomId),
-                                ),
-                              );
-                            },
-                          ),
+                          // Edit Profile
                           _ProfileOption(
                             icon: Icons.edit,
                             title: "Edit Profile",
                             onTap: _navigateToEditProfile,
                           ),
+                          // Order History
                           _ProfileOption(
                             icon: Icons.receipt_long,
                             title: "Order History",
@@ -243,6 +217,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               Navigator.pushNamed(context, '/order-history');
                             },
                           ),
+                          // Notifications
                           Consumer<NotificationProvider>(
                             builder: (context, notifProvider, child) {
                               final unreadCount = notifProvider.unreadCountForUser(userId);
@@ -276,6 +251,42 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               );
                             },
                           ),
+                          // IMPROVED: Help & Support option with better styling
+                          _ProfileOption(
+                            icon: Icons.help_outline,
+                            title: "Help & Support",
+                            trailing: _chatRoomId == null
+                                ? null
+                                : StreamBuilder<Map<String, dynamic>?>(
+                                    stream: ChatService.instance.streamSingleRoom(_chatRoomId!),
+                                    builder: (context, snapshot) {
+                                      final unread = (snapshot.data?['unread_customer'] ?? 0) as int;
+                                      if (unread > 0) {
+                                        return Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                          decoration: BoxDecoration(
+                                            color: Colors.red,
+                                            borderRadius: BorderRadius.circular(12),
+                                          ),
+                                          child: Text(
+                                            unread > 99 ? '99+' : '$unread',
+                                            style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                                          ),
+                                        );
+                                      }
+                                      return const SizedBox.shrink();
+                                    },
+                                  ),
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => CustomerChatScreen(chatId: _chatRoomId),
+                                ),
+                              );
+                            },
+                          ),
+                          // Logout
                           _ProfileOption(
                             icon: Icons.logout,
                             title: "Logout",
@@ -314,6 +325,7 @@ class _ProfileOption extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListTile(
+      contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
       leading: Icon(icon, color: isDestructive ? Colors.red : AppColors.primary),
       title: Text(
         title,
@@ -322,7 +334,14 @@ class _ProfileOption extends StatelessWidget {
           color: isDestructive ? Colors.red : AppColors.darkText,
         ),
       ),
-      trailing: trailing ?? const Icon(Icons.arrow_forward_ios, size: 16),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (trailing != null) trailing!,
+          if (trailing != null) const SizedBox(width: 8),
+          const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
+        ],
+      ),
       onTap: onTap,
     );
   }

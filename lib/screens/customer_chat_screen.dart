@@ -115,7 +115,7 @@ class _CustomerChatScreenState extends State<CustomerChatScreen> {
     // Format time in 12-hour format with AM/PM
     final hour12 = dt.hour == 0 ? 12 : (dt.hour > 12 ? dt.hour - 12 : dt.hour);
     final amPm = dt.hour >= 12 ? 'PM' : 'AM';
-    final timeStr = '${hour12}:${dt.minute.toString().padLeft(2, '0')} $amPm';
+    final timeStr = '$hour12:${dt.minute.toString().padLeft(2, '0')} $amPm';
     
     if (now.difference(dt).inDays >= 1) {
       return '${dt.month}/${dt.day} $timeStr';

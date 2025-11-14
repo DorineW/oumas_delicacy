@@ -1088,9 +1088,10 @@ class _AdminMenuManagementScreenState extends State<AdminMenuManagementScreen> {
           body: Column(
             children: [
               _buildStatsHeader(menuProvider),
-              // Make category panel flexible so it can shrink when keyboard shows
-              Flexible(
-                fit: FlexFit.loose,
+              // FIX: Wrap category management in AnimatedSize for smooth visibility/height control
+              AnimatedSize(
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeInOut,
                 child: _buildCategoryManagement(menuProvider),
               ),
               Expanded(
