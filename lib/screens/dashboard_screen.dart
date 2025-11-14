@@ -288,12 +288,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       ),
                       SizedBox(height: isLandscape ? 8 : 12),
 
-                      // UPDATED: Recent Orders List - grouped by date
+                      // UPDATED: Recent Orders List - grouped by date (show ALL orders)
                       orders.isEmpty
                           ? _EmptyState()
-                          : _buildGroupedOrders(orders.where((order) => 
-                                order.status == OrderStatus.delivered
-                              ).toList()),
+                          : _buildGroupedOrders(orders),
 
                       // REMOVED: Total Spent Card
                     ],

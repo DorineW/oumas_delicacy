@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
 
 class Review {
   final String id;
@@ -61,13 +63,77 @@ class ReviewsProvider with ChangeNotifier {
   List<Review> _reviews = [];
   bool _isLoading = false;
   String? _error;
+  bool _cacheLoaded = false;
+
+  // Cache keys
+  static const String _cacheKey = 'cached_reviews';
+  static const String _cacheTimestampKey = 'reviews_cache_timestamp';
+  static const Duration _cacheValidDuration = Duration(hours: 24);
 
   List<Review> get allReviews => _reviews;
   bool get isLoading => _isLoading;
   String? get error => _error;
 
+  /// Load cached reviews from SharedPreferences
+  Future<void> _loadFromCache() async {
+    if (_cacheLoaded) return;
+    
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final cachedData = prefs.getString(_cacheKey);
+      final timestamp = prefs.getInt(_cacheTimestampKey);
+      
+      if (cachedData != null && timestamp != null) {
+        final cacheAge = DateTime.now().millisecondsSinceEpoch - timestamp;
+        final isCacheValid = cacheAge < _cacheValidDuration.inMilliseconds;
+        
+        final List<dynamic> jsonList = json.decode(cachedData);
+        _reviews = jsonList.map((json) => Review.fromJson(json)).toList();
+        _cacheLoaded = true;
+        
+        debugPrint('📦 Loaded ${_reviews.length} reviews from cache (age: ${(cacheAge / 1000 / 60).toStringAsFixed(0)} minutes, valid: $isCacheValid)');
+        notifyListeners();
+      }
+    } catch (e) {
+      debugPrint('❌ Error loading reviews cache: $e');
+    }
+  }
+
+  /// Save reviews to SharedPreferences cache
+  Future<void> _saveToCache() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final jsonList = _reviews.map((review) => {
+        'id': review.id,
+        'user_auth_id': review.userAuthId,
+        'product_id': review.productId,
+        'rating': review.rating,
+        'body': review.body,
+        'created_at': review.createdAt.toIso8601String(),
+        'user_name': review.userName,
+        'is_anonymous': review.isAnonymous,
+      }).toList();
+      final jsonString = json.encode(jsonList);
+      
+      await prefs.setString(_cacheKey, jsonString);
+      await prefs.setInt(_cacheTimestampKey, DateTime.now().millisecondsSinceEpoch);
+      
+      debugPrint('💾 Cached ${_reviews.length} reviews to local storage');
+    } catch (e) {
+      debugPrint('❌ Error saving reviews cache: $e');
+    }
+  }
+
   // MAIN: Load reviews with detailed debugging (same pattern as MenuProvider)
   Future<void> loadReviews() async {
+    // Load from cache first if not already loaded
+    if (!_cacheLoaded) {
+      await _loadFromCache();
+    }
+    
+    // Preserve cached data during loading
+    final cachedReviews = List<Review>.from(_reviews);
+    
     _isLoading = true;
     _error = null;
     notifyListeners();
@@ -78,11 +144,12 @@ class ReviewsProvider with ChangeNotifier {
       final supabase = Supabase.instance.client;
       debugPrint('✅ Supabase client initialized');
       
-      // Query with all columns explicitly
+      // Query with all columns explicitly with timeout
       final response = await supabase
           .from('reviews')
           .select('id, user_auth_id, product_id, rating, body, created_at')
-          .order('created_at', ascending: false);
+          .order('created_at', ascending: false)
+          .timeout(const Duration(seconds: 10));
 
       debugPrint('✅ Query executed successfully');
       debugPrint('📊 Response type: ${response.runtimeType}');
@@ -137,11 +204,16 @@ class ReviewsProvider with ChangeNotifier {
       _error = null;
       debugPrint('🎉 Successfully loaded ${reviews.length} reviews');
       
+      // Save to cache for offline use
+      await _saveToCache();
+      
     } catch (e, stackTrace) {
       debugPrint('❌ Error loading reviews: $e');
       debugPrint('Stack trace: $stackTrace');
-      _error = 'Failed to load reviews: $e';
-      _reviews = [];
+      _error = cachedReviews.isEmpty
+          ? 'No internet connection. Please check your network.'
+          : 'Limited connectivity. Showing cached reviews.';
+      _reviews = cachedReviews;
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -197,7 +269,7 @@ class ReviewsProvider with ChangeNotifier {
       return true;
     } catch (e) {
       debugPrint('❌ Error adding review: $e');
-      _error = 'Failed to add review: $e';
+      _error = e.toString();
       notifyListeners();
       return false;
     }

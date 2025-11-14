@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
 
 class Favorite {
   final String id;
@@ -41,10 +43,57 @@ class FavoritesProvider with ChangeNotifier {
   bool _isLoading = false;
   String? _error;
   String? _currentUserId;
+  bool _cacheLoaded = false;
+
+  // Cache keys
+  static const String _cacheKey = 'cached_favorites';
+  static const String _cacheTimestampKey = 'favorites_cache_timestamp';
+  static const Duration _cacheValidDuration = Duration(hours: 24);
 
   List<Favorite> get allFavorites => _favorites;
   bool get isLoading => _isLoading;
   String? get error => _error;
+
+  /// Load cached favorites from SharedPreferences
+  Future<void> _loadFromCache() async {
+    if (_cacheLoaded) return;
+    
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final cachedData = prefs.getString(_cacheKey);
+      final timestamp = prefs.getInt(_cacheTimestampKey);
+      
+      if (cachedData != null && timestamp != null) {
+        final cacheAge = DateTime.now().millisecondsSinceEpoch - timestamp;
+        final isCacheValid = cacheAge < _cacheValidDuration.inMilliseconds;
+        
+        final List<dynamic> jsonList = json.decode(cachedData);
+        _favorites = jsonList.map((json) => Favorite.fromJson(json)).toList();
+        _cacheLoaded = true;
+        
+        debugPrint('📦 Loaded ${_favorites.length} favorites from cache (age: ${(cacheAge / 1000 / 60).toStringAsFixed(0)} minutes, valid: $isCacheValid)');
+        notifyListeners();
+      }
+    } catch (e) {
+      debugPrint('❌ Error loading favorites cache: $e');
+    }
+  }
+
+  /// Save favorites to SharedPreferences cache
+  Future<void> _saveToCache() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final jsonList = _favorites.map((fav) => fav.toJson()).toList();
+      final jsonString = json.encode(jsonList);
+      
+      await prefs.setString(_cacheKey, jsonString);
+      await prefs.setInt(_cacheTimestampKey, DateTime.now().millisecondsSinceEpoch);
+      
+      debugPrint('💾 Cached ${_favorites.length} favorites to local storage');
+    } catch (e) {
+      debugPrint('❌ Error saving favorites cache: $e');
+    }
+  }
 
   // Set current user (call after login)
   void setCurrentUser(String? userId) {
@@ -59,6 +108,14 @@ class FavoritesProvider with ChangeNotifier {
 
   // MAIN: Load favorites with detailed debugging (same pattern as MenuProvider)
   Future<void> loadFavorites(String userId) async {
+    // Load from cache first if not already loaded
+    if (!_cacheLoaded) {
+      await _loadFromCache();
+    }
+    
+    // Preserve existing data during loading
+    final cachedFavorites = List<Favorite>.from(_favorites);
+    
     _isLoading = true;
     _error = null;
     _currentUserId = userId;
@@ -70,12 +127,13 @@ class FavoritesProvider with ChangeNotifier {
       final supabase = Supabase.instance.client;
       debugPrint('✅ Supabase client initialized');
       
-      // Query with all columns explicitly
+      // Query with all columns explicitly with timeout
       final response = await supabase
           .from('favorites')
           .select('id, user_auth_id, product_id, created_at')
           .eq('user_auth_id', userId)
-          .order('created_at', ascending: false);
+          .order('created_at', ascending: false)
+          .timeout(const Duration(seconds: 10));
 
       debugPrint('✅ Query executed successfully');
       debugPrint('📊 Response type: ${response.runtimeType}');
@@ -111,11 +169,22 @@ class FavoritesProvider with ChangeNotifier {
       _error = null;
       debugPrint('🎉 Successfully loaded ${favorites.length} favorites');
       
+      // Save to cache for offline use
+      await _saveToCache();
+      
     } catch (e, stackTrace) {
       debugPrint('❌ Error loading favorites: $e');
       debugPrint('Stack trace: $stackTrace');
-      _error = 'Failed to load favorites: $e';
-      _favorites = [];
+      
+      // Restore cached data on error
+      _favorites = cachedFavorites;
+      
+      // Set appropriate error message
+      _error = cachedFavorites.isEmpty
+          ? 'No internet connection. Please check your network.'
+          : 'Limited connectivity. Showing cached favorites.';
+      
+      debugPrint('📦 Restored ${cachedFavorites.length} cached favorites');
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -199,8 +268,9 @@ class FavoritesProvider with ChangeNotifier {
       
     } catch (e) {
       debugPrint('❌ Error toggling favorite: $e');
-      _error = 'Failed to update favorite: $e';
+      _error = e.toString();
       notifyListeners();
+      rethrow; // Re-throw so UI can show error
     }
   }
 

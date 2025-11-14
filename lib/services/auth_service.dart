@@ -39,6 +39,55 @@ class AuthService extends ChangeNotifier {
     _lastRequest[key] = DateTime.now();
   }
 
+  // Cache keys for persistent profile storage
+  static const String _cacheKeyUserId = 'cached_user_id';
+  static const String _cacheKeyUserEmail = 'cached_user_email';
+  static const String _cacheKeyUserName = 'cached_user_name';
+  static const String _cacheKeyUserRole = 'cached_user_role';
+  static const String _cacheKeyUserPhone = 'cached_user_phone';
+
+  /// Load cached user profile from SharedPreferences
+  Future<void> _loadUserFromCache() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final cachedId = prefs.getString(_cacheKeyUserId);
+      final cachedEmail = prefs.getString(_cacheKeyUserEmail);
+      final cachedName = prefs.getString(_cacheKeyUserName);
+      final cachedRole = prefs.getString(_cacheKeyUserRole);
+      final cachedPhone = prefs.getString(_cacheKeyUserPhone);
+      
+      if (cachedId != null && cachedEmail != null) {
+        _currentUser = app.User(
+          id: cachedId,
+          email: cachedEmail,
+          name: cachedName,
+          role: cachedRole ?? 'customer',
+          phone: cachedPhone,
+        );
+        debugPrint('📦 Loaded user profile from cache: ${_currentUser?.name}');
+        notifyListeners();
+      }
+    } catch (e) {
+      debugPrint('❌ Error loading user cache: $e');
+    }
+  }
+
+  /// Save user profile to SharedPreferences cache
+  Future<void> _saveUserToCache(app.User user) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_cacheKeyUserId, user.id);
+      await prefs.setString(_cacheKeyUserEmail, user.email);
+      if (user.name != null) await prefs.setString(_cacheKeyUserName, user.name!);
+      await prefs.setString(_cacheKeyUserRole, user.role);
+      if (user.phone != null) await prefs.setString(_cacheKeyUserPhone, user.phone!);
+      
+      debugPrint('💾 Saved user profile to cache');
+    } catch (e) {
+      debugPrint('❌ Error saving user cache: $e');
+    }
+  }
+
   Future<void> _refreshCurrentUserFromProfile() async {
     try {
       final authUser = _supabase.auth.currentUser;
@@ -49,18 +98,29 @@ class AuthService extends ChangeNotifier {
         return;
       }
 
+      // Load from cache first if no current user
+      if (_currentUser == null) {
+        await _loadUserFromCache();
+      }
+
       debugPrint('🔄 Refreshing user profile from Supabase...');
       debugPrint('🔑 User auth_id: ${authUser.id}');
       debugPrint('📧 User email: ${authUser.email}');
       
-      final profile = await _supabase
-          .from('users')
-          .select('auth_id, email, name, phone, role, created_at, updated_at')
-          .eq('auth_id', authUser.id)
-          .maybeSingle();
-
-      debugPrint('✅ Query executed successfully');
-      debugPrint('📊 Response: $profile');
+      Map<String, dynamic>? profile;
+      try {
+        profile = await _supabase
+            .from('users')
+            .select('auth_id, email, name, phone, role, addresses, default_address_index, created_at, updated_at')
+            .eq('auth_id', authUser.id)
+            .maybeSingle()
+            .timeout(const Duration(seconds: 10));
+        debugPrint('✅ Query executed successfully');
+        debugPrint('📊 Response: $profile');
+      } catch (e) {
+        debugPrint('⚠️ Failed to fetch profile from database: $e');
+        profile = null;
+      }
       
       if (profile != null) {
         debugPrint('📋 Raw user profile from DB: $profile');
@@ -73,29 +133,38 @@ class AuthService extends ChangeNotifier {
           phone: profile['phone'] as String?,
         );
         
+        // Save fresh profile to cache
+        await _saveUserToCache(_currentUser!);
+        
         debugPrint('✅ User profile refreshed: ${_currentUser?.name} (Role: ${_currentUser?.role})');
         debugPrint('🔑 Role checks:');
         debugPrint('   - Is Admin: ${_currentUser?.role == 'admin'}');
         debugPrint('   - Is Rider: ${_currentUser?.role == 'rider'}');
         debugPrint('   - Is Customer: ${_currentUser?.role == 'customer'}');
       } else {
-        debugPrint('⚠️ No profile found in database, using default customer role');
-        _currentUser = app.User(
-          id: authUser.id,
-          email: authUser.email ?? '',
-          name: '',
-          role: 'customer',
-          phone: null,
-        );
-        debugPrint('✅ Created default user profile for: ${authUser.email}');
+        // IMPORTANT: Keep existing profile if network call fails, otherwise create default
+        if (_currentUser == null) {
+          debugPrint('⚠️ No profile found and no cached profile, using default customer role');
+          _currentUser = app.User(
+            id: authUser.id,
+            email: authUser.email ?? '',
+            name: '',
+            role: 'customer',
+            phone: null,
+          );
+          await _saveUserToCache(_currentUser!);
+          debugPrint('✅ Created default user profile for: ${authUser.email}');
+        } else {
+          debugPrint('ℹ️ Network call failed but keeping existing cached profile: ${_currentUser?.name}');
+        }
       }
       notifyListeners();
     } catch (e, stackTrace) {
       debugPrint('❌ Error refreshing user profile: $e');
       debugPrint('📍 Stack trace: $stackTrace');
-      // Set a basic user profile so auth doesn't completely fail
+      // CRITICAL: Preserve existing user or set basic profile so auth doesn't completely fail
       final authUser = _supabase.auth.currentUser;
-      if (authUser != null) {
+      if (authUser != null && _currentUser == null) {
         _currentUser = app.User(
           id: authUser.id,
           email: authUser.email ?? '',
@@ -103,8 +172,11 @@ class AuthService extends ChangeNotifier {
           role: 'customer',
           phone: null,
         );
+        await _saveUserToCache(_currentUser!);
         debugPrint('⚠️ Using fallback user profile due to error');
         notifyListeners();
+      } else if (_currentUser != null) {
+        debugPrint('ℹ️ Keeping existing user profile despite error: ${_currentUser?.name}');
       }
     }
   }
@@ -211,7 +283,7 @@ class AuthService extends ChangeNotifier {
       final resp = await _supabase.auth.signInWithPassword(
         email: email,
         password: password,
-      );
+      ).timeout(const Duration(seconds: 15));
       
       debugPrint('✅ Login successful');
       await _refreshCurrentUserFromProfile();
@@ -219,15 +291,9 @@ class AuthService extends ChangeNotifier {
       return resp;
     } on AuthException catch (e) {
       debugPrint('❌ Login failed: ${e.message}');
-      final msg = e.message.toLowerCase();
-      // ADDED: Friendly message for unconfirmed email
-      if ((e.statusCode == 400) && (msg.contains('email not confirmed'))) {
-        throw Exception('Email not confirmed. Please verify your email, then try logging in.');
-      }
-      // Better error message for invalid credentials
-      if ((e.statusCode == 400) && (msg.contains('invalid') || msg.contains('credentials'))) {
-        throw Exception('Invalid email or password. Please try again.');
-      }
+      rethrow;
+    } catch (e) {
+      debugPrint('❌ Login error: $e');
       rethrow;
     }
   }
@@ -282,6 +348,13 @@ class AuthService extends ChangeNotifier {
     await prefs.remove('cart_items');
     await prefs.remove('order_history');
     
+    // ADDED: Clear user profile cache
+    await prefs.remove(_cacheKeyUserId);
+    await prefs.remove(_cacheKeyUserEmail);
+    await prefs.remove(_cacheKeyUserName);
+    await prefs.remove(_cacheKeyUserRole);
+    await prefs.remove(_cacheKeyUserPhone);
+    
     // Sign out from Supabase (clears both local and global sessions)
     try {
       await _supabase.auth.signOut(scope: SignOutScope.global);
@@ -335,7 +408,7 @@ class AuthService extends ChangeNotifier {
     
     final resp = await _supabase
         .from('users')
-        .select('auth_id, email, name, phone, role, created_at, updated_at')
+        .select('auth_id, email, name, phone, role, addresses, default_address_index, created_at, updated_at')
         .eq('auth_id', user.id)
         .maybeSingle();
     
@@ -393,7 +466,7 @@ class AuthService extends ChangeNotifier {
           
           final userProfile = await Supabase.instance.client
               .from('users')
-              .select('auth_id, email, name, phone, role, created_at, updated_at')
+              .select('auth_id, email, name, phone, role, addresses, default_address_index, created_at, updated_at')
               .eq('auth_id', userId)
               .single();
           

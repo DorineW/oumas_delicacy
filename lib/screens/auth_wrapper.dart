@@ -25,6 +25,7 @@ class _AuthWrapperState extends State<AuthWrapper> {
   StreamSubscription<AuthState>? _authSubscription;
   bool _isInitializing = true;
   bool _isAuthenticated = false;
+  String? _initError; // Track initialization errors
 
   @override
   void initState() {
@@ -38,88 +39,60 @@ class _AuthWrapperState extends State<AuthWrapper> {
     super.dispose();
   }
 
+  /// Helper function for clearer order loading logic
+  Future<void> _loadOrdersForUser(app.AuthService auth, OrderProvider orderProvider, String userId) async {
+    if (auth.currentUser!.role == 'admin') {
+      await orderProvider.loadAllOrders();
+      debugPrint('✅ Loaded all orders (admin)');
+    } else {
+      await orderProvider.loadOrders(userId);
+      debugPrint('✅ Loaded orders for user');
+    }
+  }
+
   /// Initialize authentication state and listen for changes
-  /// This handles both initial session loading and subsequent auth events
+  /// Quick check with background data loading
   Future<void> _initializeAuth() async {
     final auth = context.read<app.AuthService>();
-    
-    // Start timer to ensure minimum 3 seconds display
-    final startTime = DateTime.now();
-    
-    // Check for existing session from secure storage (automatic with Supabase)
     final session = Supabase.instance.client.auth.currentSession;
     
-    debugPrint('🔍 AuthWrapper._initializeAuth() called');
-    debugPrint('📦 Current session: ${session != null ? "EXISTS" : "NULL"}');
-    if (session != null) {
-      debugPrint('👤 Session user ID: ${session.user.id}');
-      debugPrint('📧 Session user email: ${session.user.email}');
-      debugPrint('⏰ Session expires at: ${session.expiresAt}');
-    }
-    
+    // --- STEP 1: Quick Authentication Check ---
     if (session != null) {
       debugPrint('🔐 AuthWrapper: Found existing session, refreshing profile...');
-      // Session exists, load user profile into AuthService
-      await auth.refreshProfile();
       
-      debugPrint('👤 After refresh - currentUser: ${auth.currentUser?.name ?? "NULL"}');
-      debugPrint('🎭 After refresh - role: ${auth.currentUser?.role ?? "NULL"}');
-      
-      // Load user-specific data after successful authentication
-      if (auth.currentUser != null && mounted) {
-        debugPrint('📊 Loading user-specific data...');
-        final userId = auth.currentUser!.id;
-        
-        // Load favorites
-        final favoritesProvider = context.read<FavoritesProvider>();
-        await favoritesProvider.loadFavorites(userId);
-        debugPrint('✅ Loaded ${favoritesProvider.allFavorites.length} favorites');
-        
-        // Load reviews
-        final reviewsProvider = context.read<ReviewsProvider>();
-        await reviewsProvider.loadReviews();
-        debugPrint('✅ Loaded reviews');
-        
-        // Load orders (role-based)
-        final orderProvider = context.read<OrderProvider>();
-        if (auth.currentUser!.role == 'admin') {
-          await orderProvider.loadAllOrders();
-          debugPrint('✅ Loaded all orders (admin)');
-        } else {
-          // For both riders and customers
-          await orderProvider.loadOrders(userId);
-          debugPrint('✅ Loaded orders for user');
-        }
-        
-        // Cart loads automatically from SharedPreferences on first access
-        final cartProvider = context.read<CartProvider>();
-        debugPrint('✅ Cart ready with ${cartProvider.totalQuantity} items');
+      // Try to refresh profile but don't crash if it fails
+      try {
+        await auth.refreshProfile().timeout(
+          const Duration(seconds: 5),
+          onTimeout: () {
+            debugPrint('⚠️ Profile refresh timed out, using cached data');
+          },
+        );
+      } catch (e) {
+        debugPrint('⚠️ Profile refresh failed (continuing anyway): $e');
       }
       
-      // Ensure minimum 3 seconds display time
-      final elapsed = DateTime.now().difference(startTime);
-      final remaining = const Duration(seconds: 3) - elapsed;
-      if (remaining > Duration.zero) {
-        await Future.delayed(remaining);
-      }
-      
+      // Always proceed to home screen if session exists
+      // Even if profile refresh failed, user might have cached data
       if (mounted) {
         setState(() {
-          _isAuthenticated = auth.currentUser != null;
+          // Session is non-null in this branch, so user is authenticated
+          _isAuthenticated = true;
           _isInitializing = false;
         });
-        debugPrint('✅ Set _isAuthenticated: $_isAuthenticated');
+        
+        if (auth.currentUser != null) {
+          debugPrint('✅ Authentication complete with profile, loading data in background...');
+          _loadDataInBackground(auth.currentUser!.id, auth);
+        } else {
+          debugPrint('⚠️ Session exists but no profile loaded - proceeding with session user');
+          // Try to load data with session user ID as fallback
+          _loadDataInBackground(session.user.id, auth);
+        }
       }
     } else {
+      // No session - show login screen
       debugPrint('🔓 AuthWrapper: No existing session found.');
-      
-      // Ensure minimum 3 seconds display time even when no session
-      final elapsed = DateTime.now().difference(startTime);
-      final remaining = const Duration(seconds: 3) - elapsed;
-      if (remaining > Duration.zero) {
-        await Future.delayed(remaining);
-      }
-      
       if (mounted) {
         setState(() {
           _isAuthenticated = false;
@@ -128,35 +101,63 @@ class _AuthWrapperState extends State<AuthWrapper> {
       }
     }
 
-    // Listen to auth state changes for automatic session refresh
-    _authSubscription = Supabase.instance.client.auth.onAuthStateChange.listen((data) async {
-      debugPrint('🔔 AuthWrapper: Auth state changed - ${data.event}');
-      
-      if (data.event == AuthChangeEvent.signedIn) {
-        // User signed in (either manually or auto-restored from token)
-        await auth.refreshProfile();
-        if (mounted) {
-          setState(() {
-            _isAuthenticated = auth.currentUser != null;
-          });
+    // --- STEP 2: Start Listening for Auth Changes (Background) ---
+    _authSubscription = Supabase.instance.client.auth.onAuthStateChange.listen(
+      (data) async {
+        debugPrint('🔔 AuthWrapper: Auth state changed - ${data.event}');
+        
+        if (data.event == AuthChangeEvent.signedIn || data.event == AuthChangeEvent.tokenRefreshed) {
+          // Defensive profile refresh - don't crash if it fails
+          try {
+            await auth.refreshProfile();
+          } catch (e) {
+            debugPrint('⚠️ Profile refresh failed in auth listener: $e');
+          }
+          
+          if (mounted) {
+            setState(() {
+              _isAuthenticated = auth.currentUser != null || data.session?.user != null;
+            });
+          }
+        } else if (data.event == AuthChangeEvent.signedOut) {
+          if (mounted) {
+            setState(() {
+              _isAuthenticated = false;
+            });
+          }
         }
-      } else if (data.event == AuthChangeEvent.signedOut) {
-        // User signed out
-        if (mounted) {
-          setState(() {
-            _isAuthenticated = false;
-          });
-        }
-      } else if (data.event == AuthChangeEvent.tokenRefreshed) {
-        // Token was automatically refreshed (background persistence)
-        debugPrint('✅ AuthWrapper: Session token refreshed automatically.');
-        await auth.refreshProfile();
-        if (mounted) {
-          setState(() {
-            _isAuthenticated = auth.currentUser != null;
-          });
-        }
-      }
+      },
+      onError: (error) {
+        // Suppress background auth errors (token refresh failures when offline)
+        debugPrint('⚠️ Auth stream error (suppressed): $error');
+      },
+    );
+  }
+
+  /// Load user data in background after navigation
+  void _loadDataInBackground(String userId, app.AuthService auth) {
+    // Load favorites
+    context.read<FavoritesProvider>().loadFavorites(userId).timeout(
+      const Duration(seconds: 5),
+    ).catchError((e) {
+      debugPrint('⚠️ Failed to load favorites: $e');
+    });
+    
+    // Load reviews
+    context.read<ReviewsProvider>().loadReviews().timeout(
+      const Duration(seconds: 5),
+    ).catchError((e) {
+      debugPrint('⚠️ Failed to load reviews: $e');
+    });
+    
+    // Load orders
+    _loadOrdersForUser(auth, context.read<OrderProvider>(), userId).timeout(
+      const Duration(seconds: 8),
+    ).then((_) {
+      debugPrint('✅ Background data loading complete');
+      context.read<CartProvider>(); // Ensures Cart is ready
+    }).catchError((e) {
+      debugPrint('⚠️ Failed to load orders: $e');
     });
   }
 
@@ -173,21 +174,38 @@ class _AuthWrapperState extends State<AuthWrapper> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
+              // Enhanced UI sizes from previous step
               const Image(
                 image: AssetImage('assets/images/splash_logo.png'),
-                width: 150,
-                height: 150,
+                width: 250,
+                height: 250,
               ),
-              const SizedBox(height: 30),
+              const SizedBox(height: 50),
               
               const SizedBox(
-                height: 100,
+                height: 150,
                 width: double.infinity,
-                child: BikeAnimation(size: 80), 
+                child: BikeAnimation(size: 120),
               ),
-              const SizedBox(height: 30),
+              const SizedBox(height: 50),
 
               const CircularProgressIndicator(color: AppColors.primary),
+              
+              // Show initialization error if any (non-fatal)
+              if (_initError != null) ...[
+                const SizedBox(height: 20),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 40),
+                  child: Text(
+                    _initError!,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Colors.orange.shade700,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+              ],
             ],
           ),
         ),

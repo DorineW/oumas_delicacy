@@ -4,6 +4,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; // ADDED: For orientation lock
 import 'package:flutter/foundation.dart'; // ADDED: For kReleaseMode
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -80,6 +81,12 @@ Future<void> testSupabaseConnection() async {
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Lock app to portrait mode only (standard for food delivery apps)
+  await SystemChrome.setPreferredOrientations([
+    DeviceOrientation.portraitUp,
+    DeviceOrientation.portraitDown,
+  ]);
 
   // TEMPORARY: Use production while debugging local network issues
   debugPrint('🔧 Using PRODUCTION Supabase (network debugging)');

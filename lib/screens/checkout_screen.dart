@@ -19,6 +19,7 @@ import '../constants/colors.dart';
 import 'location.dart'; // UPDATED: Use existing LocationScreen
 import '../providers/location_provider.dart'; // ADDED: Import LocationProvider (Removed duplicate import)
 import 'mpesa_payment_confirmation_screen.dart'; // ADDED: M-Pesa confirmation screen
+import '../utils/error_snackbar.dart';
 import '../utils/phone_utils.dart';
 
 class CheckoutScreen extends StatefulWidget {
@@ -532,7 +533,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       final mpesaPhone = _mpesaPhoneController.text.trim();
       if (mpesaPhone.isEmpty) {
         if (!mounted) return;
-        _showErrorSnackBar('Please enter M-Pesa phone number');
+        ErrorSnackbar.showWarning(context, 'Please enter M-Pesa phone number');
         setState(() => _isProcessing = false);
         return;
       }

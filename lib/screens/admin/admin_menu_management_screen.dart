@@ -1,5 +1,3 @@
-// screens/admin/admin_menu_management_screen.dart
-import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -10,65 +8,6 @@ import '../../constants/colors.dart';
 // Assuming these files exist with the necessary classes/enums
 import '../../models/menu_item.dart'; // Must contain MenuItem class and MealWeight enum
 import '../../providers/menu_provider.dart';
-
-// --- Placeholder/Assumed Classes for Compilation (You must have these in your project) ---
-// MealWeight enum is now imported from menu_item.dart
-
-// Minimal placeholder for MenuItem (adjust based on your actual model)
-// class MenuItem {
-//   final String title;
-//   final int price;
-//   final double rating;
-//   final String category;
-//   final MealWeight mealWeight;
-//   final String? description;
-//   final String? imageUrl;
-//   final bool isAvailable;
-//   MenuItem({
-//     required this.title,
-//     required this.price,
-//     required this.rating,
-//     required this.category,
-//     required this.mealWeight,
-//     this.description,
-//     this.imageUrl,
-//     required this.isAvailable,
-//   });
-// }
-
-// Minimal placeholder for MenuProvider (adjust based on your actual provider)
-// class MenuProvider with ChangeNotifier {
-//   final List<MenuItem> _menuItems = [
-//     MenuItem(title: 'Burger', price: 500, rating: 4.5, category: 'Main', mealWeight: MealWeight.Heavy, imageUrl: 'https://placehold.co/60x60/0000FF/FFFFFF.png?text=B', isAvailable: true),
-//     MenuItem(title: 'Salad', price: 300, rating: 4.2, category: 'Salads', mealWeight: MealWeight.Light, imageUrl: 'https://placehold.co/60x60/00FF00/000000.png?text=S', isAvailable: true),
-//   ];
-
-//   List<MenuItem> get menuItems => [..._menuItems];
-//   bool isItemAvailable(String title) => _menuItems.firstWhere((item) => item.title == title).isAvailable;
-
-//   Future<void> deleteMenuItem(String title) async {
-//     // Impl detail for deletion
-//     _menuItems.removeWhere((item) => item.title == title);
-//     notifyListeners();
-//   }
-
-//   Future<void> updateMenuItem(String oldTitle, MenuItem newItem) async {
-//     // Impl detail for update
-//     final index = _menuItems.indexWhere((item) => item.title == oldTitle);
-//     if (index != -1) {
-//       _menuItems[index] = newItem;
-//       notifyListeners();
-//     }
-//   }
-
-//   Future<void> addMenuItem(MenuItem newItem) async {
-//     // Impl detail for addition
-//     _menuItems.add(newItem);
-//     notifyListeners();
-//   }
-// }
-
-// --- End of Placeholder/Assumed Classes ---
 
 class AdminMenuManagementScreen extends StatefulWidget {
   const AdminMenuManagementScreen({super.key});
@@ -98,6 +37,9 @@ class _AdminMenuManagementScreenState extends State<AdminMenuManagementScreen> {
 
   final Set<String> _customCategories = {};
 
+  // Store the item being processed globally for confirmation dialogs
+  MenuItem? _itemToProcess;
+
   @override
   void dispose() {
     _titleController.dispose();
@@ -124,6 +66,7 @@ class _AdminMenuManagementScreenState extends State<AdminMenuManagementScreen> {
       _showNewCategoryField = false;
       _showCategoryManagement = false;
       _isAvailable = true;
+      _itemToProcess = null; // Clear item to process
     });
   }
 
@@ -133,10 +76,10 @@ class _AdminMenuManagementScreenState extends State<AdminMenuManagementScreen> {
       _titleController.text = item.title;
       _priceController.text = item.price.toString();
       _selectedCategory = item.category;
-      _selectedMealWeight = item.mealWeight as MealWeight?;
+      _selectedMealWeight = item.mealWeight;
       _descriptionController.text = item.description ?? '';
       _showNewCategoryField = false;
-      _isAvailable = item.isAvailable; // FIXED: Load existing availability status
+      _isAvailable = item.isAvailable;
 
       _selectedImageBytes = null;
       _editingImageString = item.imageUrl;
@@ -220,15 +163,14 @@ class _AdminMenuManagementScreenState extends State<AdminMenuManagementScreen> {
   }
 
   Future<void> _submitForm() async {
-    // FIXED: Ensure meal weight check is outside the form validation to allow custom UI
-    // The TextFormField validation for category is still needed.
+    // The TextFormField validation handles basic required fields
     if (_formKey.currentState!.validate()) {
       final category = _showNewCategoryField
           ? _newCategoryController.text.trim()
           : _selectedCategory;
 
+      // Extra validation check for category
       if (category == null || category.isEmpty) {
-        // FIXED: Show snackbar if category is missing/empty
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Please select or enter a category'),
@@ -239,7 +181,6 @@ class _AdminMenuManagementScreenState extends State<AdminMenuManagementScreen> {
       }
 
       if (_selectedMealWeight == null) {
-        // FIXED: Show snackbar if meal weight is missing
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Please select meal weight'),
@@ -251,16 +192,15 @@ class _AdminMenuManagementScreenState extends State<AdminMenuManagementScreen> {
 
       // Building the new MenuItem
       final menuProvider = Provider.of<MenuProvider>(context, listen: false);
-      final String? existingId = _editingIndex != null 
-          ? menuProvider.menuItems[_editingIndex!].id 
+      final String? existingId = _editingIndex != null
+          ? menuProvider.menuItems[_editingIndex!].id
           : null;
 
       final newItem = MenuItem(
         id: existingId, // Preserve ID when editing
         title: _titleController.text.trim(),
-        // FIXED: Price must be an integer (as per the model definition)
         price: int.parse(_priceController.text.trim()),
-        // NOTE: The logic for rating calculation here seems non-standard but is kept.
+        // NOTE: Keeping existing rating logic for preservation during update
         rating: _editingIndex != null
             ? menuProvider.menuItems[_editingIndex!].rating
             : 4.5,
@@ -269,30 +209,35 @@ class _AdminMenuManagementScreenState extends State<AdminMenuManagementScreen> {
         description: _descriptionController.text.isNotEmpty
             ? _descriptionController.text.trim()
             : 'Delicious ${_titleController.text.trim()}',
-        // CRITICAL FIX: Only include imageUrl if NO new image bytes exist
-        // If imageBytes exist, provider will upload and set the URL
-        // If no imageBytes, preserve existing URL (or null for new items)
+        // CRITICAL: Only include imageUrl if NO new image bytes exist
         imageUrl: _selectedImageBytes == null ? _editingImageString : null,
         isAvailable: _isAvailable,
       );
+
+      // Store item globally before showing confirmation (used by perform methods)
+      _itemToProcess = newItem;
       
       if (_editingIndex != null) {
-        // Only show update confirmation if meaningful changes were made
+        // Check if anything significant changed before updating
         final oldItem = menuProvider.menuItems[_editingIndex!];
         final hasChanges = _hasSignificantChanges(oldItem, newItem) || oldItem.isAvailable != newItem.isAvailable;
+        
         if (!hasChanges && _selectedImageBytes == null) {
+          // Close the dialog immediately if no changes were made
           Navigator.of(context).pop();
           _showErrorSnackBar('No changes detected for update.');
           return;
         }
-        _showUpdateConfirmation(menuProvider, newItem);
+        _showUpdateConfirmation();
       } else {
-        _showAddConfirmation(menuProvider, newItem);
+        _showAddConfirmation();
       }
     }
   }
 
-  void _showUpdateConfirmation(MenuProvider menuProvider, MenuItem newItem) {
+  void _showUpdateConfirmation() {
+    final menuProvider = Provider.of<MenuProvider>(context, listen: false);
+    final newItem = _itemToProcess!;
     final oldItem = menuProvider.menuItems[_editingIndex!];
 
     showDialog(
@@ -383,10 +328,8 @@ class _AdminMenuManagementScreenState extends State<AdminMenuManagementScreen> {
               backgroundColor: Colors.blue,
               foregroundColor: Colors.white,
             ),
-            onPressed: () {
-              Navigator.of(context).pop();
-              _performUpdate(menuProvider, newItem);
-            },
+            // FIXED: Call _performUpdate without arguments
+            onPressed: () => _performUpdate(),
             child: const Text('Update'),
           ),
         ],
@@ -394,7 +337,9 @@ class _AdminMenuManagementScreenState extends State<AdminMenuManagementScreen> {
     );
   }
 
-  void _showAddConfirmation(MenuProvider menuProvider, MenuItem newItem) {
+  void _showAddConfirmation() {
+    final newItem = _itemToProcess!;
+    
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -409,7 +354,7 @@ class _AdminMenuManagementScreenState extends State<AdminMenuManagementScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Add "${_titleController.text}" to menu?'),
+            Text('Add "${newItem.title}" to menu?'),
             const SizedBox(height: 8),
             Container(
               padding: const EdgeInsets.all(12),
@@ -437,10 +382,8 @@ class _AdminMenuManagementScreenState extends State<AdminMenuManagementScreen> {
               backgroundColor: AppColors.success,
               foregroundColor: Colors.white,
             ),
-            onPressed: () {
-              Navigator.of(context).pop();
-              _performAdd(menuProvider, newItem);
-            },
+            // FIXED: Call _performAdd without arguments
+            onPressed: () => _performAdd(),
             child: const Text('Add Item'),
           ),
         ],
@@ -453,32 +396,53 @@ class _AdminMenuManagementScreenState extends State<AdminMenuManagementScreen> {
         oldItem.price != newItem.price ||
         oldItem.category != newItem.category ||
         oldItem.description != newItem.description ||
-        oldItem.mealWeight != newItem.mealWeight; // FIXED: Include mealWeight check
+        oldItem.mealWeight != newItem.mealWeight; 
   }
 
-  void _performUpdate(MenuProvider menuProvider, MenuItem newItem) async {
+  // FIXED: Removed arguments, using _itemToProcess global state
+  void _performUpdate() async {
+    final menuProvider = Provider.of<MenuProvider>(context, listen: false);
+    final newItem = _itemToProcess!;
+
+    // We navigate back immediately to close the confirmation dialog
+    Navigator.of(context).pop(); 
+
     try {
       // Pass the selected image bytes to upload to storage
       await menuProvider.updateMenuItem(newItem, _selectedImageBytes);
       if (!mounted) return;
+      
+      // CRITICAL FIX: Close the main Add/Edit dialog here
+      Navigator.of(context).pop(); 
+      
       _showSuccessSnackBar('"${newItem.title}" updated successfully');
       _clearForm();
-      // NOTE: Navigator.of(context).pop() is not needed here as the dialog was closed in _showUpdateConfirmation
-      // If you want to close the main screen after this, you'd navigate back.
     } catch (e) {
       if (!mounted) return;
+      // The main Add/Edit dialog is expected to be open if the confirmation dialog fails to close it.
+      // Since we close the confirmation dialog above, we just need to handle the error.
       _showErrorSnackBar('Failed to update: $e');
     }
   }
 
-  void _performAdd(MenuProvider menuProvider, MenuItem newItem) async {
+  // FIXED: Removed arguments, using _itemToProcess global state
+  void _performAdd() async {
+    final menuProvider = Provider.of<MenuProvider>(context, listen: false);
+    final newItem = _itemToProcess!;
+
+    // We navigate back immediately to close the confirmation dialog
+    Navigator.of(context).pop();
+
     try {
       // Pass the selected image bytes to upload to storage
       await menuProvider.addMenuItem(newItem, _selectedImageBytes);
       if (!mounted) return;
+      
+      // CRITICAL FIX: Close the main Add/Edit dialog here
+      Navigator.of(context).pop();
+
       _showSuccessSnackBar('"${newItem.title}" added to menu');
       _clearForm();
-      // NOTE: Navigator.of(context).pop() is not needed here as the dialog was closed in _showAddConfirmation
     } catch (e) {
       if (!mounted) return;
       _showErrorSnackBar('Failed to add: $e');
@@ -1087,6 +1051,65 @@ class _AdminMenuManagementScreenState extends State<AdminMenuManagementScreen> {
           ),
           body: Column(
             children: [
+              // Offline/Error Banner
+              if (menuProvider.error != null)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: menuProvider.error!.contains('cached') || menuProvider.error!.contains('Limited')
+                        ? Colors.orange.shade50
+                        : Colors.red.shade50,
+                    border: Border(
+                      bottom: BorderSide(
+                        color: menuProvider.error!.contains('cached') || menuProvider.error!.contains('Limited')
+                            ? Colors.orange.shade300
+                            : Colors.red.shade300,
+                      ),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        menuProvider.error!.contains('cached') || menuProvider.error!.contains('Limited')
+                            ? Icons.cloud_off
+                            : Icons.error_outline,
+                        color: menuProvider.error!.contains('cached') || menuProvider.error!.contains('Limited')
+                            ? Colors.orange.shade700
+                            : Colors.red.shade700,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          menuProvider.error!,
+                          style: TextStyle(
+                            color: menuProvider.error!.contains('cached') || menuProvider.error!.contains('Limited')
+                                ? Colors.orange.shade900
+                                : Colors.red.shade900,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ),
+                      TextButton.icon(
+                        onPressed: menuProvider.isLoading
+                            ? null
+                            : () => menuProvider.refreshMenuItems(),
+                        icon: Icon(
+                          Icons.refresh,
+                          size: 18,
+                          color: menuProvider.isLoading ? Colors.grey : Colors.blue,
+                        ),
+                        label: Text(
+                          'Retry',
+                          style: TextStyle(
+                            color: menuProvider.isLoading ? Colors.grey : Colors.blue,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               _buildStatsHeader(menuProvider),
               // FIX: Wrap category management in AnimatedSize for smooth visibility/height control
               AnimatedSize(
@@ -1095,19 +1118,40 @@ class _AdminMenuManagementScreenState extends State<AdminMenuManagementScreen> {
                 child: _buildCategoryManagement(menuProvider),
               ),
               Expanded(
-                child: menuItems.isEmpty
+                child: menuProvider.isLoading && menuItems.isEmpty
+                    ? const Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            CircularProgressIndicator(color: AppColors.primary),
+                            SizedBox(height: 16),
+                            Text(
+                              'Loading menu items...',
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: AppColors.darkText,
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    : menuItems.isEmpty
                     ? Center(
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             Icon(
-                              Icons.restaurant_menu,
+                              menuProvider.error != null 
+                                  ? Icons.cloud_off_outlined
+                                  : Icons.restaurant_menu,
                               size: 80,
                               color: AppColors.darkText.withOpacity(0.3),
                             ),
                             const SizedBox(height: 16),
                             Text(
-                              'No Menu Items',
+                              menuProvider.error != null 
+                                  ? 'Unable to Load Menu'
+                                  : 'No Menu Items',
                               style: TextStyle(
                                 fontSize: 18,
                                 fontWeight: FontWeight.bold,
@@ -1116,20 +1160,38 @@ class _AdminMenuManagementScreenState extends State<AdminMenuManagementScreen> {
                             ),
                             const SizedBox(height: 8),
                             Text(
-                              'Add items to get started',
+                              menuProvider.error != null 
+                                  ? 'Check your internet connection'
+                                  : 'Add items to get started',
                               style: TextStyle(
                                 color: AppColors.darkText.withOpacity(0.4),
                               ),
                             ),
+                            if (menuProvider.error != null) ...[
+                              const SizedBox(height: 16),
+                              ElevatedButton.icon(
+                                onPressed: () => menuProvider.refreshMenuItems(),
+                                icon: const Icon(Icons.refresh),
+                                label: const Text('Retry'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppColors.primary,
+                                  foregroundColor: Colors.white,
+                                ),
+                              ),
+                            ],
                           ],
                         ),
                       )
-                    : ListView.builder(
-                        padding: const EdgeInsets.all(12),
-                        itemCount: menuItems.length,
-                        itemBuilder: (context, index) {
-                          final item = menuItems[index];
-                          return Card(
+                    : RefreshIndicator(
+                        onRefresh: () => menuProvider.refreshMenuItems(),
+                        color: AppColors.primary,
+                        child: ListView.builder(
+                          padding: const EdgeInsets.all(12),
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          itemCount: menuItems.length,
+                          itemBuilder: (context, index) {
+                            final item = menuItems[index];
+                            return Card(
                             margin: const EdgeInsets.only(bottom: 12),
                             child: ListTile(
                               leading: ClipRRect(
@@ -1250,6 +1312,7 @@ class _AdminMenuManagementScreenState extends State<AdminMenuManagementScreen> {
                           );
                         },
                       ),
+                    ),
               ),
             ],
           ),
@@ -1263,9 +1326,11 @@ class _AdminMenuManagementScreenState extends State<AdminMenuManagementScreen> {
     final menuProvider = Provider.of<MenuProvider>(context, listen: false);
 
     if (!isEditing) {
+      // Clear form only if it's a new item (or explicitly clear when called from button)
       _clearForm();
       _isAvailable = true; 
     } else {
+      // If editing, state was already set by _editItem, but ensure availability loads
       final editedItem = menuProvider.menuItems[_editingIndex!];
       _isAvailable = editedItem.isAvailable;
     }
@@ -1275,6 +1340,18 @@ class _AdminMenuManagementScreenState extends State<AdminMenuManagementScreen> {
       builder: (BuildContext dialogContext) {
         return StatefulBuilder(
           builder: (context, setDialogState) {
+            
+            // Define the local function to handle dialog state update for pickers
+            void updateDialogState(VoidCallback fn) {
+              // Call local dialog state setter first
+              setDialogState(fn);
+              // Then call main screen state setter if necessary
+              setState(() {}); 
+            }
+
+            // Create a disposable controller for the new category field visibility
+            final FocusNode newCategoryFocusNode = FocusNode();
+            
             return Dialog(
               insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
               child: Container(
@@ -1309,7 +1386,7 @@ class _AdminMenuManagementScreenState extends State<AdminMenuManagementScreen> {
                         ],
                       ),
                     ),
-                    const Divider(height: 1),
+                    const Divider(),
                     // Content
                     Flexible(
                       child: SingleChildScrollView(
@@ -1319,392 +1396,397 @@ class _AdminMenuManagementScreenState extends State<AdminMenuManagementScreen> {
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                        // Image picker section
-                        Stack(
-                          alignment: Alignment.center,
-                          children: [
-                            Container(
-                              width: 180,
-                              height: 180,
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(16),
-                                gradient: LinearGradient(
-                                  begin: Alignment.topLeft,
-                                  end: Alignment.bottomRight,
-                                  colors: [
-                                    AppColors.primary.withOpacity(0.3),
-                                    AppColors.primary.withOpacity(0.1),
-                                  ],
-                                ),
-                              ),
-                            ),
-                            Container(
-                              width: 170,
-                              height: 170,
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(
-                                  color: AppColors.primary.withOpacity(0.2),
-                                  width: 2,
-                                ),
-                              ),
-                              child: ClipRRect(
-                                borderRadius: BorderRadius.circular(10),
-                                child: _buildImageContent(),
-                              ),
-                            ),
-                            Positioned(
-                              bottom: 5,
-                              right: 5,
-                              child: Material(
-                                elevation: 4,
-                                shape: const CircleBorder(),
-                                child: PopupMenuButton<int>(
-                                  onSelected: (v) async {
-                                    if (v == 0) {
-                                      await _pickImageFromCamera();
-                                      setDialogState(() {});
-                                    }
-                                    if (v == 1) {
-                                      await _pickImageFromGallery();
-                                      setDialogState(() {});
-                                    }
-                                    if (v == 2) {
-                                      setState(() {
-                                        _selectedImageBytes = null;
-                                        _editingImageString = null;
-                                      });
-                                      setDialogState(() {});
-                                    }
-                                  },
-                                  itemBuilder: (_) => const [
-                                    PopupMenuItem(value: 0, child: Row(children: [Icon(Icons.camera_alt), SizedBox(width: 8), Text('Camera')])),
-                                    PopupMenuItem(value: 1, child: Row(children: [Icon(Icons.photo_library), SizedBox(width: 8), Text('Gallery')])),
-                                    PopupMenuItem(value: 2, child: Row(children: [Icon(Icons.delete), SizedBox(width: 8), Text('Remove')])),
-                                  ],
-                                  child: Container(
-                                    padding: const EdgeInsets.all(10),
-                                    decoration: const BoxDecoration(
-                                      color: AppColors.primary,
-                                      shape: BoxShape.circle,
+                            // Image picker section
+                            Stack(
+                              alignment: Alignment.center,
+                              children: [
+                                Container(
+                                  width: 180,
+                                  height: 180,
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(16),
+                                    gradient: LinearGradient(
+                                      begin: Alignment.topLeft,
+                                      end: Alignment.bottomRight,
+                                      colors: [
+                                        AppColors.primary.withOpacity(0.3),
+                                        AppColors.primary.withOpacity(0.1),
+                                      ],
                                     ),
-                                    child: const Icon(Icons.edit, size: 20, color: AppColors.white),
                                   ),
                                 ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 20),
-                        
-                        // Title field
-                        TextFormField(
-                          controller: _titleController,
-                          decoration: const InputDecoration(
-                            labelText: 'Item Name',
-                            border: OutlineInputBorder(),
-                            prefixIcon: Icon(Icons.fastfood, color: AppColors.primary),
-                          ),
-                          validator: (value) {
-                            if (value == null || value.trim().isEmpty) {
-                              return 'Please enter an item name';
-                            }
-                            return null;
-                          },
-                        ),
-                        const SizedBox(height: 16),
-                        
-                        // Price field
-                        TextFormField(
-                          controller: _priceController,
-                          decoration: const InputDecoration(
-                            labelText: 'Price',
-                            border: OutlineInputBorder(),
-                            prefixText: 'KSh ',
-                            prefixStyle: TextStyle(
-                              fontWeight: FontWeight.w600,
-                              color: AppColors.primary,
-                            ),
-                          ),
-                          keyboardType: TextInputType.number,
-                          validator: (value) {
-                            if (value == null || value.trim().isEmpty) {
-                              return 'Please enter a price';
-                            }
-                            if (int.tryParse(value.trim()) == null) {
-                              return 'Please enter a valid number';
-                            }
-                            return null;
-                          },
-                        ),
-                        const SizedBox(height: 16),
-                        
-                        // Category dropdown
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            DropdownButtonFormField<String>(
-                              value: _selectedCategory,
-                              isExpanded: true,
-                              decoration: InputDecoration(
-                                labelText: 'Category',
-                                border: const OutlineInputBorder(),
-                                prefixIcon: const Icon(Icons.category, color: AppColors.primary),
-                                suffixIcon: _selectedCategory != null
-                                    ? IconButton(
-                                        icon: const Icon(Icons.clear, size: 18),
-                                        onPressed: () {
-                                          setDialogState(() {
-                                            _selectedCategory = null;
-                                            _showNewCategoryField = false;
+                                Container(
+                                  width: 170,
+                                  height: 170,
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: AppColors.primary.withOpacity(0.2),
+                                      width: 2,
+                                    ),
+                                  ),
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(10),
+                                    child: _buildImageContent(),
+                                  ),
+                                ),
+                                Positioned(
+                                  bottom: 5,
+                                  right: 5,
+                                  child: Material(
+                                    elevation: 4,
+                                    shape: const CircleBorder(),
+                                    child: PopupMenuButton<int>(
+                                      onSelected: (v) async {
+                                        if (v == 0) {
+                                          await _pickImageFromCamera();
+                                          updateDialogState(() {}); // Use updated state setter
+                                        }
+                                        if (v == 1) {
+                                          await _pickImageFromGallery();
+                                          updateDialogState(() {}); // Use updated state setter
+                                        }
+                                        if (v == 2) {
+                                          setState(() {
+                                            _selectedImageBytes = null;
+                                            _editingImageString = null;
                                           });
-                                        },
-                                      )
-                                    : null,
-                              ),
-                              hint: const Text('Select a category'),
-                              items: [
-                                ...({
-                                  ...menuProvider.menuItems.map((item) => item.category),
-                                  ..._customCategories,
-                                }.toList()..sort()).map((category) {
-                                  return DropdownMenuItem(
-                                    value: category,
-                                    child: Text(category, overflow: TextOverflow.ellipsis),
-                                  );
-                                }),
-                                const DropdownMenuItem(
-                                  value: 'add_new',
-                                  child: Text('+ Add new category...'),
+                                          updateDialogState(() {});
+                                        }
+                                      },
+                                      itemBuilder: (_) => const [
+                                        PopupMenuItem(value: 0, child: Row(children: [Icon(Icons.camera_alt), SizedBox(width: 8), Text('Camera')])),
+                                        PopupMenuItem(value: 1, child: Row(children: [Icon(Icons.photo_library), SizedBox(width: 8), Text('Gallery')])),
+                                        PopupMenuItem(value: 2, child: Row(children: [Icon(Icons.delete), SizedBox(width: 8), Text('Remove')])),
+                                      ],
+                                      child: Container(
+                                        padding: const EdgeInsets.all(10),
+                                        decoration: const BoxDecoration(
+                                          color: AppColors.primary,
+                                          shape: BoxShape.circle,
+                                        ),
+                                        child: const Icon(Icons.edit, size: 20, color: AppColors.white),
+                                      ),
+                                    ),
+                                  ),
                                 ),
                               ],
-                              onChanged: (value) {
-                                setDialogState(() {
-                                  if (value == 'add_new') {
-                                    _showNewCategoryField = true;
-                                    _selectedCategory = null;
-                                    _newCategoryController.clear();
-                                  } else {
-                                    _selectedCategory = value;
-                                    _showNewCategoryField = false;
-                                  }
-                                });
-                              },
+                            ),
+                            const SizedBox(height: 20),
+                            
+                            // Title field
+                            TextFormField(
+                              controller: _titleController,
+                              decoration: const InputDecoration(
+                                labelText: 'Item Name',
+                                border: OutlineInputBorder(),
+                                prefixIcon: Icon(Icons.fastfood, color: AppColors.primary),
+                              ),
                               validator: (value) {
-                                if (!_showNewCategoryField && (value == null || value.isEmpty)) {
-                                  return 'Please select a category';
+                                if (value == null || value.trim().isEmpty) {
+                                  return 'Please enter an item name';
                                 }
                                 return null;
                               },
                             ),
-                            if (_showNewCategoryField) ...[
-                              const SizedBox(height: 12),
-                              TextFormField(
-                                controller: _newCategoryController,
-                                decoration: const InputDecoration(
-                                  labelText: 'New Category Name',
-                                  border: OutlineInputBorder(),
-                                  prefixIcon: Icon(Icons.create_new_folder, color: AppColors.primary),
+                            const SizedBox(height: 16),
+                            
+                            // Price field
+                            TextFormField(
+                              controller: _priceController,
+                              decoration: const InputDecoration(
+                                labelText: 'Price',
+                                border: OutlineInputBorder(),
+                                prefixText: 'KSh ',
+                                prefixStyle: TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  color: AppColors.primary,
                                 ),
-                                validator: (value) {
-                                  if (_showNewCategoryField && (value == null || value.trim().isEmpty)) {
-                                    return 'Please enter a category name';
-                                  }
-                                  return null;
-                                },
                               ),
-                            ],
-                          ],
-                        ),
-                        const SizedBox(height: 16),
-                        
-                        // Meal weight selector
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Row(
+                              keyboardType: TextInputType.number,
+                              validator: (value) {
+                                if (value == null || value.trim().isEmpty) {
+                                  return 'Please enter a price';
+                                }
+                                if (int.tryParse(value.trim()) == null) {
+                                  return 'Please enter a valid number';
+                                }
+                                return null;
+                              },
+                            ),
+                            const SizedBox(height: 16),
+                            
+                            // Category dropdown
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Icon(Icons.fitness_center, size: 16, color: AppColors.primary),
-                                SizedBox(width: 8),
-                                Text(
-                                  'Meal Weight',
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w600,
+                                DropdownButtonFormField<String>(
+                                  value: _selectedCategory,
+                                  isExpanded: true,
+                                  decoration: InputDecoration(
+                                    labelText: 'Category',
+                                    border: const OutlineInputBorder(),
+                                    prefixIcon: const Icon(Icons.category, color: AppColors.primary),
+                                    suffixIcon: _selectedCategory != null
+                                        ? IconButton(
+                                            icon: const Icon(Icons.clear, size: 18),
+                                            onPressed: () {
+                                              updateDialogState(() {
+                                                _selectedCategory = null;
+                                                _showNewCategoryField = false;
+                                              });
+                                            },
+                                          )
+                                        : null,
                                   ),
+                                  hint: const Text('Select a category'),
+                                  items: [
+                                    ...({
+                                      ...menuProvider.menuItems.map((item) => item.category),
+                                      ..._customCategories,
+                                    }.toList()..sort()).map((category) {
+                                      return DropdownMenuItem(
+                                        value: category,
+                                        child: Text(category, overflow: TextOverflow.ellipsis),
+                                      );
+                                    }),
+                                    const DropdownMenuItem(
+                                      value: 'add_new',
+                                      child: Text('+ Add new category...'),
+                                    ),
+                                  ],
+                                  onChanged: (value) {
+                                    updateDialogState(() {
+                                      if (value == 'add_new') {
+                                        _showNewCategoryField = true;
+                                        _selectedCategory = null;
+                                        _newCategoryController.clear();
+                                        // Request focus to the new category field
+                                        Future.delayed(const Duration(milliseconds: 50), () => newCategoryFocusNode.requestFocus());
+                                      } else {
+                                        _selectedCategory = value;
+                                        _showNewCategoryField = false;
+                                      }
+                                    });
+                                  },
+                                  validator: (value) {
+                                    if (!_showNewCategoryField && (value == null || value.isEmpty)) {
+                                      return 'Please select a category';
+                                    }
+                                    return null;
+                                  },
                                 ),
+                                if (_showNewCategoryField) ...[
+                                  const SizedBox(height: 12),
+                                  TextFormField(
+                                    controller: _newCategoryController,
+                                    focusNode: newCategoryFocusNode,
+                                    decoration: const InputDecoration(
+                                      labelText: 'New Category Name',
+                                      border: OutlineInputBorder(),
+                                      prefixIcon: Icon(Icons.create_new_folder, color: AppColors.primary),
+                                    ),
+                                    validator: (value) {
+                                      if (_showNewCategoryField && (value == null || value.trim().isEmpty)) {
+                                        return 'Please enter a category name';
+                                      }
+                                      return null;
+                                    },
+                                  ),
+                                ],
                               ],
                             ),
-                            const SizedBox(height: 8),
-                            Row(
-                              children: MealWeight.values.map<Widget>((weight) {
-                                final isSelected = _selectedMealWeight == weight;
-                                return Expanded(
-                                  child: Padding(
-                                    padding: const EdgeInsets.symmetric(horizontal: 4),
-                                    child: InkWell(
-                                      onTap: () {
-                                        setDialogState(() {
-                                          _selectedMealWeight = weight;
-                                        });
-                                      },
-                                      child: Container(
-                                        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
-                                        decoration: BoxDecoration(
-                                          color: isSelected
-                                              ? AppColors.primary
-                                              : AppColors.primary.withOpacity(0.1),
-                                          borderRadius: BorderRadius.circular(8),
-                                          border: Border.all(
-                                            color: AppColors.primary,
-                                            width: isSelected ? 2 : 1,
-                                          ),
-                                        ),
-                                        child: Column(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Icon(
-                                              _getMealWeightIcon(weight.name),
-                                              size: 18,
-                                              color: isSelected ? Colors.white : AppColors.primary,
-                                            ),
-                                            const SizedBox(height: 3),
-                                            Text(
-                                              weight.displayName,
-                                              style: TextStyle(
-                                                fontSize: 10,
-                                                fontWeight: FontWeight.w600,
-                                                color: isSelected ? Colors.white : AppColors.primary,
-                                              ),
-                                              textAlign: TextAlign.center,
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                );
-                              }).toList(),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        
-                        // Availability toggle
-                        Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: _isAvailable
-                                ? Colors.green.withOpacity(0.05)
-                                : Colors.red.withOpacity(0.05),
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(
-                              color: _isAvailable
-                                  ? Colors.green.withOpacity(0.3)
-                                  : Colors.red.withOpacity(0.3),
-                            ),
-                          ),
-                          child: Row(
-                            children: [
-                              Icon(
-                                _isAvailable ? Icons.check_circle : Icons.block,
-                                color: _isAvailable ? Colors.green : Colors.red,
-                                size: 20,
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
+                            const SizedBox(height: 16),
+                            
+                            // Meal weight selector
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Row(
                                   children: [
-                                    const Text(
-                                      'Availability',
+                                    Icon(Icons.fitness_center, size: 16, color: AppColors.primary),
+                                    SizedBox(width: 8),
+                                    Text(
+                                      'Meal Weight',
                                       style: TextStyle(
                                         fontSize: 14,
                                         fontWeight: FontWeight.w600,
-                                        color: AppColors.darkText,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 2),
-                                    Text(
-                                      _isAvailable
-                                          ? 'Available for customers'
-                                          : 'Out of stock',
-                                      style: TextStyle(
-                                        fontSize: 11,
-                                        color: AppColors.darkText.withOpacity(0.6),
                                       ),
                                     ),
                                   ],
                                 ),
+                                const SizedBox(height: 8),
+                                Row(
+                                  children: MealWeight.values.map<Widget>((weight) {
+                                    final isSelected = _selectedMealWeight == weight;
+                                    return Expanded(
+                                      child: Padding(
+                                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                                        child: InkWell(
+                                          onTap: () {
+                                            updateDialogState(() {
+                                              _selectedMealWeight = weight;
+                                            });
+                                          },
+                                          child: Container(
+                                            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+                                            decoration: BoxDecoration(
+                                              color: isSelected
+                                                  ? AppColors.primary
+                                                  : AppColors.primary.withOpacity(0.1),
+                                              borderRadius: BorderRadius.circular(8),
+                                              border: Border.all(
+                                                color: AppColors.primary,
+                                                width: isSelected ? 2 : 1,
+                                              ),
+                                            ),
+                                            child: Column(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                Icon(
+                                                  _getMealWeightIcon(weight.name),
+                                                  size: 18,
+                                                  color: isSelected ? Colors.white : AppColors.primary,
+                                                ),
+                                                const SizedBox(height: 3),
+                                                Text(
+                                                  weight.displayName,
+                                                  style: TextStyle(
+                                                    fontSize: 10,
+                                                    fontWeight: FontWeight.w600,
+                                                    color: isSelected ? Colors.white : AppColors.primary,
+                                                  ),
+                                                  textAlign: TextAlign.center,
+                                                  maxLines: 1,
+                                                  overflow: TextOverflow.ellipsis,
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    );
+                                  }).toList(),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            
+                            // Availability toggle
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: _isAvailable
+                                    ? Colors.green.withOpacity(0.05)
+                                    : Colors.red.withOpacity(0.05),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
+                                  color: _isAvailable
+                                      ? Colors.green.withOpacity(0.3)
+                                      : Colors.red.withOpacity(0.3),
+                                ),
                               ),
-                              Switch(
-                                value: _isAvailable,
-                                activeColor: Colors.green,
-                                onChanged: (value) {
-                                  setDialogState(() {
-                                    _isAvailable = value;
-                                  });
-                                },
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    _isAvailable ? Icons.check_circle : Icons.block,
+                                    color: _isAvailable ? Colors.green : Colors.red,
+                                    size: 20,
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        const Text(
+                                          'Availability',
+                                          style: TextStyle(
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.w600,
+                                            color: AppColors.darkText,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          _isAvailable
+                                              ? 'Available for customers'
+                                              : 'Out of stock',
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            color: AppColors.darkText.withOpacity(0.6),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  Switch(
+                                    value: _isAvailable,
+                                    activeColor: Colors.green,
+                                    onChanged: (value) {
+                                      updateDialogState(() {
+                                        _isAvailable = value;
+                                      });
+                                    },
+                                  ),
+                                ],
                               ),
-                            ],
-                          ),
+                            ),
+                            const SizedBox(height: 12),
+                            
+                            // Description field
+                            TextFormField(
+                              controller: _descriptionController,
+                              decoration: const InputDecoration(
+                                labelText: 'Description (Optional)',
+                                border: OutlineInputBorder(),
+                                prefixIcon: Icon(Icons.description, color: AppColors.primary),
+                              ),
+                              maxLines: 3,
+                              minLines: 2,
+                            ),
+                            const SizedBox(height: 8),
+                          ],
                         ),
-                        const SizedBox(height: 12),
-                        
-                        // Description field
-                        TextFormField(
-                          controller: _descriptionController,
-                          decoration: const InputDecoration(
-                            labelText: 'Description (Optional)',
-                            border: OutlineInputBorder(),
-                            prefixIcon: Icon(Icons.description, color: AppColors.primary),
-                          ),
-                          maxLines: 3,
-                          minLines: 2,
-                        ),
-                        const SizedBox(height: 8),
-                      ],
+                      ),
                     ),
                   ),
-                ),
-              ),
-              // Actions
-              const Divider(height: 1),
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    TextButton(
-                      onPressed: () {
-                        Navigator.of(context).pop();
-                        _clearForm();
-                      },
-                      child: const Text('Cancel'),
-                    ),
-                    const SizedBox(width: 12),
-                    ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.primary,
-                        foregroundColor: Colors.white,
+                    // Actions
+                    const Divider(),
+                    Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          TextButton(
+                            onPressed: () {
+                              Navigator.of(context).pop();
+                              _clearForm();
+                            },
+                            child: const Text('Cancel'),
+                          ),
+                          const SizedBox(width: 12),
+                          ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.primary,
+                              foregroundColor: Colors.white,
+                            ),
+                            onPressed: () {
+                              if (_formKey.currentState!.validate()) {
+                                // Close the dialog here if logic is self-contained. 
+                                // Since we need confirmation dialogs, we submit and handle nav in the next step.
+                                _submitForm();
+                              }
+                            },
+                            child: Text(isEditing ? 'Update Item' : 'Add Item'),
+                          ),
+                        ],
                       ),
-                      onPressed: () {
-                        if (_formKey.currentState!.validate()) {
-                          _submitForm();
-                        }
-                      },
-                      child: Text(isEditing ? 'Update Item' : 'Add Item'),
                     ),
                   ],
                 ),
               ),
-            ],
-          ),
-        ),
-      );
+            );
           },
         );
       },

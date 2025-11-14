@@ -32,7 +32,7 @@ class NotificationProvider extends ChangeNotifier {
 
       debugPrint('📥 Loading notifications for user: $userId');
 
-      // Load recent notifications (last 30 days)
+      // Load recent notifications (last 30 days) with timeout
       final thirtyDaysAgo = DateTime.now().subtract(const Duration(days: 30));
       
       final response = await _supabase
@@ -40,7 +40,8 @@ class NotificationProvider extends ChangeNotifier {
           .select()
           .eq('user_auth_id', userId)
           .gte('created_at', thirtyDaysAgo.toIso8601String())
-          .order('created_at', ascending: false);
+          .order('created_at', ascending: false)
+          .timeout(const Duration(seconds: 10));
 
       _notifications.clear();
       
@@ -56,7 +57,7 @@ class NotificationProvider extends ChangeNotifier {
       _isLoading = false;
       notifyListeners();
     } catch (e) {
-      _error = 'Failed to load notifications: $e';
+      _error = e.toString();
       _isLoading = false;
       debugPrint('❌ Error loading notifications: $e');
       notifyListeners();

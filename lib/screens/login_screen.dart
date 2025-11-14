@@ -149,16 +149,11 @@ class _LoginScreenState extends State<LoginScreen> {
       debugPrint('❌ Login error: $e');
       if (!mounted) return;
       
-      // Parse the error for a user-friendly message
-      String errorMessage = 'An unexpected error occurred. Please try again.';
-      if (e.toString().contains('SocketException') || e.toString().contains('NetworkException')) {
-        errorMessage = 'Network connection error. Please check your internet and try again.';
-      } else if (e.toString().contains('TimeoutException')) {
-        errorMessage = 'Connection timed out. Please try again.';
-      } else if (e.toString().contains('FormatException')) {
-        errorMessage = 'Invalid response from server. Please try again later.';
+      // Show error dialog with the error message
+      String errorMessage = e.toString();
+      if (e is AuthException) {
+        errorMessage = e.message;
       }
-      
       _showErrorDialog(errorMessage);
     } finally {
       if (mounted) {

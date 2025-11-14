@@ -62,11 +62,16 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     if (currentUser != null) {
       // Fetch user data including addresses from Supabase
       try {
+        debugPrint('🔄 Loading user profile from Supabase...');
         final userData = await Supabase.instance.client
             .from('users')
             .select('name, email, phone, addresses, default_address_index')
             .eq('auth_id', currentUser.id)
             .single();
+        
+        debugPrint('✅ User data loaded: $userData');
+        debugPrint('📍 Addresses from DB: ${userData['addresses']}');
+        debugPrint('📍 Default index from DB: ${userData['default_address_index']}');
         
         setState(() {
           _nameController.text = userData['name'] ?? '';
@@ -77,14 +82,23 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           // Load addresses from database
           if (userData['addresses'] != null) {
             final addressesFromDb = userData['addresses'];
+            debugPrint('📍 Type of addresses: ${addressesFromDb.runtimeType}');
             if (addressesFromDb is List) {
               _addresses = List<String>.from(addressesFromDb);
+              debugPrint('✅ Loaded ${_addresses.length} addresses: $_addresses');
+            } else {
+              debugPrint('⚠️ Addresses is not a List, it is: $addressesFromDb');
             }
+          } else {
+            debugPrint('⚠️ No addresses found in database');
           }
           
           // Load default address index from database
-          if (userData['default_address_index'] != null && userData['default_address_index'] < _addresses.length) {
+          if (userData['default_address_index'] != null && _addresses.isNotEmpty && userData['default_address_index'] < _addresses.length) {
             _defaultAddressIndex = userData['default_address_index'];
+            debugPrint('✅ Default address index set to: $_defaultAddressIndex');
+          } else {
+            debugPrint('ℹ️ No valid default address index (index: ${userData['default_address_index']}, addresses count: ${_addresses.length})');
           }
         });
       } catch (e) {
@@ -190,6 +204,12 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       // Update in Supabase
       final normalizedPhone = PhoneUtils.normalizeKenyan(_phoneCont.text);
 
+      debugPrint('💾 Saving profile to Supabase...');
+      debugPrint('   Name: ${_nameController.text.trim()}');
+      debugPrint('   Phone: $normalizedPhone');
+      debugPrint('   Addresses: $_addresses (${_addresses.length} items)');
+      debugPrint('   Default address index: $_defaultAddressIndex');
+
       await Supabase.instance.client
           .from('users')
           .update({
@@ -200,6 +220,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             'updated_at': DateTime.now().toIso8601String(),
           })
           .eq('auth_id', userId);
+
+      debugPrint('✅ Profile saved to Supabase successfully');
 
       // ADDED: Save to SharedPreferences for offline access and checkout screen
       final prefs = await SharedPreferences.getInstance();

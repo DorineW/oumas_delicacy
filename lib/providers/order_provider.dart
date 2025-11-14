@@ -4,15 +4,65 @@ import '../models/order.dart'; // CHANGED: Import Order from model
 import 'notification_provider.dart';
 import '../models/notification_model.dart';
 import 'dart:async';
+import 'dart:convert';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class OrderProvider extends ChangeNotifier {
   final List<Order> _orders = [];
   NotificationProvider? _notificationProvider;
+  bool _cacheLoaded = false;
+
+  // Cache keys
+  static const String _cacheKey = 'cached_orders';
+  static const String _cacheTimestampKey = 'orders_cache_timestamp';
+  static const Duration _cacheValidDuration = Duration(hours: 24);
 
   // ADDED: Set notification provider reference
   void setNotificationProvider(NotificationProvider provider) {
     _notificationProvider = provider;
+  }
+
+  /// Load cached orders from SharedPreferences
+  Future<void> _loadFromCache() async {
+    if (_cacheLoaded) return;
+    
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final cachedData = prefs.getString(_cacheKey);
+      final timestamp = prefs.getInt(_cacheTimestampKey);
+      
+      if (cachedData != null && timestamp != null) {
+        final cacheAge = DateTime.now().millisecondsSinceEpoch - timestamp;
+        final isCacheValid = cacheAge < _cacheValidDuration.inMilliseconds;
+        
+        final List<dynamic> jsonList = json.decode(cachedData);
+        _orders.clear();
+        _orders.addAll(jsonList.map((json) => Order.fromJson(json)));
+        _cacheLoaded = true;
+        
+        debugPrint('📦 Loaded ${_orders.length} orders from cache (age: ${(cacheAge / 1000 / 60).toStringAsFixed(0)} minutes, valid: $isCacheValid)');
+        notifyListeners();
+      }
+    } catch (e) {
+      debugPrint('❌ Error loading orders cache: $e');
+    }
+  }
+
+  /// Save orders to SharedPreferences cache
+  Future<void> _saveToCache() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final jsonList = _orders.map((order) => order.toJson()).toList();
+      final jsonString = json.encode(jsonList);
+      
+      await prefs.setString(_cacheKey, jsonString);
+      await prefs.setInt(_cacheTimestampKey, DateTime.now().millisecondsSinceEpoch);
+      
+      debugPrint('💾 Cached ${_orders.length} orders to local storage');
+    } catch (e) {
+      debugPrint('❌ Error saving orders cache: $e');
+    }
   }
 
   List<Order> get orders => List.unmodifiable(_orders);
@@ -43,12 +93,12 @@ class OrderProvider extends ChangeNotifier {
 
   // REMOVED: seedDemo method - no more fake data!
 
-  // UPDATED: Add order and save to Supabase
+  // UPDATED: Add order and save to Supabase with network error handling
   Future<String> addOrder(Order order) async {
     try {
       debugPrint('💾 Saving order to Supabase...');
       
-      // Save order to Supabase (let database generate UUID for id)
+      // Save order to Supabase (let database generate UUID for id) with timeout
       final response = await Supabase.instance.client.from('orders').insert({
         // Don't specify 'id' - let Supabase auto-generate UUID
         'user_auth_id': order.customerId,
@@ -60,12 +110,12 @@ class OrderProvider extends ChangeNotifier {
         'delivery_address': order.deliveryAddress,
         'delivery_phone': order.deliveryPhone,
         'placed_at': order.date.toIso8601String(),
-      }).select('id').single();
+      }).select('id').single().timeout(const Duration(seconds: 20));
 
       final generatedOrderId = response['id'] as String;
       debugPrint('✅ Order created with ID: $generatedOrderId');
 
-      // Save order items with the generated order ID
+      // Save order items with the generated order ID with timeout
       for (final item in order.items) {
         await Supabase.instance.client.from('order_items').insert({
           'order_id': generatedOrderId,
@@ -74,7 +124,7 @@ class OrderProvider extends ChangeNotifier {
           'quantity': item.quantity,
           'unit_price': item.price,
           'total_price': item.totalPrice,
-        });
+        }).timeout(const Duration(seconds: 15));
       }
 
       debugPrint('✅ Order $generatedOrderId saved to database');
@@ -131,12 +181,17 @@ class OrderProvider extends ChangeNotifier {
     }
   }
 
-  // UPDATED: Load orders from Supabase
+  // UPDATED: Load orders from Supabase with network error handling
   Future<void> loadOrders(String userId) async {
+    // Load from cache first if not already loaded
+    if (!_cacheLoaded) {
+      await _loadFromCache();
+    }
+
     try {
       debugPrint('📥 Loading orders for user: $userId');
       
-      // JOIN with users table to get customer name - specify the relationship
+      // JOIN with users table to get customer name - specify the relationship with timeout
       final data = await Supabase.instance.client
           .from('orders')
           .select('''
@@ -145,7 +200,8 @@ class OrderProvider extends ChangeNotifier {
             users!fk_orders_user_auth(name)
           ''')
           .eq('user_auth_id', userId)
-          .order('placed_at', ascending: false);
+          .order('placed_at', ascending: false)
+          .timeout(const Duration(seconds: 15));
 
       _orders.clear();
       for (final json in data as List) {
@@ -170,19 +226,30 @@ class OrderProvider extends ChangeNotifier {
       }
       
       debugPrint('✅ Loaded ${_orders.length} orders');
+      
+      // Save to cache for offline use
+      await _saveToCache();
+      
       notifyListeners();
     } catch (e, stackTrace) {
       debugPrint('❌ Failed to load orders: $e');
       debugPrint('Stack: $stackTrace');
+      // Keep cached data if load fails
+      debugPrint('📦 Using ${_orders.length} cached orders');
     }
   }
 
-  // ADDED: Load ALL orders from Supabase (for admins)
+  // ADDED: Load ALL orders from Supabase (for admins) with network error handling
   Future<void> loadAllOrders() async {
+    // Load from cache first if not already loaded
+    if (!_cacheLoaded) {
+      await _loadFromCache();
+    }
+
     try {
       debugPrint('📥 Loading ALL orders for admin...');
       
-      // JOIN with users table to get customer name
+      // JOIN with users table to get customer name with timeout
       final data = await Supabase.instance.client
           .from('orders')
           .select('''
@@ -190,7 +257,8 @@ class OrderProvider extends ChangeNotifier {
             order_items(*),
             users!fk_orders_user_auth(name)
           ''')
-          .order('placed_at', ascending: false);
+          .order('placed_at', ascending: false)
+          .timeout(const Duration(seconds: 15));
 
       _orders.clear();
       for (final json in data as List) {
@@ -215,10 +283,16 @@ class OrderProvider extends ChangeNotifier {
       }
       
       debugPrint('✅ Loaded ${_orders.length} total orders');
+      
+      // Save to cache for offline use
+      await _saveToCache();
+      
       notifyListeners();
     } catch (e, stackTrace) {
       debugPrint('❌ Failed to load all orders: $e');
       debugPrint('Stack: $stackTrace');
+      // Keep cached data if load fails
+      debugPrint('📦 Using ${_orders.length} cached orders');
     }
   }
 

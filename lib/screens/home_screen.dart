@@ -1,6 +1,3 @@
-// ------------------------------------------------------------
-//  lib/screens/home_screen.dart  
-// ------------------------------------------------------------
 // ignore_for_file: unused_import, deprecated_member_use
 
 import 'dart:math' as math;
@@ -11,16 +8,16 @@ import '../widgets/carousel.dart';
 
 import '../constants/colors.dart';
 import '../models/cart_item.dart';
-import '../models/menu_item.dart'; // ADDED
+import '../models/menu_item.dart'; 
 import '../providers/cart_provider.dart';
 import '../providers/menu_provider.dart';
-import '../providers/favorites_provider.dart'; // ADDED
+import '../providers/favorites_provider.dart'; 
 import 'dashboard_screen.dart';
 import 'cart_screen.dart';
 import 'meal_detail_screen.dart';
 import 'profile_screen.dart';
 import '../services/auth_service.dart';
-import '../screens/login_screen.dart'; // Add this import
+import '../screens/login_screen.dart';
 import '../utils/responsive_helper.dart';
 
 /* ----------------------------------------------------------
@@ -34,11 +31,11 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMixin {
   int _currentIndex = 0;
-  // ADDED: GlobalKey for cart icon
+  // GlobalKey for cart icon (used for fly-to-cart animation)
   final GlobalKey _cartIconKey = GlobalKey();
   
-  final List<Widget> _screens = [
-    const _HomeTab(),
+  final List<Widget> _screens = const [
+    _HomeTab(),
     DashboardScreen(),
     CartScreen(),
     ProfileScreen(),
@@ -80,9 +77,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               label: 'Dashboard',
             ),
             BottomNavigationBarItem(
-              // FIXED: Use Container with GlobalKey wrapper
+              // Use Container with GlobalKey wrapper for animation target
               icon: Container(
-                key: _cartIconKey, // ADDED: GlobalKey here!
+                key: _cartIconKey, 
                 child: cartQty > 0
                     ? Stack(
                         clipBehavior: Clip.none,
@@ -131,7 +128,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 }
 
 /* ----------------------------------------------------------
-   UPDATED HOME TAB WITH RIDER APP STYLING
+   HOME TAB CONTENT
 ----------------------------------------------------------- */
 class _HomeTab extends StatefulWidget {
   const _HomeTab();
@@ -145,40 +142,23 @@ class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin 
   String _search = '';
   int _tabIndex = 0;
 
-  TabController? _tabController; // FIXED: Make nullable
+  TabController? _tabController; 
   final Map<int, ScrollController> _scrollControllers = {};
 
   @override
   void initState() {
     super.initState();
     
-    // UPDATED: Initialize tab controller after getting categories
+    // Start loading data immediately. TabController initialization happens in build.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final menuProvider = context.read<MenuProvider>();
-      
-      // Load menu items first
-      menuProvider.loadMenuItems().then((_) {
-        if (mounted) {
-          // Initialize tab controller after menu items are loaded
-          final cats = menuProvider.menuItems
-                       .map((e) => e.category)
-                       .toSet()
-                       .toList();
-          
-          _tabController = TabController(length: cats.length + 1, vsync: this);
-          
-          if (mounted) {
-            setState(() {}); // Trigger rebuild with loaded data
-          }
-        }
-      });
+      context.read<MenuProvider>().loadMenuItems();
     });
   }
 
   @override
   void dispose() {
     _searchCtrl.dispose();
-    _tabController?.dispose(); // FIXED: Safe call
+    _tabController?.dispose(); 
     for (final c in _scrollControllers.values) {
       c.dispose();
     }
@@ -188,46 +168,44 @@ class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin 
   ScrollController _controller(int index) =>
       _scrollControllers.putIfAbsent(index, () => ScrollController());
 
+  // --- Category and TabController setup function ---
+  void _setupTabController(List<MenuItem> meals) {
+    // Determine the new list of unique categories (including 'All')
+    final newCategories = ['All', ...meals.map((e) => e.category).toSet()];
+    final newLength = newCategories.length;
+
+    // Only update the controller if it's null or the category list length has changed
+    if (_tabController == null || _tabController!.length != newLength) {
+      _tabController?.dispose();
+      
+      // Ensure the current index is within the bounds of the new length
+      _tabIndex = _tabIndex.clamp(0, newLength > 0 ? newLength - 1 : 0);
+      
+      // Create a new controller
+      _tabController = TabController(length: newLength, vsync: this, initialIndex: _tabIndex);
+      
+      // Force a rebuild to use the new controller
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+         if (mounted) setState(() {});
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final menuProvider = context.watch<MenuProvider>();
     final meals = menuProvider.menuItems;
     
-    // ADDED: Show loading state
+    // 1. DYNAMICALLY SETUP TAB CONTROLLER HERE
+    if (meals.isNotEmpty) {
+      _setupTabController(meals);
+    }
+
+    // --- LOADING/ERROR/EMPTY STATES ---
     if (menuProvider.isLoading && meals.isEmpty) {
       return Scaffold(
         backgroundColor: AppColors.background,
-        appBar: AppBar(
-          title: const Text("Ouma's Delicacy"),
-          backgroundColor: AppColors.primary,
-          elevation: 4,
-          automaticallyImplyLeading: false,
-          titleTextStyle: const TextStyle(color: AppColors.white, fontSize: 18, fontWeight: FontWeight.bold),
-          actions: [
-            // ADDED: Refresh button
-            IconButton(
-              icon: menuProvider.isLoading 
-                  ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                    ),
-                  )
-                  : const Icon(Icons.refresh),
-              tooltip: 'Refresh Menu',
-              onPressed: menuProvider.isLoading ? null : () => menuProvider.refreshMenuItems(),
-            ),
-            IconButton(
-              icon: const Icon(Icons.close),
-              tooltip: 'Close App',
-              onPressed: () {
-                SystemNavigator.pop();
-              },
-            ),
-          ],
-        ),
+        appBar: _buildAppBar(context, menuProvider),
         body: const Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -247,41 +225,10 @@ class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin 
       );
     }
     
-    // ADDED: Show error state
     if (menuProvider.error != null && meals.isEmpty) {
       return Scaffold(
         backgroundColor: AppColors.background,
-        appBar: AppBar(
-          title: const Text("Ouma's Delicacy"),
-          backgroundColor: AppColors.primary,
-          elevation: 4,
-          automaticallyImplyLeading: false,
-          titleTextStyle: const TextStyle(color: AppColors.white, fontSize: 18, fontWeight: FontWeight.bold),
-          actions: [
-            // ADDED: Refresh button
-            IconButton(
-              icon: menuProvider.isLoading 
-                  ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                    ),
-                  )
-                  : const Icon(Icons.refresh),
-              tooltip: 'Refresh Menu',
-              onPressed: menuProvider.isLoading ? null : () => menuProvider.refreshMenuItems(),
-            ),
-            IconButton(
-              icon: const Icon(Icons.close),
-              tooltip: 'Close App',
-              onPressed: () {
-                SystemNavigator.pop();
-              },
-            ),
-          ],
-        ),
+        appBar: _buildAppBar(context, menuProvider),
         body: Center(
           child: Padding(
             padding: const EdgeInsets.all(24.0),
@@ -328,41 +275,10 @@ class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin 
       );
     }
     
-    // ADDED: Show empty state
     if (meals.isEmpty) {
       return Scaffold(
         backgroundColor: AppColors.background,
-        appBar: AppBar(
-          title: const Text("Ouma's Delicacy"),
-          backgroundColor: AppColors.primary,
-          elevation: 4,
-          automaticallyImplyLeading: false,
-          titleTextStyle: const TextStyle(color: AppColors.white, fontSize: 18, fontWeight: FontWeight.bold),
-          actions: [
-            // ADDED: Refresh button
-            IconButton(
-              icon: menuProvider.isLoading 
-                  ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                    ),
-                  )
-                  : const Icon(Icons.refresh),
-              tooltip: 'Refresh Menu',
-              onPressed: menuProvider.isLoading ? null : () => menuProvider.refreshMenuItems(),
-            ),
-            IconButton(
-              icon: const Icon(Icons.close),
-              tooltip: 'Close App',
-              onPressed: () {
-                SystemNavigator.pop();
-              },
-            ),
-          ],
-        ),
+        appBar: _buildAppBar(context, menuProvider),
         body: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -394,6 +310,7 @@ class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin 
       );
     }
     
+    // --- MAIN CONTENT LOGIC ---
     final cats = ['All', ...meals.map((e) => e.category).toSet()];
     final filtered = meals.where((m) {
       final t = m.title.toLowerCase();
@@ -406,42 +323,51 @@ class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin 
 
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: AppBar(
-        title: const Text("Ouma's Delicacy"),
-        backgroundColor: AppColors.primary,
-        elevation: 4,
-        automaticallyImplyLeading: false,
-        titleTextStyle: const TextStyle(color: AppColors.white, fontSize: 18, fontWeight: FontWeight.bold),
-        actions: [
-          // ADDED: Refresh button
-          IconButton(
-            icon: menuProvider.isLoading 
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                    ),
-                  )
-                : const Icon(Icons.refresh, color: Colors.white),
-            tooltip: 'Refresh Menu',
-            onPressed: menuProvider.isLoading ? null : () => menuProvider.refreshMenuItems(),
-          ),
-          IconButton(
-            icon: const Icon(Icons.close, color: Colors.white),
-            tooltip: 'Close App',
-            onPressed: () {
-              SystemNavigator.pop();
-            },
-          ),
-        ],
-      ),
+      appBar: _buildAppBar(context, menuProvider),
       body: SafeArea(
         child: LayoutBuilder(
           builder: (context, constraints) {
             return Column(
               children: [
+                // Offline/Limited Connectivity Banner
+                if (menuProvider.error != null && menuProvider.error!.contains('cached'))
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    color: Colors.orange.shade100,
+                    child: Row(
+                      children: [
+                        Icon(Icons.cloud_off, color: Colors.orange.shade800, size: 16),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            menuProvider.error!,
+                            style: TextStyle(
+                              color: Colors.orange.shade900,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: () => menuProvider.refreshMenuItems(),
+                          style: TextButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            minimumSize: const Size(0, 0),
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
+                          child: Text(
+                            'Retry',
+                            style: TextStyle(
+                              color: Colors.orange.shade900,
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 // Search bar
                 Padding(
                   padding: EdgeInsets.fromLTRB(16, isLandscape ? 8 : 12, 16, 8),
@@ -478,7 +404,8 @@ class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin 
                     ),
                   ),
                 ),
-                // FIXED: Carousel with time-based meal selection
+                
+                // Carousel with time-based meal selection
                 Builder(builder: (context) {
                   final now = DateTime.now().hour;
                   final closed = now < 7 || now >= 21;
@@ -486,10 +413,8 @@ class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin 
                   if (closed) {
                     return _closedCard();
                   } else {
-                    // FIXED: Get time-appropriate meals (now returns MenuItem objects)
                     final carouselMeals = _getTimeBasedMeals(meals, now);
                     
-                    // FIXED: Check if we have meals to show
                     if (carouselMeals.isEmpty) {
                       return Container(
                         margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -505,7 +430,7 @@ class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin 
                             const SizedBox(width: 12),
                             Expanded(
                               child: Text(
-                                'No meals available at this time. Check back soon!',
+                                'No featured meals available at this time.',
                                 style: TextStyle(
                                   color: AppColors.darkText.withOpacity(0.7),
                                 ),
@@ -520,18 +445,19 @@ class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin 
                       Carousel(
                         height: isLandscape ? 120 : 150,
                         interval: const Duration(seconds: 4),
-                        children: carouselMeals.take(4).map((m) => _carouselCard(context, m, now)).toList(),
+                        children: carouselMeals.map((m) => _carouselCard(context, m, now)).toList(),
                       ),
                       SizedBox(height: isLandscape ? 8 : 12),
                     ]);
                   }
                 }),
+                
                 // Category tabs
-                if (_tabController != null) // FIXED: Only show when initialized
+                if (_tabController != null) 
                   Container(
                     color: AppColors.white,
                     child: TabBar(
-                      controller: _tabController!,
+                      controller: _tabController!, 
                       isScrollable: true,
                       indicatorColor: AppColors.primary,
                       labelColor: AppColors.primary,
@@ -540,78 +466,82 @@ class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin 
                       labelStyle: const TextStyle(fontWeight: FontWeight.bold),
                       unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.normal),
                       tabs: cats.map((c) => Tab(text: c)).toList(),
-                      onTap: (i) => setState(() => _tabIndex = i),
+                      onTap: (i) => setState(() {
+                          _tabIndex = i; 
+                          _tabController!.index = i; 
+                      }),
                     ),
                   ),
+                
                 // Grid section
                 Expanded(
-                  child: _tabController == null // FIXED: Show loading until initialized
+                  child: _tabController == null
                       ? const Center(child: CircularProgressIndicator())
                       : TabBarView(
-                          controller: _tabController!,
-                          children: cats.asMap().entries.map((e) {
-                      final list = e.key == 0 ? filtered : filtered.where((m) => m.category == cats[e.key]).toList();
-                      if (list.isEmpty) {
-                        return Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                Icons.fastfood,
-                                size: 80,
-                                color: AppColors.darkText.withOpacity(0.3),
+                            controller: _tabController!, 
+                            children: cats.asMap().entries.map((e) {
+                          final list = e.key == 0 ? filtered : filtered.where((m) => m.category == cats[e.key]).toList();
+                          if (list.isEmpty) {
+                            return Center(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    Icons.fastfood,
+                                    size: 80,
+                                    color: AppColors.darkText.withOpacity(0.3),
+                                  ),
+                                  const SizedBox(height: 16),
+                                  Text(
+                                    'No Meals Found',
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                      color: AppColors.darkText.withOpacity(0.5),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    _search.isEmpty 
+                                      ? 'No meals in this category'
+                                      : 'Try adjusting your search',
+                                    style: TextStyle(
+                                      color: AppColors.darkText.withOpacity(0.4),
+                                    ),
+                                  ),
+                                ],
                               ),
-                              const SizedBox(height: 16),
-                              Text(
-                                'No Meals Found',
-                                style: TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                  color: AppColors.darkText.withOpacity(0.5),
+                            );
+                          }
+                          return LayoutBuilder(
+                            builder: (context, gridConstraints) {
+                              return SingleChildScrollView(
+                                controller: _controller(e.key),
+                                physics: const AlwaysScrollableScrollPhysics(),
+                                padding: EdgeInsets.fromLTRB(16, isLandscape ? 8 : 16, 16, 16),
+                                child: ConstrainedBox(
+                                  constraints: BoxConstraints(
+                                    minHeight: gridConstraints.maxHeight,
+                                  ),
+                                  child: GridView.builder(
+                                    shrinkWrap: true,
+                                    physics: const NeverScrollableScrollPhysics(),
+                                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                                      crossAxisCount: ResponsiveHelper.getGridCrossAxisCount(context),
+                                      childAspectRatio: ResponsiveHelper.getGridChildAspectRatio(context),
+                                      crossAxisSpacing: 12,
+                                      mainAxisSpacing: 12,
+                                    ),
+                                    itemCount: list.length,
+                                    itemBuilder: (_, i) => _RiderStyleMealCard(meal: list[i]),
+                                  ),
                                 ),
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                _search.isEmpty 
-                                  ? 'No meals in this category'
-                                  : 'Try adjusting your search',
-                                style: TextStyle(
-                                  color: AppColors.darkText.withOpacity(0.4),
-                                ),
-                              ),
-                            ],
-                          ),
-                        );
-                      }
-                      return LayoutBuilder(
-                        builder: (context, gridConstraints) {
-                          return SingleChildScrollView(
-                            controller: _controller(e.key),
-                            physics: const AlwaysScrollableScrollPhysics(),
-                            padding: EdgeInsets.fromLTRB(16, isLandscape ? 8 : 16, 16, 16),
-                            child: ConstrainedBox(
-                              constraints: BoxConstraints(
-                                minHeight: gridConstraints.maxHeight,
-                              ),
-                              child: GridView.builder(
-                                shrinkWrap: true,
-                                physics: const NeverScrollableScrollPhysics(),
-                                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                                  crossAxisCount: ResponsiveHelper.getGridCrossAxisCount(context),
-                                  childAspectRatio: ResponsiveHelper.getGridChildAspectRatio(context),
-                                  crossAxisSpacing: 12,
-                                  mainAxisSpacing: 12,
-                                ),
-                                itemCount: list.length,
-                                itemBuilder: (_, i) => _RiderStyleMealCard(meal: list[i]),
-                              ),
-                            ),
+                              );
+                            },
                           );
-                        },
-                      );
-                    }).toList(),
-                  ), // TabBarView closing
-                ), // Expanded closing
+                        }).toList(),
+                      ),
+                ),
               ],
             );
           },
@@ -620,43 +550,98 @@ class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin 
     );
   }
 
-  // FIXED: Get time-based meals based on meal weight
+  PreferredSizeWidget _buildAppBar(BuildContext context, MenuProvider menuProvider) {
+    return AppBar(
+      title: const Text("Ouma's Delicacy"),
+      backgroundColor: AppColors.primary,
+      elevation: 4,
+      automaticallyImplyLeading: false,
+      titleTextStyle: const TextStyle(color: AppColors.white, fontSize: 18, fontWeight: FontWeight.bold),
+      actions: [
+        IconButton(
+          icon: menuProvider.isLoading 
+              ? const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                  ),
+                )
+              : const Icon(Icons.refresh, color: Colors.white),
+          tooltip: 'Refresh Menu',
+          onPressed: menuProvider.isLoading ? null : () => menuProvider.refreshMenuItems(),
+        ),
+        IconButton(
+          icon: const Icon(Icons.close, color: Colors.white),
+          tooltip: 'Close App',
+          onPressed: () {
+            SystemNavigator.pop();
+          },
+        ),
+      ],
+    );
+  }
+
+  // FIXED LOGIC: Get time-based meals based on meal weight
   List<MenuItem> _getTimeBasedMeals(List<MenuItem> meals, int hour) {
-    String preferredWeight;
-    
-    if (hour >= 7 && hour < 10) {
+    // 1. Define preferred meal weights based on time of day
+    final String preferredWeight;
+    final List<String> fallbackWeights; 
+
+    if (hour >= 7 && hour < 10) { // 7:00 AM - 9:59 AM (Breakfast)
       preferredWeight = 'Light';
-    } else if (hour >= 10 && hour < 12) {
+      fallbackWeights = ['Medium', 'Heavy'];
+    } else if (hour >= 10 && hour < 12) { // 10:00 AM - 11:59 AM (Brunch)
       preferredWeight = 'Medium';
-    } else if (hour >= 12 && hour < 16) {
+      fallbackWeights = ['Light', 'Heavy'];
+    } else if (hour >= 12 && hour < 16) { // 12:00 PM - 3:59 PM (Lunch)
       preferredWeight = 'Heavy';
-    } else {
+      fallbackWeights = ['Medium', 'Light'];
+    } else { // 4:00 PM - 8:59 PM (Dinner/Evening)
       preferredWeight = 'Heavy';
+      fallbackWeights = ['Medium', 'Light'];
     }
     
     final menuProvider = context.read<MenuProvider>();
     
-    // FIXED: Filter meals by preferred weight and availability
-    final preferredMeals = meals.where((m) => 
-      (m.mealWeight.name == preferredWeight) && menuProvider.isItemAvailable(m.title)
-    ).toList();
+    // 2. Filter available meals (must be in stock)
+    final availableMeals = meals.where((m) => menuProvider.isItemAvailable(m.title)).toList();
     
-    if (preferredMeals.length >= 4) {
-      preferredMeals.shuffle();
-      return preferredMeals;
+    // 3. Build prioritized lists
+    final List<MenuItem> carouselMeals = [];
+    
+    // Add preferred weight meals
+    final preferredList = availableMeals
+        .where((m) => m.mealWeight.name == preferredWeight)
+        .toList();
+    
+    preferredList.shuffle();
+    carouselMeals.addAll(preferredList);
+    
+    // Add fallback weights in order if the list is still short (max 4 needed)
+    if (carouselMeals.length < 4) {
+      for (final weight in fallbackWeights) {
+        if (carouselMeals.length >= 4) break;
+        
+        final fallbackList = availableMeals
+            .where((m) => 
+                m.mealWeight.name == weight && 
+                !carouselMeals.contains(m) // Ensure no duplicates
+            )
+            .toList();
+        
+        fallbackList.shuffle();
+        // Add only enough to reach 4 items total
+        carouselMeals.addAll(fallbackList.take(4 - carouselMeals.length));
+      }
     }
     
-    // Mix with other available meals if not enough preferred ones
-    final otherMeals = meals.where((m) => 
-      (m.mealWeight.name != preferredWeight) && menuProvider.isItemAvailable(m.title)
-    ).toList();
-    
-    final combined = [...preferredMeals, ...otherMeals];
-    combined.shuffle();
-    return combined.take(4).toList(); // ✅ Ensure maximum of 4 items are returned
+    // Ensure we only return a maximum of 4 items.
+    return carouselMeals.take(4).toList(); 
   }
 
-  // ADDED: Get meal period name
+  // Get meal period name
   String _getMealPeriodName(int hour) {
     if (hour >= 7 && hour < 10) {
       return 'Breakfast';
@@ -669,14 +654,14 @@ class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin 
     }
   }
 
-  // UPDATED: Carousel card with meal period name
-  Widget _carouselCard(BuildContext context, MenuItem m, int hour) { // FIXED: MenuItem type
+  // Carousel card with meal period name
+  Widget _carouselCard(BuildContext context, MenuItem m, int hour) { 
     final mealPeriod = _getMealPeriodName(hour);
     
     return GestureDetector(
       onTap: () => Navigator.push(
         context,
-        MaterialPageRoute(builder: (_) => MealDetailScreen(meal: m)), // Already correct
+        MaterialPageRoute(builder: (_) => MealDetailScreen(meal: m)), 
       ),
       child: Container(
         margin: const EdgeInsets.symmetric(horizontal: 8),
@@ -709,7 +694,7 @@ class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin 
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        // UPDATED: Show meal period instead of "Special Offer"
+                        // Show meal period instead of "Special Offer"
                         Row(
                           children: [
                             Icon(
@@ -730,7 +715,7 @@ class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin 
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          m.title, // FIXED: Use m.title
+                          m.title, 
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
@@ -741,7 +726,7 @@ class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin 
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          'Ksh ${m.price}', // FIXED: Use m.price
+                          'Ksh ${m.price}', 
                           style: TextStyle(
                             color: AppColors.white.withOpacity(0.9),
                             fontSize: 14,
@@ -761,7 +746,7 @@ class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin 
     );
   }
 
-  // ADDED: Get icon for meal period
+  // Get icon for meal period
   IconData _getMealPeriodIcon(int hour) {
     if (hour >= 7 && hour < 10) {
       return Icons.free_breakfast;
@@ -774,9 +759,9 @@ class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin 
     }
   }
 
-  // UPDATED: Circular plate widget
-  Widget _circularPlate(BuildContext context, MenuItem m) { // FIXED: MenuItem type
-    final imageValue = m.imageUrl; // FIXED: Use m.imageUrl
+  // Circular plate widget
+  Widget _circularPlate(BuildContext context, MenuItem m) { 
+    final imageValue = m.imageUrl; 
     
     return Material(
       elevation: 6,
@@ -794,8 +779,8 @@ class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin 
     );
   }
 
-  // UPDATED: Build image helper
-  Widget _buildImage(String? imageValue, double iconSize) { // FIXED: String? type
+  // Build image helper
+  Widget _buildImage(String? imageValue, double iconSize) { 
     if (imageValue == null) {
       return Icon(Icons.fastfood, size: iconSize, color: AppColors.primary);
     }
@@ -815,7 +800,7 @@ class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin 
     );
   }
 
-  // ADDED: Floating dots animation for carousel
+  // Floating dots animation for carousel background
   Widget _floatingDots() {
     return const Positioned.fill(
       child: Stack(
@@ -829,7 +814,7 @@ class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin 
     );
   }
 
-  // ADDED: Closed card for when restaurant is closed
+  // Closed card for when restaurant is closed
   Widget _closedCard() {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -894,8 +879,6 @@ class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin 
       ),
     );
   }
-
-  // ...existing code...
 }
 
 // ----------  FLY TO CART ANIMATION  ----------
@@ -905,7 +888,7 @@ void _flyToCart(BuildContext context, GlobalKey cartKey, Widget flyingWidget, Vo
   final overlay = Overlay.of(context);
   final renderBox = context.findRenderObject() as RenderBox?;
   
-  // FIXED: Use GlobalKey to find cart icon directly
+  // Use GlobalKey to find cart icon directly
   final cartRenderBox = cartKey.currentContext?.findRenderObject() as RenderBox?;
   
   if (renderBox == null || cartRenderBox == null) {
@@ -1006,10 +989,10 @@ class _FlyingWidgetState extends State<_FlyingWidget>
 }
 
 /* ----------------------------------------------------------
-   UPDATED MEAL CARD
+   MEAL CARD
 ----------------------------------------------------------- */
 class _RiderStyleMealCard extends StatefulWidget {
-  final MenuItem meal; // FIXED: MenuItem type
+  final MenuItem meal; 
   const _RiderStyleMealCard({required this.meal});
 
   @override
@@ -1039,7 +1022,7 @@ class _RiderStyleMealCardState extends State<_RiderStyleMealCard>
 
     // Check availability
     final menuProvider = context.read<MenuProvider>();
-    final isAvailable = menuProvider.isItemAvailable(widget.meal.title); // FIXED
+    final isAvailable = menuProvider.isItemAvailable(widget.meal.title); 
     
     if (!isAvailable) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1049,7 +1032,7 @@ class _RiderStyleMealCardState extends State<_RiderStyleMealCard>
               const Icon(Icons.error, color: Colors.white),
               const SizedBox(width: 8),
               Expanded(
-                child: Text('${widget.meal.title} is currently out of stock'), // FIXED
+                child: Text('${widget.meal.title} is currently out of stock'), 
               ),
             ],
           ),
@@ -1074,16 +1057,16 @@ class _RiderStyleMealCardState extends State<_RiderStyleMealCard>
 
     final cart = context.read<CartProvider>();
     cart.addItem(CartItem(
-      id: '${widget.meal.title}_${DateTime.now().millisecondsSinceEpoch}', // FIXED
-      menuItemId: widget.meal.id ?? '', // UUID from database
-      mealTitle: widget.meal.title, // FIXED
-      price: widget.meal.price, // FIXED
+      id: '${widget.meal.title}_${DateTime.now().millisecondsSinceEpoch}', 
+      menuItemId: widget.meal.id ?? '', 
+      mealTitle: widget.meal.title, 
+      price: widget.meal.price, 
       quantity: addedQuantity,
-      mealImage: widget.meal.imageUrl ?? '', // FIXED
+      mealImage: widget.meal.imageUrl ?? '', 
     ));
 
-    // UPDATED: Build fly widget
-    final imageUrl = widget.meal.imageUrl; // FIXED
+    // Build fly widget
+    final imageUrl = widget.meal.imageUrl; 
     Widget flyWidget;
     
     if (imageUrl != null && imageUrl.startsWith('assets/')) {
@@ -1116,7 +1099,7 @@ class _RiderStyleMealCardState extends State<_RiderStyleMealCard>
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('$addedQuantity × ${widget.meal.title} added to cart'), // FIXED
+          content: Text('$addedQuantity × ${widget.meal.title} added to cart'), 
           backgroundColor: AppColors.primary,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           margin: const EdgeInsets.fromLTRB(16, 0, 16, 24),
@@ -1127,8 +1110,8 @@ class _RiderStyleMealCardState extends State<_RiderStyleMealCard>
     });
   }
 
-  // UPDATED: Build image widget
-  Widget _buildImageWidget(String? imageUrl) { // FIXED: String? type
+  // Build image widget helper
+  Widget _buildImageWidget(String? imageUrl) { 
     Widget errorWidget = const Icon(Icons.fastfood, size: 60, color: AppColors.primary);
     
     if (imageUrl == null) {
@@ -1221,7 +1204,7 @@ class _RiderStyleMealCardState extends State<_RiderStyleMealCard>
                 ],
               ),
             ),
-            // Reduced padding and spacing
+            // Content
             Padding(
               padding: EdgeInsets.all(isLandscape ? 6 : 10),
               child: Column(
@@ -1251,7 +1234,7 @@ class _RiderStyleMealCardState extends State<_RiderStyleMealCard>
                     ),
                   ),
                   const SizedBox(height: 6),
-                  // Reduced button heights and sizes
+                  // Quantity picker and Add to Cart button
                   Row(
                     children: [
                       Expanded(
