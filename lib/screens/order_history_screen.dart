@@ -285,29 +285,286 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> with SingleTick
               ),
             ],
             
-            // UPDATED: Action buttons (Reorder only for delivered orders)
-            if (order.status == OrderStatus.delivered) ...[
-              const SizedBox(height: 16),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: () => _reorderItems(order),
-                  icon: const Icon(Icons.replay, size: 18),
-                  label: const Text('Reorder'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primary,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
+            // UPDATED: Action buttons (Reorder and Receipt)
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () => _showPaymentReceipt(order),
+                    icon: const Icon(Icons.receipt_long, size: 18),
+                    label: const Text('Receipt'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppColors.primary,
+                      side: const BorderSide(color: AppColors.primary),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
                     ),
                   ),
                 ),
-              ),
-            ],
+                if (order.status == OrderStatus.delivered) ...[
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: () => _reorderItems(order),
+                      icon: const Icon(Icons.replay, size: 18),
+                      label: const Text('Reorder'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.primary,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
           ],
         ),
       ),
+    );
+  }
+
+  // Payment Receipt Dialog
+  void _showPaymentReceipt(Order order) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            const Icon(Icons.receipt_long, color: AppColors.primary),
+            const SizedBox(width: 8),
+            const Text('Payment Receipt'),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Container(
+            width: double.maxFinite,
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: AppColors.success.withOpacity(0.05),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppColors.success.withOpacity(0.3), width: 2),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Header
+                Center(
+                  child: Column(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: const BoxDecoration(
+                          color: AppColors.success,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.check_circle,
+                          color: Colors.white,
+                          size: 32,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      const Text(
+                        'Payment Successful',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.success,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      const Text(
+                        'Ouma\'s Delicacy',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: AppColors.darkText,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                
+                const Divider(height: 32, color: AppColors.success),
+                
+                // Receipt Details
+                _buildReceiptRow('Order Number', order.orderNumber),
+                const SizedBox(height: 12),
+                _buildReceiptRow('Date', '${order.date.day}/${order.date.month}/${order.date.year}'),
+                const SizedBox(height: 12),
+                _buildReceiptRow('Time', '${order.date.hour.toString().padLeft(2, '0')}:${order.date.minute.toString().padLeft(2, '0')}'),
+                const SizedBox(height: 12),
+                _buildReceiptRow('Payment Method', 'M-Pesa'),
+                const SizedBox(height: 12),
+                _buildReceiptRow('Delivery Type', order.deliveryType == DeliveryType.delivery ? 'Delivery' : 'Pickup'),
+                
+                const Divider(height: 32, color: AppColors.success),
+                
+                // Order Items
+                const Text(
+                  'Order Items',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                    color: AppColors.darkText,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                ...order.items.map((item) => Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          '${item.title} x${item.quantity}',
+                          style: const TextStyle(fontSize: 13),
+                        ),
+                      ),
+                      Text(
+                        'KSh ${(item.price * item.quantity).toStringAsFixed(2)}',
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                )),
+                
+                // Delivery Fee
+                if (order.deliveryType == DeliveryType.delivery) ...[
+                  const SizedBox(height: 8),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Delivery Fee',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: AppColors.darkText.withOpacity(0.7),
+                        ),
+                      ),
+                      Text(
+                        'KSh 100.00',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.darkText.withOpacity(0.7),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+                
+                const Divider(height: 24, color: AppColors.success),
+                
+                // Total
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'Total Amount',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.darkText,
+                      ),
+                    ),
+                    Text(
+                      'KSh ${order.totalAmount.toStringAsFixed(2)}',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.success,
+                      ),
+                    ),
+                  ],
+                ),
+                
+                const SizedBox(height: 24),
+                
+                // Status Badge
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: _getStatusColor(order.status),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Column(
+                    children: [
+                      Icon(_getStatusIcon(order.status), color: Colors.white, size: 28),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Status: ${_getStatusText(order.status)}',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
+                      ),
+                      if (order.status == OrderStatus.delivered) ...[
+                        const SizedBox(height: 4),
+                        const Text(
+                          'Thank you for your order!',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildReceiptRow(String label, String value) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 13,
+            color: Colors.grey,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        const SizedBox(width: 16),
+        Expanded(
+          child: Text(
+            value,
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.bold,
+              color: AppColors.darkText,
+            ),
+            textAlign: TextAlign.right,
+          ),
+        ),
+      ],
     );
   }
 

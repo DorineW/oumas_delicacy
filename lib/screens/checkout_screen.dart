@@ -15,6 +15,9 @@ import '../services/mpesa_service.dart'; // ADDED: M-Pesa service
 import '../providers/cart_provider.dart';
 import '../providers/menu_provider.dart';
 import '../providers/order_provider.dart';
+import '../providers/address_provider.dart';
+import '../providers/location_management_provider.dart';
+import '../models/user_address.dart';
 import '../constants/colors.dart';
 import 'location.dart'; // UPDATED: Use existing LocationScreen
 import '../providers/location_provider.dart'; // ADDED: Import LocationProvider (Removed duplicate import)
@@ -39,6 +42,7 @@ class CheckoutScreen extends StatefulWidget {
 class _CheckoutScreenState extends State<CheckoutScreen> {
   LatLng? _deliveryLatLng;
   int _deliveryFee = 0; // ADDED: Store dynamic delivery fee
+  String? _selectedAddressId; // ADDED: Track selected address ID
   bool _isLocationLoading = false;
   bool _isProcessing = false;
 
@@ -90,6 +94,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
     final messenger = ScaffoldMessenger.of(context);
     final locationProvider = context.read<LocationProvider>();
+    final locationManagementProvider = context.read<LocationManagementProvider>();
 
     try {
       final Position? pos = await LocationService.getCurrentLocation();
@@ -100,18 +105,66 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
         if (!mounted) return;
         
-        setState(() {
-          _deliveryLatLng = LatLng(pos.latitude, pos.longitude);
-          _deliveryAddressController.text = locationProvider.deliveryAddress ?? 'Location selected (details required)';
-          _deliveryFee = locationProvider.deliveryFee;
-        });
+        // Load locations if not loaded
+        if (locationManagementProvider.locations.isEmpty) {
+          await locationManagementProvider.loadLocations();
+        }
         
-        messenger.showSnackBar(
-          SnackBar(
-            content: Text('Location determined: ${locationProvider.deliveryAddress ?? 'Coordinates only'}'),
-            backgroundColor: AppColors.success,
-          ),
+        // Find nearest active location
+        final nearestLocation = locationManagementProvider.getNearestLocation(
+          pos.latitude, 
+          pos.longitude,
         );
+        
+        if (nearestLocation != null) {
+          // Calculate delivery details (temporary order amount for check)
+          final deliveryDetails = locationManagementProvider.calculateDeliveryDetails(
+            locationId: nearestLocation.id,
+            userLat: pos.latitude,
+            userLon: pos.longitude,
+            orderAmount: subtotalAmount,
+          );
+          
+          setState(() {
+            _deliveryLatLng = LatLng(pos.latitude, pos.longitude);
+            _deliveryAddressController.text = locationProvider.deliveryAddress ?? 'Location selected (details required)';
+            
+            if (deliveryDetails != null && deliveryDetails['canDeliver'] == true) {
+              _deliveryFee = deliveryDetails['fee'] as int;
+              debugPrint('📍 Delivery from: ${nearestLocation.name}, Fee: $_deliveryFee');
+            } else {
+              _deliveryFee = 0;
+              final reason = deliveryDetails?['reason'] ?? 'Cannot deliver';
+              debugPrint('⚠️ $reason');
+            }
+          });
+          
+          messenger.showSnackBar(
+            SnackBar(
+              content: Text(
+                deliveryDetails != null && deliveryDetails['canDeliver'] == true
+                    ? 'Location determined: ${locationProvider.deliveryAddress ?? 'Coordinates only'}'
+                    : 'Delivery not available: ${deliveryDetails?['reason'] ?? 'Unknown reason'}',
+              ),
+              backgroundColor: deliveryDetails != null && deliveryDetails['canDeliver'] == true 
+                  ? AppColors.success 
+                  : Colors.orange,
+            ),
+          );
+        } else {
+          setState(() {
+            _deliveryLatLng = LatLng(pos.latitude, pos.longitude);
+            _deliveryAddressController.text = locationProvider.deliveryAddress ?? 'Location selected (details required)';
+            _deliveryFee = 0;
+          });
+          
+          messenger.showSnackBar(
+            const SnackBar(
+              content: Text('No restaurant location serves your area'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
       } else {
         messenger.showSnackBar(
           const SnackBar(content: Text('Could not obtain current location or permissions denied.')),
@@ -190,9 +243,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     }
   }
 
-  // ADDED: Load default address from SharedPreferences
+  // Load default address from UserAddresses table
   Future<void> _loadDefaultAddress() async {
-    // ADDED: Load from Supabase currentUser FIRST
+    // Load user's phone number
     final auth = Provider.of<AuthService>(context, listen: false);
     final currentUser = auth.currentUser;
 
@@ -204,39 +257,66 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       });
     }
 
-    // Load addresses from SharedPreferences (these are user-specific)
-    final prefs = await SharedPreferences.getInstance();
-
-    final addresses = prefs.getStringList('addresses') ?? [];
-    final defaultIndex = prefs.getInt('defaultAddressIndex');
-
-    if (addresses.isNotEmpty && defaultIndex != null && defaultIndex < addresses.length) {
-      final defaultAddress = addresses[defaultIndex];
-
-      _deliveryAddressController.text = defaultAddress;
-
-      // UPDATED: Use LocationProvider to get coordinates
-      try {
-        final locationProvider = Provider.of<LocationProvider>(context, listen: false);
-        // Assuming searchAddress returns a list of results with 'lat' and 'lon' keys
-        final results = await locationProvider.searchAddress(defaultAddress);
-
-        if (results.isNotEmpty && mounted) {
-          final result = results[0];
-
-          // Use the correct argument types (double) for setLocation
-          await locationProvider.setLocation(result['lat'].toDouble(), result['lon'].toDouble());
-
-          setState(() {
-            _deliveryLatLng = LatLng(result['lat'].toDouble(), result['lon'].toDouble());
-            _deliveryFee = locationProvider.deliveryFee; // ADDED: Update fee on load
-          });
-
-          debugPrint('📍 Loaded default address: $defaultAddress with fee: $_deliveryFee');
+    // Load default address from UserAddresses table
+    try {
+      final addressProvider = Provider.of<AddressProvider>(context, listen: false);
+      await addressProvider.loadAddresses();
+      
+      final defaultAddress = addressProvider.addresses.where((addr) => addr.isDefault).firstOrNull;
+      
+      if (defaultAddress != null && mounted) {
+        setState(() {
+          _selectedAddressId = defaultAddress.id;
+          _deliveryLatLng = LatLng(defaultAddress.latitude, defaultAddress.longitude);
+          _deliveryAddressController.text = defaultAddress.displayAddress;
+        });
+        
+        // Use LocationManagementProvider to calculate delivery fee from nearest location
+        try {
+          final locationProvider = Provider.of<LocationProvider>(context, listen: false);
+          final locationManagementProvider = Provider.of<LocationManagementProvider>(context, listen: false);
+          
+          await locationProvider.setLocation(defaultAddress.latitude, defaultAddress.longitude);
+          
+          // Load locations if not loaded
+          if (locationManagementProvider.locations.isEmpty) {
+            await locationManagementProvider.loadLocations();
+          }
+          
+          // Find nearest active location
+          final nearestLocation = locationManagementProvider.getNearestLocation(
+            defaultAddress.latitude,
+            defaultAddress.longitude,
+          );
+          
+          if (nearestLocation != null) {
+            final deliveryDetails = locationManagementProvider.calculateDeliveryDetails(
+              locationId: nearestLocation.id,
+              userLat: defaultAddress.latitude,
+              userLon: defaultAddress.longitude,
+              orderAmount: subtotalAmount,
+            );
+            
+            setState(() {
+              if (deliveryDetails != null && deliveryDetails['canDeliver'] == true) {
+                _deliveryFee = deliveryDetails['fee'] as int;
+              } else {
+                _deliveryFee = 0;
+              }
+            });
+          } else {
+            setState(() => _deliveryFee = 0);
+          }
+          
+          debugPrint('📍 Loaded default address: ${defaultAddress.label} with fee: $_deliveryFee');
+        } catch (e) {
+          debugPrint('⚠️ Could not calculate delivery fee: $e');
         }
-      } catch (e) {
-        debugPrint('⚠️ Could not get coordinates/fee for default address: $e');
+      } else {
+        debugPrint('ℹ️ No default address found');
       }
+    } catch (e) {
+      debugPrint('⚠️ Error loading addresses: $e');
     }
   }
 
@@ -573,6 +653,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         'deliveryAddress': _deliveryAddressController.text.isNotEmpty
             ? {'address': _deliveryAddressController.text}
             : null,
+        'deliveryAddressId': _selectedAddressId, // ADDED: Link to UserAddresses table
       };
 
       // Normalize M-Pesa phone number using PhoneUtils

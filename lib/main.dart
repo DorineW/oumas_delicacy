@@ -30,7 +30,10 @@ import 'providers/notification_provider.dart';
 import 'providers/reviews_provider.dart'; // ADDED
 import 'providers/favorites_provider.dart'; // ADDED: Import
 import 'providers/location_provider.dart'; // ADDED: Import LocationProvider
+import 'providers/address_provider.dart'; // ADDED: Import AddressProvider for UserAddresses table
+import 'providers/location_management_provider.dart'; // ADDED: Import LocationManagementProvider
 import 'providers/connectivity_provider.dart'; // ADDED: Import ConnectivityProvider
+import 'providers/store_provider.dart'; // ADDED: Import StoreProvider
 import 'models/notification_model.dart';
 import 'models/cart_item.dart'; // ADDED
 import 'models/order.dart'; // ADDED for DeliveryType
@@ -151,6 +154,8 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         ChangeNotifierProvider(create: (_) => InventoryProvider()), // ADDED: Inventory provider
         ChangeNotifierProvider(create: (_) => NotificationProvider()),
         ChangeNotifierProvider(create: (_) => LocationProvider()), // ADDED: Register LocationProvider
+        ChangeNotifierProvider(create: (_) => AddressProvider()), // ADDED: Address provider for UserAddresses table
+        ChangeNotifierProvider(create: (_) => LocationManagementProvider()), // ADDED: Location management provider
         ChangeNotifierProxyProvider<NotificationProvider, OrderProvider>(
           create: (context) => OrderProvider(),
           update: (context, notifProvider, orderProvider) {
@@ -161,6 +166,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         ChangeNotifierProvider(create: (_) => RiderProvider()),
         ChangeNotifierProvider(create: (_) => ReviewsProvider()), // ADDED
         ChangeNotifierProvider(create: (_) => FavoritesProvider()), // ADDED: This line
+        ChangeNotifierProvider(create: (context) => StoreProvider(Supabase.instance.client)), // ADDED: StoreProvider
       ],
       child: const _AppContent(), // FIXED: Move MaterialApp to separate widget
     );

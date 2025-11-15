@@ -1034,13 +1034,28 @@ class _RecentOrderCard extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  'KES ${order.totalAmount}',
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.primary,
-                  ),
+                Row(
+                  children: [
+                    Text(
+                      'KES ${order.totalAmount}',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.primary,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    // Receipt button
+                    IconButton(
+                      onPressed: () => _showPaymentReceipt(context, order),
+                      icon: const Icon(Icons.receipt_long),
+                      iconSize: 20,
+                      color: AppColors.primary,
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                      tooltip: 'View Receipt',
+                    ),
+                  ],
                 ),
                 // Hide rate button if already rated
                 if (order.status == OrderStatus.delivered && !allItemsRated)
@@ -1097,6 +1112,208 @@ class _RecentOrderCard extends StatelessWidget {
     showDialog(
       context: context,
       builder: (context) => _RatingDialog(order: order),
+    );
+  }
+
+  void _showPaymentReceipt(BuildContext context, Order order) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            const Icon(Icons.receipt_long, color: AppColors.primary),
+            const SizedBox(width: 8),
+            const Text('Payment Receipt'),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Container(
+            width: double.maxFinite,
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: AppColors.success.withOpacity(0.05),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppColors.success.withOpacity(0.3), width: 2),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Center(
+                  child: Column(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: const BoxDecoration(
+                          color: AppColors.success,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.check_circle,
+                          color: Colors.white,
+                          size: 32,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      const Text(
+                        'Payment Successful',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.success,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      const Text(
+                        'Ouma\'s Delicacy',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: AppColors.darkText,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Divider(height: 32, color: AppColors.success),
+                _buildReceiptRow('Order Number', order.orderNumber),
+                const SizedBox(height: 12),
+                _buildReceiptRow('Date', '${order.date.day}/${order.date.month}/${order.date.year}'),
+                const SizedBox(height: 12),
+                _buildReceiptRow('Time', '${order.date.hour.toString().padLeft(2, '0')}:${order.date.minute.toString().padLeft(2, '0')}'),
+                const SizedBox(height: 12),
+                _buildReceiptRow('Payment Method', 'M-Pesa'),
+                const Divider(height: 32, color: AppColors.success),
+                const Text(
+                  'Order Items',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                    color: AppColors.darkText,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                ...order.items.map((item) => Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          '${item.title} x${item.quantity}',
+                          style: const TextStyle(fontSize: 13),
+                        ),
+                      ),
+                      Text(
+                        'KSh ${(item.price * item.quantity).toStringAsFixed(2)}',
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                )),
+                const Divider(height: 24, color: AppColors.success),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'Total Amount',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.darkText,
+                      ),
+                    ),
+                    Text(
+                      'KSh ${order.totalAmount.toStringAsFixed(2)}',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.success,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 24),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: _getStatusColor(order.status),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Column(
+                    children: [
+                      Icon(_getStatusIcon(order.status), color: Colors.white, size: 28),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Status: ${_getStatusText(order.status)}',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  IconData _getStatusIcon(OrderStatus status) {
+    switch (status) {
+      case OrderStatus.confirmed:
+        return Icons.check_circle;
+      case OrderStatus.preparing:
+        return Icons.restaurant;
+      case OrderStatus.outForDelivery:
+        return Icons.delivery_dining;
+      case OrderStatus.delivered:
+        return Icons.done_all;
+      case OrderStatus.cancelled:
+        return Icons.cancel;
+    }
+  }
+
+  Widget _buildReceiptRow(String label, String value) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 13,
+            color: Colors.grey,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        const SizedBox(width: 16),
+        Expanded(
+          child: Text(
+            value,
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.bold,
+              color: AppColors.darkText,
+            ),
+            textAlign: TextAlign.right,
+          ),
+        ),
+      ],
     );
   }
 }

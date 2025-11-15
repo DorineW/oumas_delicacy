@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../constants/colors.dart';
 import '../services/auth_service.dart';
+import '../providers/address_provider.dart';
 import 'home_screen.dart';
 import 'location.dart';
 
@@ -221,7 +222,20 @@ class _RegisterScreenState extends State<RegisterScreen> {
         if (!mounted) return;
         
         if (result != null) {
-          // Address selected successfully
+          // Save address to UserAddresses table
+          final addressProvider = Provider.of<AddressProvider>(context, listen: false);
+          final address = result['address'] as String;
+          final lat = result['latitude'] as double;
+          final lng = result['longitude'] as double;
+          
+          await addressProvider.addAddress(
+            label: 'Home', // Default label for first address
+            latitude: lat,
+            longitude: lng,
+            descriptiveDirections: address,
+            setAsDefault: true,
+          );
+          
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: const Row(

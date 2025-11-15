@@ -36,7 +36,7 @@ class _AuthWrapperState extends State<AuthWrapper> {
   @override
   void initState() {
     super.initState();
-    _checkOnboardingStatus();
+    _initializeAuth();
   }
 
   @override
@@ -46,21 +46,9 @@ class _AuthWrapperState extends State<AuthWrapper> {
   }
 
   /// Check if user has seen onboarding before
-  Future<void> _checkOnboardingStatus() async {
+  Future<bool> _checkOnboardingStatus() async {
     final prefs = await SharedPreferences.getInstance();
-    final hasSeenOnboarding = prefs.getBool('has_seen_onboarding') ?? false;
-    
-    if (mounted) {
-      setState(() {
-        _hasSeenOnboarding = hasSeenOnboarding;
-        _checkingOnboarding = false;
-      });
-      
-      // If user has seen onboarding, proceed to auth check
-      if (hasSeenOnboarding) {
-        _initializeAuth();
-      }
-    }
+    return prefs.getBool('has_seen_onboarding') ?? false;
   }
 
   /// Mark onboarding as completed
@@ -92,6 +80,9 @@ class _AuthWrapperState extends State<AuthWrapper> {
   /// Initialize authentication state and listen for changes
   /// Quick check with background data loading
   Future<void> _initializeAuth() async {
+    // Check onboarding status first
+    final hasSeenOnboarding = await _checkOnboardingStatus();
+    
     final auth = context.read<app.AuthService>();
     final session = Supabase.instance.client.auth.currentSession;
     
@@ -118,6 +109,8 @@ class _AuthWrapperState extends State<AuthWrapper> {
         setState(() {
           // Session is non-null in this branch, so user is authenticated
           _isAuthenticated = true;
+          _hasSeenOnboarding = hasSeenOnboarding;
+          _checkingOnboarding = false;
           _isInitializing = false;
         });
         
@@ -136,6 +129,7 @@ class _AuthWrapperState extends State<AuthWrapper> {
       if (mounted) {
         setState(() {
           _isAuthenticated = false;
+          _checkingOnboarding = false;
           _isInitializing = false;
         });
       }
@@ -216,24 +210,8 @@ class _AuthWrapperState extends State<AuthWrapper> {
       );
     }
 
-    // 1. ONBOARDING CHECK: Show onboarding if not seen yet
-    if (_checkingOnboarding) {
-      return Scaffold(
-        backgroundColor: AppColors.background,
-        body: const Center(
-          child: CircularProgressIndicator(color: AppColors.primary),
-        ),
-      );
-    }
-
-    if (!_hasSeenOnboarding) {
-      return OnboardingPage(
-        onFinish: _completeOnboarding,
-      );
-    }
-
-    // 2. BRANDED LOADING STATE: Show while initializing or checking session
-    if (_isInitializing || auth.isLoading) {
+    // 1. BRANDED LOADING STATE: Show while initializing or checking session
+    if (_isInitializing || auth.isLoading || _checkingOnboarding) {
       return Scaffold(
         backgroundColor: AppColors.background,
         body: Center(
@@ -278,13 +256,20 @@ class _AuthWrapperState extends State<AuthWrapper> {
       );
     }
     
-    // 3. UNAUTHENTICATED STATE: No user found or session expired
+    // 2. UNAUTHENTICATED STATE: No user found or session expired
     if (!_isAuthenticated || auth.currentUser == null) {
       debugPrint('🔓 AuthWrapper: No authenticated user, showing LoginScreen.');
       return const LoginScreen();
     }
     
-    // 4. AUTHENTICATED STATE: User found, route based on role
+    // 3. ONBOARDING CHECK: Show onboarding if authenticated but haven't seen it yet
+    if (!_hasSeenOnboarding) {
+      return OnboardingPage(
+        onFinish: _completeOnboarding,
+      );
+    }
+    
+    // 4. AUTHENTICATED STATE: User found and has seen onboarding, route based on role
     final userRole = auth.currentUser!.role;
     final userName = auth.currentUser!.name;
     debugPrint('✅ AuthWrapper: Authenticated user "$userName" with role: $userRole');

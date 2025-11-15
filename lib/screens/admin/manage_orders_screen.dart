@@ -75,6 +75,7 @@ class _ManageOrdersScreenState extends State<ManageOrdersScreen>
     var filtered = orders.where((order) {
       final matchesSearch = _searchQuery.isEmpty ||
           order.id.toLowerCase().contains(_searchQuery.toLowerCase()) ||
+          (order.shortId?.toLowerCase().contains(_searchQuery.toLowerCase()) ?? false) ||
           order.customerName.toLowerCase().contains(_searchQuery.toLowerCase()) ||
           order.items.any((item) => item.title.toLowerCase().contains(_searchQuery.toLowerCase()));
 
@@ -528,7 +529,7 @@ class _AdminOrderCardState extends State<AdminOrderCard>
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              widget.order.id,
+                              'Order #${widget.order.orderNumber}',
                               style: const TextStyle(
                                 fontWeight: FontWeight.bold,
                                 fontSize: 14,
@@ -646,7 +647,7 @@ class _AdminOrderCardState extends State<AdminOrderCard>
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('Order ${widget.order.id}'),
+        title: Text('Order #${widget.order.orderNumber}'),
         content: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -720,6 +721,24 @@ class _AdminOrderCardState extends State<AdminOrderCard>
                 if (widget.order.riderId != null)
                   _buildDetailRow('Rider', widget.order.riderName ?? 'Unknown'),
               ],
+              
+              // Payment Receipt Button
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () {
+                    Navigator.pop(context);
+                    _showPaymentReceiptDialog(context, widget.order);
+                  },
+                  icon: const Icon(Icons.receipt_long),
+                  label: const Text('View Payment Receipt'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.primary,
+                    side: const BorderSide(color: AppColors.primary),
+                  ),
+                ),
+              ),
             ],
           ),
         ),
@@ -1109,7 +1128,7 @@ class _AdminOrderCardState extends State<AdminOrderCard>
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            'Order ${order.id}',
+                            'Order #${order.orderNumber}',
                             style: const TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w600,
@@ -1234,7 +1253,7 @@ class _AdminOrderCardState extends State<AdminOrderCard>
                           const Icon(Icons.check_circle, color: Colors.white),
                           const SizedBox(width: 12),
                           Expanded(
-                            child: Text('Order ${order.id} cancelled: $reason'),
+                            child: Text('Order #${order.orderNumber} cancelled: $reason'),
                           ),
                         ],
                       ),
@@ -1256,6 +1275,210 @@ class _AdminOrderCardState extends State<AdminOrderCard>
         },
       ),
     ).then((_) => customController.dispose());
+  }
+
+  // Payment Receipt Dialog
+  void _showPaymentReceiptDialog(BuildContext context, Order order) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            const Icon(Icons.receipt_long, color: AppColors.primary),
+            const SizedBox(width: 12),
+            const Text('Payment Receipt'),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Container(
+            width: double.maxFinite,
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: AppColors.success.withOpacity(0.05),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppColors.success.withOpacity(0.3), width: 2),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Header
+                Center(
+                  child: Column(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: AppColors.success,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.check_circle,
+                          color: Colors.white,
+                          size: 32,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      const Text(
+                        'Payment Successful',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.success,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                
+                const Divider(height: 32, color: AppColors.success),
+                
+                // Receipt Details
+                _buildReceiptRow('Order Number', order.orderNumber),
+                const SizedBox(height: 12),
+                _buildReceiptRow('Customer', order.customerName),
+                const SizedBox(height: 12),
+                _buildReceiptRow('Date', '${order.date.day}/${order.date.month}/${order.date.year}'),
+                const SizedBox(height: 12),
+                _buildReceiptRow('Time', '${order.date.hour.toString().padLeft(2, '0')}:${order.date.minute.toString().padLeft(2, '0')}'),
+                const SizedBox(height: 12),
+                _buildReceiptRow('Payment Method', 'M-Pesa'),
+                
+                const Divider(height: 32, color: AppColors.success),
+                
+                // Order Items
+                const Text(
+                  'Order Items',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                    color: AppColors.darkText,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                ...order.items.map((item) => Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          '${item.title} x${item.quantity}',
+                          style: const TextStyle(fontSize: 13),
+                        ),
+                      ),
+                      Text(
+                        'KSh ${(item.price * item.quantity).toStringAsFixed(2)}',
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                )),
+                
+                const Divider(height: 24, color: AppColors.success),
+                
+                // Total
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'Total Amount',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.darkText,
+                      ),
+                    ),
+                    Text(
+                      'KSh ${order.totalAmount.toStringAsFixed(2)}',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.success,
+                      ),
+                    ),
+                  ],
+                ),
+                
+                const SizedBox(height: 24),
+                
+                // Status Badge
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppColors.success,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Column(
+                    children: [
+                      const Icon(Icons.verified, color: Colors.white, size: 28),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Status: ${_getStatusText(order.status)}',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
+                      ),
+                      if (order.status == OrderStatus.delivered) ...[
+                        const SizedBox(height: 4),
+                        const Text(
+                          'Order completed successfully',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildReceiptRow(String label, String value) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 13,
+            color: Colors.grey,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        const SizedBox(width: 16),
+        Expanded(
+          child: Text(
+            value,
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.bold,
+              color: AppColors.darkText,
+            ),
+            textAlign: TextAlign.right,
+          ),
+        ),
+      ],
+    );
   }
 
   Widget _buildDetailRow(String label, String value, {bool isBold = false}) {

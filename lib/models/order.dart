@@ -59,6 +59,7 @@ class OrderItem {
 
 class Order {
   final String id;
+  final String? shortId; // Human-readable order ID
   final String customerId; // maps to user_auth_id
   final String customerName; // NOT in DB, will be fetched from users table
   final String? deliveryPhone;
@@ -79,6 +80,7 @@ class Order {
 
   Order({
     required this.id,
+    this.shortId,
     required this.customerId,
     this.customerName = 'Guest', // Default value since not in DB
     this.deliveryPhone,
@@ -100,6 +102,7 @@ class Order {
 
   Order copyWith({
     String? id,
+    String? shortId,
     String? customerId,
     String? customerName,
     String? deliveryPhone,
@@ -119,6 +122,7 @@ class Order {
   }) {
     return Order(
       id: id ?? this.id,
+      shortId: shortId ?? this.shortId,
       customerId: customerId ?? this.customerId,
       customerName: customerName ?? this.customerName,
       deliveryPhone: deliveryPhone ?? this.deliveryPhone,
@@ -138,16 +142,17 @@ class Order {
     );
   }
 
-  // Generate a short, user-friendly order number from UUID
+  // Get the human-readable order number
   String get orderNumber {
-    // Take first 8 characters of UUID and convert to uppercase
-    return id.substring(0, 8).toUpperCase();
+    // Use short_id if available, otherwise fall back to UUID substring
+    return shortId ?? id.substring(0, 8).toUpperCase();
   }
 
   // UPDATED: Match database schema exactly
   factory Order.fromJson(Map<String, dynamic> json) {
     return Order(
       id: json['id'] as String,
+      shortId: json['short_id'] as String?,
       customerId: json['user_auth_id'] as String,
       customerName: json['customer_name'] as String? ?? 'Guest',
       deliveryPhone: json['delivery_phone'] as String?,

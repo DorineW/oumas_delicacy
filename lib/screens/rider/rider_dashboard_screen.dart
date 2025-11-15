@@ -484,7 +484,7 @@ class _OrderCard extends StatelessWidget {
                 color: AppColors.darkText.withOpacity(0.7),
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 12),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -496,14 +496,34 @@ class _OrderCard extends StatelessWidget {
                     color: AppColors.primary,
                   ),
                 ),
-                ElevatedButton.icon(
-                  onPressed: () => _markAsDelivered(context, order),
-                  icon: const Icon(Icons.check_circle_outline, size: 18),
-                  label: const Text('Mark as Delivered'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.success,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () => _showPaymentReceipt(context, order),
+                    icon: const Icon(Icons.receipt_long, size: 18),
+                    label: const Text('Receipt'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppColors.primary,
+                      side: const BorderSide(color: AppColors.primary),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () => _markAsDelivered(context, order),
+                    icon: const Icon(Icons.check_circle_outline, size: 18),
+                    label: const Text('Delivered'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.success,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
                   ),
                 ),
               ],
@@ -511,6 +531,164 @@ class _OrderCard extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+
+  // Payment Receipt Dialog
+  void _showPaymentReceipt(BuildContext context, Order order) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            const Icon(Icons.receipt_long, color: AppColors.primary),
+            const SizedBox(width: 8),
+            const Text('Payment Receipt'),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Container(
+            width: double.maxFinite,
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: AppColors.success.withOpacity(0.05),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppColors.success.withOpacity(0.3), width: 2),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Center(
+                  child: Column(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: const BoxDecoration(
+                          color: AppColors.success,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.check_circle,
+                          color: Colors.white,
+                          size: 32,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      const Text(
+                        'Payment Successful',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.success,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Divider(height: 32, color: AppColors.success),
+                _buildReceiptRow('Order Number', order.orderNumber),
+                const SizedBox(height: 12),
+                _buildReceiptRow('Customer', order.customerName),
+                const SizedBox(height: 12),
+                _buildReceiptRow('Date', '${order.date.day}/${order.date.month}/${order.date.year}'),
+                const SizedBox(height: 12),
+                _buildReceiptRow('Time', '${order.date.hour.toString().padLeft(2, '0')}:${order.date.minute.toString().padLeft(2, '0')}'),
+                const SizedBox(height: 12),
+                _buildReceiptRow('Payment Method', 'M-Pesa'),
+                const Divider(height: 32, color: AppColors.success),
+                const Text(
+                  'Order Items',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                    color: AppColors.darkText,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                ...order.items.map((item) => Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          '${item.title} x${item.quantity}',
+                          style: const TextStyle(fontSize: 13),
+                        ),
+                      ),
+                      Text(
+                        'KSh ${(item.price * item.quantity).toStringAsFixed(2)}',
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                )),
+                const Divider(height: 24, color: AppColors.success),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'Total Amount',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.darkText,
+                      ),
+                    ),
+                    Text(
+                      'KSh ${order.totalAmount.toStringAsFixed(2)}',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.success,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildReceiptRow(String label, String value) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 13,
+            color: Colors.grey,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        const SizedBox(width: 16),
+        Expanded(
+          child: Text(
+            value,
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.bold,
+              color: AppColors.darkText,
+            ),
+            textAlign: TextAlign.right,
+          ),
+        ),
+      ],
     );
   }
 
@@ -619,7 +797,7 @@ class _OrderCard extends StatelessWidget {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Confirm Delivery'),
-        content: Text('Mark order #${order.id} as delivered?'),
+        content: Text('Mark order #${order.orderNumber} as delivered?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),

@@ -21,7 +21,11 @@ import 'reports_screen.dart';
 import 'inventory_screen.dart';
 import 'admin_menu_management_screen.dart';
 import 'admin_chat_list_screen.dart';
+import 'admin_store_management_screen.dart';
+import 'admin_location_management_screen.dart';
+import 'admin_inventory_management_screen.dart';
 import '../../providers/menu_provider.dart';
+import '../../providers/store_provider.dart';
 import '../../services/chat_service.dart';
 
 /// Models
@@ -49,6 +53,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     // Load revenue data (orders already loaded at login)
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadTodayRevenue(); // Load revenue from view
+      // Load store items for the count display
+      context.read<StoreProvider>().loadStoreItems();
     });
   }
 
@@ -964,6 +970,33 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                     MaterialPageRoute(builder: (_) => const AdminMenuManagementScreen()),
                   ),
                 ),
+                Consumer<StoreProvider>(
+                  builder: (context, storeProvider, _) => _AdminCard(
+                    title: "Store",
+                    icon: Icons.store,
+                    count: storeProvider.storeItems.length,
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const AdminStoreManagementScreen()),
+                    ),
+                  ),
+                ),
+                _AdminCard(
+                  title: "Locations",
+                  icon: Icons.location_on,
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const AdminLocationManagementScreen()),
+                  ),
+                ),
+                _AdminCard(
+                  title: "Inventory",
+                  icon: Icons.inventory_2,
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const AdminInventoryManagementScreen()),
+                  ),
+                ),
                 _AdminCard(
                   title: "Reports", 
                   icon: Icons.bar_chart,
@@ -1135,6 +1168,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                         () => _openDrawerTo(context, const ManageOrdersScreen())),
                     _drawerItem(Icons.menu_book, 'Menu Management',
                         () => _openDrawerTo(context, const AdminMenuManagementScreen())),
+                    _drawerItem(Icons.location_on, 'Location Management',
+                        () => _openDrawerTo(context, const AdminLocationManagementScreen())),
+                    _drawerItem(Icons.inventory_2, 'Multi-Location Inventory',
+                        () => _openDrawerTo(context, const AdminInventoryManagementScreen())),
                     _drawerItem(Icons.people, 'Manage Users',
                         () => _openDrawerTo(context, const ManageUsersScreen())),
                     _supportChatsDrawerItem(context),
@@ -1347,7 +1384,7 @@ class _NotificationOrderCard extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  'Order #${order.id}',
+                  'Order #${order.orderNumber}',
                   style: const TextStyle(
                     fontWeight: FontWeight.bold,
                     fontSize: 16,

@@ -64,8 +64,8 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
       LatLng initialPoint;
       if (widget.initialPosition != null) {
         initialPoint = LatLng(
-          widget.initialPosition!['latitude'] ?? LocationProvider.defaultLatitude,
-          widget.initialPosition!['longitude'] ?? LocationProvider.defaultLongitude,
+          widget.initialPosition!['latitude'] ?? -1.303960,
+          widget.initialPosition!['longitude'] ?? 36.790900,
         );
       } else {
         await locationProvider.initializeLocation();
@@ -73,8 +73,8 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
           initialPoint = LatLng(locationProvider.latitude!, locationProvider.longitude!);
         } else {
           initialPoint = const LatLng(
-            LocationProvider.defaultLatitude,
-            LocationProvider.defaultLongitude,
+            -1.303960,
+            36.790900,
           );
         }
       }
@@ -492,7 +492,7 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
               ),
               child: Text(
                 provider.outsideDeliveryArea 
-                    ? '🚫 Outside ${LocationProvider.maxDeliveryDistanceKm.toStringAsFixed(1)}km Delivery Zone'
+                    ? '🚫 Outside Delivery Zone'
                     : '🚚 Delivery Fee: KES ${provider.deliveryFee}',
                 style: TextStyle(
                   color: provider.outsideDeliveryArea ? Colors.red : AppColors.success,
@@ -772,8 +772,8 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
                           initialCenter: (provider.latitude != null && provider.longitude != null)
                               ? LatLng(provider.latitude!, provider.longitude!)
                               : const LatLng(
-                                  LocationProvider.defaultLatitude,
-                                  LocationProvider.defaultLongitude,
+                                  -1.303960,
+                                  36.790900,
                                 ),
                           initialZoom: 15.0,
                           onTap: (tapPosition, point) => _onMapTap(context, point),
@@ -791,8 +791,8 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
                             circles: [
                               CircleMarker(
                                 point: const LatLng(
-                                  LocationProvider.defaultLatitude,
-                                  LocationProvider.defaultLongitude,
+                                  -1.303960,
+                                  36.790900,
                                 ),
                                 color: AppColors.primary.withOpacity(0.2),
                                 borderColor: AppColors.primary.withOpacity(0.5),
@@ -806,8 +806,8 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
                             markers: [
                               Marker(
                                 point: LatLng(
-                                  LocationProvider.defaultLatitude,
-                                  LocationProvider.defaultLongitude,
+                                  -1.303960,
+                                  36.790900,
                                 ),
                                 width: 40,
                                 height: 40,

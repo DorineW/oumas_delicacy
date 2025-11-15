@@ -22,10 +22,23 @@ class LocationProvider with ChangeNotifier {
   Position? get currentPosition => _currentPosition;
   bool get outsideDeliveryArea => _outsideDeliveryArea; // ADDED
 
-  // Nairobi, Madaraka coordinates as fallback
-  static const double defaultLatitude = -1.303960; 
-  static const double defaultLongitude = 36.790900;
-  static const double maxDeliveryDistanceKm = 5.0; // UPDATED: Max delivery radius 5km (more reasonable)
+  // Dynamic location - will be set from LocationManagementProvider
+  double? _restaurantLat;
+  double? _restaurantLon;
+  double _maxDeliveryDistanceKm = 5.0; // Default, will be updated from location
+  
+  // Fallback coordinates (only if no locations in database)
+  static const double fallbackLatitude = -1.303960; 
+  static const double fallbackLongitude = 36.790900;
+
+  // Set restaurant location dynamically
+  void setRestaurantLocation(double lat, double lon, double deliveryRadius) {
+    _restaurantLat = lat;
+    _restaurantLon = lon;
+    _maxDeliveryDistanceKm = deliveryRadius;
+    _checkDeliveryArea();
+    notifyListeners();
+  }
 
   Future<void> initializeLocation() async {
     _isLoading = true;
@@ -78,10 +91,12 @@ class LocationProvider with ChangeNotifier {
       
     } catch (e) {
       _error = 'Failed to get location: $e';
-      // Set default to Madaraka, Nairobi
-      _latitude = defaultLatitude;
-      _longitude = defaultLongitude;
-      _deliveryAddress = 'Madaraka, Nairobi, Kenya';
+      // Set fallback coordinates only if restaurant location not set
+      if (_restaurantLat == null || _restaurantLon == null) {
+        _latitude = fallbackLatitude;
+        _longitude = fallbackLongitude;
+        _deliveryAddress = 'Default Location';
+      }
       _checkDeliveryArea(); // ADDED: Check delivery area for default location
       _isLoading = false;
       notifyListeners();
@@ -179,10 +194,11 @@ class LocationProvider with ChangeNotifier {
     }
   }
 
-  // ADDED: Check if location is within delivery area (2km from restaurant)
+  // ADDED: Check if location is within delivery area from nearest restaurant
   void _checkDeliveryArea() {
-    const restaurantLat = defaultLatitude;
-    const restaurantLon = defaultLongitude;
+    // Use dynamic restaurant location or fallback
+    final restaurantLat = _restaurantLat ?? fallbackLatitude;
+    final restaurantLon = _restaurantLon ?? fallbackLongitude;
     
     if (_latitude == null || _longitude == null) {
       _outsideDeliveryArea = false;
@@ -200,10 +216,10 @@ class LocationProvider with ChangeNotifier {
     debugPrint('   Restaurant: ($restaurantLat, $restaurantLon)');
     debugPrint('   User: ($_latitude, $_longitude)');
     debugPrint('   Distance: ${distance.toStringAsFixed(3)} km');
-    debugPrint('   Max Distance: $maxDeliveryDistanceKm km');
-    debugPrint('   Outside Zone: ${distance > maxDeliveryDistanceKm}');
+    debugPrint('   Max Distance: $_maxDeliveryDistanceKm km');
+    debugPrint('   Outside Zone: ${distance > _maxDeliveryDistanceKm}');
     
-    _outsideDeliveryArea = distance > maxDeliveryDistanceKm; // UPDATED: 2km check
+    _outsideDeliveryArea = distance > _maxDeliveryDistanceKm;
   }
 
   // ADDED: Calculate distance using Haversine formula
@@ -215,29 +231,32 @@ class LocationProvider with ChangeNotifier {
     return 12742 * asin(sqrt(a)); // Distance in km
   }
 
-  // ADDED: Delivery Fee Logic with tiered pricing
+  // ADDED: Delivery Fee Logic - will be calculated by LocationManagementProvider
+  // This is a fallback for backward compatibility
   int get deliveryFee {
     if (_latitude == null || _longitude == null) {
       return 0; // No location set, no delivery fee
     }
     
-    final distance = getDistanceFrom(defaultLatitude, defaultLongitude);
+    final restaurantLat = _restaurantLat ?? fallbackLatitude;
+    final restaurantLon = _restaurantLon ?? fallbackLongitude;
+    final distance = getDistanceFrom(restaurantLat, restaurantLon);
     
-    if (distance > maxDeliveryDistanceKm) {
+    if (distance > _maxDeliveryDistanceKm) {
       return 0; // Outside delivery area
     }
 
-    // Tiered pricing for 5km radius (5 tiers)
+    // Simple tiered pricing for fallback (real pricing from LocationManagementProvider)
     if (distance <= 1.0) {
-      return 50; // Tier 1: 0-1km (closest)
+      return 50;
     } else if (distance <= 2.0) {
-      return 100; // Tier 2: 1-2km
+      return 100;
     } else if (distance <= 3.0) {
-      return 150; // Tier 3: 2-3km
+      return 150;
     } else if (distance <= 4.0) {
-      return 200; // Tier 4: 3-4km
+      return 200;
     } else {
-      return 250; // Tier 5: 4-5km (furthest)
+      return 250;
     }
   }
 

@@ -11,6 +11,8 @@ import '../constants/colors.dart';
 import '../services/auth_service.dart';
 import 'location.dart'; // ADDED
 import '../utils/phone_utils.dart';
+import '../providers/address_provider.dart';
+import '../models/user_address.dart';
 
 class EditProfileScreen extends StatefulWidget {
   const EditProfileScreen({super.key});
@@ -33,8 +35,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
   bool _isSaving = false;
 
-  List<String> _addresses = [];
-  int? _defaultAddressIndex;
+  List<UserAddress> _addresses = [];
+  String? _defaultAddressId; // Changed from index to ID
 
   // payment stored as map (simple): { 'brand': 'Visa', 'last4': '4242' }
   Map<String, String>? _paymentMethod;
@@ -60,47 +62,38 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     final currentUser = auth.currentUser;
     
     if (currentUser != null) {
-      // Fetch user data including addresses from Supabase
+      // Fetch user data from Supabase
       try {
         debugPrint('🔄 Loading user profile from Supabase...');
         final userData = await Supabase.instance.client
             .from('users')
-            .select('name, email, phone, addresses, default_address_index')
+            .select('name, email, phone')
             .eq('auth_id', currentUser.id)
             .single();
         
         debugPrint('✅ User data loaded: $userData');
-        debugPrint('📍 Addresses from DB: ${userData['addresses']}');
-        debugPrint('📍 Default index from DB: ${userData['default_address_index']}');
         
         setState(() {
           _nameController.text = userData['name'] ?? '';
           _emailCont.text = userData['email'] ?? '';
           final phone = userData['phone'];
           _phoneCont.text = phone == null ? '' : PhoneUtils.toLocalDisplay(phone);
-          
-          // Load addresses from database
-          if (userData['addresses'] != null) {
-            final addressesFromDb = userData['addresses'];
-            debugPrint('📍 Type of addresses: ${addressesFromDb.runtimeType}');
-            if (addressesFromDb is List) {
-              _addresses = List<String>.from(addressesFromDb);
-              debugPrint('✅ Loaded ${_addresses.length} addresses: $_addresses');
-            } else {
-              debugPrint('⚠️ Addresses is not a List, it is: $addressesFromDb');
-            }
-          } else {
-            debugPrint('⚠️ No addresses found in database');
-          }
-          
-          // Load default address index from database
-          if (userData['default_address_index'] != null && _addresses.isNotEmpty && userData['default_address_index'] < _addresses.length) {
-            _defaultAddressIndex = userData['default_address_index'];
-            debugPrint('✅ Default address index set to: $_defaultAddressIndex');
-          } else {
-            debugPrint('ℹ️ No valid default address index (index: ${userData['default_address_index']}, addresses count: ${_addresses.length})');
+        });
+        
+        // Load addresses from UserAddresses table via AddressProvider
+        final addressProvider = Provider.of<AddressProvider>(context, listen: false);
+        await addressProvider.loadAddresses();
+        
+        setState(() {
+          _addresses = List.from(addressProvider.addresses);
+          // Find default address
+          final defaultAddr = _addresses.where((addr) => addr.isDefault).firstOrNull;
+          if (defaultAddr != null) {
+            _defaultAddressId = defaultAddr.id;
           }
         });
+        
+        debugPrint('✅ Loaded ${_addresses.length} addresses from UserAddresses table');
       } catch (e) {
         debugPrint('⚠️ Error loading user data from Supabase: $e');
         // Fallback to basic user info
@@ -114,35 +107,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       }
     }
     
-    // THEN load local preferences (notifications, payment, image) - not addresses anymore
+    // THEN load local preferences (notifications, payment, image)
     final prefs = await SharedPreferences.getInstance();
 
     setState(() {
-      // Don't override name/email/phone from SharedPreferences if we got them from Supabase
-      if (_nameController.text.isEmpty) {
-        _nameController.text = prefs.getString('name') ?? '';
-      }
-      if (_emailCont.text.isEmpty) {
-        _emailCont.text = prefs.getString('email') ?? '';
-      }
-      if (_phoneCont.text.isEmpty) {
-        final p = prefs.getString('phone');
-        _phoneCont.text = p == null ? '' : PhoneUtils.toLocalDisplay(p);
-      }
-      
       _notificationsEnabled = prefs.getBool('notifications') ?? true;
-
-      // Keep addresses from SharedPreferences as fallback if database didn't have them
-      if (_addresses.isEmpty) {
-        final addressesJson = prefs.getStringList('addresses') ?? [];
-        _addresses = List<String>.from(addressesJson);
-        
-        // FIXED: Add bounds checking for default address index
-        final savedDefaultIndex = prefs.getInt('defaultAddressIndex');
-        if (savedDefaultIndex != null && savedDefaultIndex < _addresses.length) {
-          _defaultAddressIndex = savedDefaultIndex;
-        }
-      }
 
       final pmJson = prefs.getString('paymentMethod');
       if (pmJson != null) {
@@ -207,36 +176,24 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       debugPrint('💾 Saving profile to Supabase...');
       debugPrint('   Name: ${_nameController.text.trim()}');
       debugPrint('   Phone: $normalizedPhone');
-      debugPrint('   Addresses: $_addresses (${_addresses.length} items)');
-      debugPrint('   Default address index: $_defaultAddressIndex');
 
       await Supabase.instance.client
           .from('users')
           .update({
             'name': _nameController.text.trim(),
-        'phone': normalizedPhone,
-            'addresses': _addresses, // ADDED: Save addresses to database
-            'default_address_index': _defaultAddressIndex, // ADDED: Save default address index
+            'phone': normalizedPhone,
             'updated_at': DateTime.now().toIso8601String(),
           })
           .eq('auth_id', userId);
 
       debugPrint('✅ Profile saved to Supabase successfully');
 
-      // ADDED: Save to SharedPreferences for offline access and checkout screen
+      // Save to SharedPreferences for offline access
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('name', _nameController.text.trim());
       await prefs.setString('email', _emailCont.text.trim());
       await prefs.setString('phone', normalizedPhone);
       await prefs.setBool('notifications', _notificationsEnabled);
-      
-      // Save addresses
-      await prefs.setStringList('addresses', _addresses);
-      if (_defaultAddressIndex != null && _addresses.isNotEmpty) {
-        await prefs.setInt('defaultAddressIndex', _defaultAddressIndex!);
-      } else {
-        await prefs.remove('defaultAddressIndex'); // FIXED: Remove index if list is empty
-      }
       
       // Save payment method
       if (_paymentMethod != null) {
@@ -340,61 +297,60 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   }
 
   Future<void> _addAddressDialog() async {
-    final controller = TextEditingController();
-    final formKey = GlobalKey<FormState>();
+    // Navigate to map to select address
+    await _selectAddressFromMap();
+  }
+
+  Future<void> _removeAddress(int idx) async {
+    final addressToRemove = _addresses[idx];
     
-    await showDialog(
+    final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Add Delivery Address', style: TextStyle(fontWeight: FontWeight.bold)),
-        content: Form(
-          key: formKey,
-          child: TextFormField(
-            controller: controller,
-            decoration: const InputDecoration(
-              hintText: 'e.g. 12 Baker St, Nairobi',
-              labelText: 'Address Detail',
-            ),
-            validator: (v) => (v == null || v.trim().isEmpty) ? 'Address cannot be empty' : null,
-          ),
-        ),
+        title: const Text('Delete Address'),
+        content: Text('Are you sure you want to delete "${addressToRemove.label}"?'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.primary,
-              foregroundColor: AppColors.white,
-            ),
-            onPressed: () {
-              if (!formKey.currentState!.validate()) return;
-              
-              final val = controller.text.trim();
-              setState(() {
-                _addresses.add(val);
-                // if this is first address, set default
-                _defaultAddressIndex ??= 0;
-              });
-              Navigator.pop(ctx);
-            },
-            child: const Text('Add'),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete'),
           ),
         ],
       ),
     );
-  }
-
-  void _removeAddress(int idx) {
-    setState(() {
-      _addresses.removeAt(idx);
-      if (_defaultAddressIndex != null) {
-        if (_addresses.isEmpty) {
-          _defaultAddressIndex = null;
-        } else if (_defaultAddressIndex! >= _addresses.length) {
-          _defaultAddressIndex = _addresses.length - 1;
-        }
+    
+    if (confirmed == true && mounted) {
+      try {
+        final addressProvider = Provider.of<AddressProvider>(context, listen: false);
+        await addressProvider.deleteAddress(addressToRemove.id);
+        
+        setState(() {
+          _addresses.removeAt(idx);
+          if (_defaultAddressId == addressToRemove.id) {
+            _defaultAddressId = _addresses.isNotEmpty ? _addresses.first.id : null;
+          }
+        });
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Address deleted successfully'),
+            backgroundColor: AppColors.success,
+          ),
+        );
+      } catch (e) {
+        debugPrint('❌ Error deleting address: $e');
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to delete address: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
       }
-    });
+    }
   }
 
   String? _validateEmail(String? v) {
@@ -413,7 +369,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     return null;
   }
 
-  // ADDED: Navigate to location screen for address selection
+  // Navigate to location screen for address selection
   Future<void> _selectAddressFromMap() async {
     final result = await Navigator.push<Map<String, dynamic>>(
       context,
@@ -424,26 +380,51 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
     if (result != null && mounted) {
       final address = result['address'] as String;
+      final lat = (result['latitude'] as num).toDouble();
+      final lng = (result['longitude'] as num).toDouble();
       
-      // Add to addresses list
-      setState(() {
-        _addresses.add(address);
-        // Set as default if first address
-        _defaultAddressIndex ??= _addresses.length - 1;
-      });
+      // Save via AddressProvider
+      final addressProvider = Provider.of<AddressProvider>(context, listen: false);
       
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Row(
-            children: [
-              Icon(Icons.check_circle, color: Colors.white),
-              SizedBox(width: 8),
-              Expanded(child: Text('Address added successfully')),
-            ],
+      try {
+        final newAddress = await addressProvider.addAddress(
+          label: 'Location ${_addresses.length + 1}',
+          latitude: lat,
+          longitude: lng,
+          descriptiveDirections: address,
+          setAsDefault: _addresses.isEmpty, // First address is default
+        );
+        
+        if (newAddress != null) {
+          setState(() {
+            _addresses.add(newAddress);
+            if (newAddress.isDefault) {
+              _defaultAddressId = newAddress.id;
+            }
+          });
+        }
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.check_circle, color: Colors.white),
+                SizedBox(width: 8),
+                Expanded(child: Text('Address added successfully')),
+              ],
+            ),
+            backgroundColor: AppColors.success,
           ),
-          backgroundColor: AppColors.success,
-        ),
-      );
+        );
+      } catch (e) {
+        debugPrint('❌ Error saving address: $e');
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to save address: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -798,9 +779,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     );
   }
 
-  // NEW: Modern address card
-  Widget _buildAddressCard(int idx, String addr) {
-    final isDefault = _defaultAddressIndex == idx;
+  // Modern address card - displays UserAddress
+  Widget _buildAddressCard(int idx, UserAddress addr) {
+    final isDefault = _defaultAddressId == addr.id;
     
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -833,14 +814,50 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           ),
         ),
         title: Text(
-          addr,
-          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+          addr.label,
+          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
         ),
-        subtitle: isDefault ? const Text('Default', style: TextStyle(fontSize: 12, color: AppColors.primary)) : null,
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              addr.descriptiveDirections,
+              style: const TextStyle(fontSize: 12, color: AppColors.darkText),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+            if (isDefault) 
+              const Text(
+                'Default',
+                style: TextStyle(fontSize: 12, color: AppColors.primary, fontWeight: FontWeight.w600),
+              ),
+          ],
+        ),
         trailing: PopupMenuButton<String>(
-          onSelected: (choice) {
+          onSelected: (choice) async {
             if (choice == 'set_default') {
-              setState(() => _defaultAddressIndex = idx);
+              try {
+                final addressProvider = Provider.of<AddressProvider>(context, listen: false);
+                await addressProvider.setDefaultAddress(addr.id);
+                setState(() {
+                  _defaultAddressId = addr.id;
+                  // Refresh addresses to update isDefault flags
+                  _addresses = List.from(addressProvider.addresses);
+                });
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Default address updated'),
+                    backgroundColor: AppColors.success,
+                  ),
+                );
+              } catch (e) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Failed to set default: $e'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
             } else if (choice == 'remove') {
               _removeAddress(idx);
             } else if (choice == 'edit') {
@@ -848,7 +865,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             }
           },
           itemBuilder: (_) => [
-            const PopupMenuItem(value: 'set_default', child: Row(children: [Icon(Icons.check_circle), SizedBox(width: 8), Text('Set Default')])),
+            if (!isDefault) const PopupMenuItem(value: 'set_default', child: Row(children: [Icon(Icons.check_circle), SizedBox(width: 8), Text('Set Default')])),
             const PopupMenuItem(value: 'edit', child: Row(children: [Icon(Icons.edit), SizedBox(width: 8), Text('Edit')])),
             const PopupMenuItem(value: 'remove', child: Row(children: [Icon(Icons.delete), SizedBox(width: 8), Text('Remove')])),
           ],
@@ -861,23 +878,40 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   // ...existing helper methods (_validateEmail, _validatePhone, etc.)...
 
   Future<void> _editAddressDialog(int idx) async {
-    final controller = TextEditingController(text: _addresses[idx]);
+    final address = _addresses[idx];
+    final labelController = TextEditingController(text: address.label);
+    final directionsController = TextEditingController(text: address.descriptiveDirections);
     final formKey = GlobalKey<FormState>();
     
     await showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Edit Delivery Address', style: TextStyle(fontWeight: FontWeight.bold)),
+        title: const Text('Edit Address', style: TextStyle(fontWeight: FontWeight.bold)),
         content: Form(
           key: formKey,
-          child: TextFormField(
-            controller: controller,
-            decoration: const InputDecoration(
-              hintText: 'e.g. 12 Baker St, Nairobi',
-              labelText: 'Address Detail',
-            ),
-            validator: (v) => (v == null || v.trim().isEmpty) ? 'Address cannot be empty' : null,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextFormField(
+                controller: labelController,
+                decoration: const InputDecoration(
+                  labelText: 'Label (e.g., Home, Work)',
+                  prefixIcon: Icon(Icons.label),
+                ),
+                validator: (v) => (v == null || v.trim().isEmpty) ? 'Label required' : null,
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: directionsController,
+                decoration: const InputDecoration(
+                  labelText: 'Directions',
+                  prefixIcon: Icon(Icons.directions),
+                ),
+                maxLines: 3,
+                validator: (v) => (v == null || v.trim().isEmpty) ? 'Directions required' : null,
+              ),
+            ],
           ),
         ),
         actions: [
@@ -887,14 +921,37 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               backgroundColor: AppColors.primary,
               foregroundColor: AppColors.white,
             ),
-            onPressed: () {
-              if (!formKey.currentState!.validate()) return;
-              
-              final val = controller.text.trim();
-              setState(() {
-                _addresses[idx] = val;
-              });
-              Navigator.pop(ctx);
+            onPressed: () async {
+              if (formKey.currentState!.validate()) {
+                try {
+                  final addressProvider = Provider.of<AddressProvider>(context, listen: false);
+                  await addressProvider.updateAddress(
+                    addressId: address.id,
+                    label: labelController.text.trim(),
+                    descriptiveDirections: directionsController.text.trim(),
+                  );
+                  
+                  setState(() {
+                    _addresses = List.from(addressProvider.addresses);
+                  });
+                  
+                  Navigator.pop(ctx);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Address updated successfully'),
+                      backgroundColor: AppColors.success,
+                    ),
+                  );
+                } catch (e) {
+                  debugPrint('❌ Error updating address: $e');
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Failed to update address: $e'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              }
             },
             child: const Text('Save'),
           ),

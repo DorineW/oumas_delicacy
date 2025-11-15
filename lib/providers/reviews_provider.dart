@@ -13,8 +13,8 @@ class Review {
   final DateTime createdAt;
   int likes;
   bool isLiked;
-  String? userName; // ADDED: Customer name
-  bool isAnonymous; // ADDED: Anonymous flag
+  String? userName;
+  bool isAnonymous;
 
   Review({
     required this.id,
@@ -29,7 +29,6 @@ class Review {
     this.isAnonymous = false,
   });
 
-  // ADDED: Parse from Supabase JSON (same pattern as MenuItem)
   factory Review.fromJson(Map<String, dynamic> json) {
     return Review(
       id: json['id'] as String,
@@ -45,14 +44,21 @@ class Review {
     );
   }
 
-  // ADDED: Convert to JSON for Supabase (exclude id and created_at - let DB handle them)
   Map<String, dynamic> toJson() {
     return {
       'user_auth_id': userAuthId,
       'product_id': productId,
       'rating': rating,
       'body': body,
+      'is_anonymous': isAnonymous,
     };
+  }
+
+  String get displayName {
+    if (isAnonymous) {
+      return 'Anonymous';
+    }
+    return userName ?? 'User';
   }
 
   String get displayComment => body ?? '';
@@ -65,7 +71,6 @@ class ReviewsProvider with ChangeNotifier {
   String? _error;
   bool _cacheLoaded = false;
 
-  // Cache keys
   static const String _cacheKey = 'cached_reviews';
   static const String _cacheTimestampKey = 'reviews_cache_timestamp';
   static const Duration _cacheValidDuration = Duration(hours: 24);
@@ -74,7 +79,6 @@ class ReviewsProvider with ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get error => _error;
 
-  /// Load cached reviews from SharedPreferences
   Future<void> _loadFromCache() async {
     if (_cacheLoaded) return;
     
@@ -99,7 +103,6 @@ class ReviewsProvider with ChangeNotifier {
     }
   }
 
-  /// Save reviews to SharedPreferences cache
   Future<void> _saveToCache() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -117,21 +120,17 @@ class ReviewsProvider with ChangeNotifier {
       
       await prefs.setString(_cacheKey, jsonString);
       await prefs.setInt(_cacheTimestampKey, DateTime.now().millisecondsSinceEpoch);
-      
       debugPrint('💾 Cached ${_reviews.length} reviews to local storage');
     } catch (e) {
       debugPrint('❌ Error saving reviews cache: $e');
     }
   }
 
-  // MAIN: Load reviews with detailed debugging (same pattern as MenuProvider)
   Future<void> loadReviews() async {
-    // Load from cache first if not already loaded
     if (!_cacheLoaded) {
       await _loadFromCache();
     }
     
-    // Preserve cached data during loading
     final cachedReviews = List<Review>.from(_reviews);
     
     _isLoading = true;
@@ -144,15 +143,13 @@ class ReviewsProvider with ChangeNotifier {
       final supabase = Supabase.instance.client;
       debugPrint('✅ Supabase client initialized');
       
-      // Query with all columns explicitly with timeout
       final response = await supabase
           .from('reviews')
-          .select('id, user_auth_id, product_id, rating, body, created_at')
+          .select('id, user_auth_id, product_id, rating, body, created_at, is_anonymous')
           .order('created_at', ascending: false)
           .timeout(const Duration(seconds: 10));
 
       debugPrint('✅ Query executed successfully');
-      debugPrint('📊 Response type: ${response.runtimeType}');
       debugPrint('📏 Number of reviews fetched: ${response.length}');
 
       if (response.isEmpty) {
@@ -163,39 +160,38 @@ class ReviewsProvider with ChangeNotifier {
         return;
       }
 
-      // Parse each review with error handling
       final reviews = <Review>[];
       for (var i = 0; i < response.length; i++) {
         try {
           final json = response[i];
-          debugPrint('--- Parsing review ${i + 1}/${response.length} ---');
-          debugPrint('Raw JSON: $json');
-          
           final review = Review.fromJson(json);
           
-          // Fetch user name from users table
+          // Fetch user name from users table ONLY if not anonymous
           try {
-            final userRow = await supabase
-                .from('users')
-                .select('name, email')
-                .eq('auth_id', review.userAuthId)
-                .maybeSingle();
-            
-            if (userRow != null) {
-              review.userName = (userRow['name'] as String?)?.trim();
-              if (review.userName == null || review.userName!.isEmpty) {
-                review.userName = (userRow['email'] as String?)?.split('@').first;
+            if (!review.isAnonymous) {
+              final userRow = await supabase
+                  .from('users')
+                  .select('name, email')
+                  .eq('auth_id', review.userAuthId)
+                  .maybeSingle();
+              
+              if (userRow != null) {
+                review.userName = (userRow['name'] as String?)?.trim();
+                if (review.userName == null || review.userName!.isEmpty) {
+                  review.userName = (userRow['email'] as String?)?.split('@').first;
+                }
               }
+            } else {
+              // For anonymous reviews, ensure userName is null
+              review.userName = null;
             }
           } catch (e) {
             debugPrint('⚠️ Could not fetch user name: $e');
           }
           
           reviews.add(review);
-          debugPrint('✅ Successfully parsed: Review ${review.id} - Rating ${review.rating}/5');
         } catch (e, stackTrace) {
           debugPrint('❌ Error parsing review ${i + 1}: $e');
-          debugPrint('Failed JSON: ${response[i]}');
           debugPrint('Stack: $stackTrace');
         }
       }
@@ -204,7 +200,6 @@ class ReviewsProvider with ChangeNotifier {
       _error = null;
       debugPrint('🎉 Successfully loaded ${reviews.length} reviews');
       
-      // Save to cache for offline use
       await _saveToCache();
       
     } catch (e, stackTrace) {
@@ -220,16 +215,13 @@ class ReviewsProvider with ChangeNotifier {
     }
   }
 
-  // Refresh reviews
   Future<void> refreshReviews() async {
     await loadReviews();
   }
 
-  // Get reviews for a specific product
   List<Review> getReviewsForProduct(String productId) {
     final productReviews = _reviews.where((r) => r.productId == productId).toList();
     
-    // Sort: comments first, then by date (newest first)
     productReviews.sort((a, b) {
       if (a.hasComment && !b.hasComment) return -1;
       if (!a.hasComment && b.hasComment) return 1;
@@ -239,24 +231,22 @@ class ReviewsProvider with ChangeNotifier {
     return productReviews;
   }
 
-  // Get average rating for a product
   double getAverageRating(String productId) {
     final productReviews = _reviews.where((r) => r.productId == productId).toList();
-    if (productReviews.isEmpty) return 4.5; // Default rating
+    if (productReviews.isEmpty) return 4.5;
     
     final sum = productReviews.fold<int>(0, (sum, review) => sum + review.rating);
     return sum / productReviews.length;
   }
 
-  // Get review count for a product
   int getReviewCount(String productId) {
     return _reviews.where((r) => r.productId == productId).length;
   }
 
-  // Add a new review
   Future<bool> addReview(Review review) async {
     try {
       debugPrint('➕ Adding new review for product: ${review.productId}');
+      debugPrint('📝 Anonymous: ${review.isAnonymous}');
       
       final response = await Supabase.instance.client
           .from('reviews')
@@ -265,7 +255,7 @@ class ReviewsProvider with ChangeNotifier {
           .single();
 
       debugPrint('✅ Review added: $response');
-      await loadReviews(); // Reload to get fresh data
+      await loadReviews();
       return true;
     } catch (e) {
       debugPrint('❌ Error adding review: $e');
@@ -275,7 +265,6 @@ class ReviewsProvider with ChangeNotifier {
     }
   }
 
-  // Toggle like on a review
   void toggleLike(String reviewId) {
     final index = _reviews.indexWhere((r) => r.id == reviewId);
     if (index != -1) {
@@ -285,13 +274,12 @@ class ReviewsProvider with ChangeNotifier {
     }
   }
 
-  // Get rating distribution for a product (for progress bars)
   Map<int, double> getRatingDistribution(String productId) {
     final productReviews = _reviews.where((r) => r.productId == productId).toList();
     final total = productReviews.length;
     
     if (total == 0) {
-      return {5: 0.7, 4: 0.2, 3: 0.1, 2: 0.0, 1: 0.0}; // Default distribution
+      return {5: 0.7, 4: 0.2, 3: 0.1, 2: 0.0, 1: 0.0};
     }
     
     final distribution = <int, double>{};

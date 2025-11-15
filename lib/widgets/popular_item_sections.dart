@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
-// import 'package:provider/provider.dart';
+import 'package:provider/provider.dart';
 import '../constants/colors.dart';
 import '../models/menu_item.dart'; // Assume this exists
-// import '../providers/menu_provider.dart'; // Assume this handles fetching full menu details
+import '../models/cart_item.dart';
+import '../providers/cart_provider.dart';
 import '../screens/meal_detail_screen.dart'; // Assume this exists
 
 // NOTE: Since we cannot modify the model files, we define a simple wrapper model
@@ -34,11 +35,13 @@ class PopularItem {
 class PopularItemsSection extends StatelessWidget {
   final List<PopularItem> popularItems;
   final bool isLoading;
+  final VoidCallback? onNavigateToCart;
 
   const PopularItemsSection({
     super.key,
     required this.popularItems,
     this.isLoading = false,
+    this.onNavigateToCart,
   });
 
   // Helper method to build the horizontal list of cards/skeletons
@@ -65,7 +68,10 @@ class PopularItemsSection extends StatelessWidget {
             padding: padding,
             child: isDataLoading 
               ? const _PopularItemSkeletonCard() // SHOW SKELETON
-              : _PopularItemCard(item: popularItems[index]), // SHOW REAL CARD
+              : _PopularItemCard(
+                  item: popularItems[index],
+                  onNavigateToCart: onNavigateToCart,
+                ), // SHOW REAL CARD
           );
         },
       ),
@@ -118,8 +124,31 @@ class PopularItemsSection extends StatelessWidget {
 
 class _PopularItemCard extends StatelessWidget {
   final PopularItem item;
+  final VoidCallback? onNavigateToCart;
 
-  const _PopularItemCard({required this.item});
+  const _PopularItemCard({
+    required this.item,
+    this.onNavigateToCart,
+  });
+
+  void _addToCart(BuildContext context) {
+    if (item.menuItem == null) return;
+    
+    final cartProvider = Provider.of<CartProvider>(context, listen: false);
+    final cartItem = CartItem(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      menuItemId: item.menuItem!.id ?? '',
+      mealTitle: item.menuItem!.title,
+      price: item.menuItem!.price,
+      quantity: 1,
+      mealImage: item.menuItem!.imageUrl ?? '',
+    );
+    
+    cartProvider.addItem(cartItem);
+    
+    // Call navigation callback
+    onNavigateToCart?.call();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -127,6 +156,13 @@ class _PopularItemCard extends StatelessWidget {
     final price = item.avgUnitPrice.toStringAsFixed(2);
     final title = item.itemName;
     final rating = item.avgRating.toStringAsFixed(1);
+    
+    // Match the grid card reduction
+    const reduction = 0.80;
+    final double cardWidth = 180 * reduction;
+    final double imageHeight = 120 * reduction * 0.85; // Reduced portrait height
+    final double titleFontSize = 13.0;
+    final double priceFontSize = 13.0;
     
     // NOTE: Fallback for unattached data is now handled by the caller showing the Skeletonizer.
     // If we reach this point, data should be ready.
@@ -141,10 +177,10 @@ class _PopularItemCard extends StatelessWidget {
         }
       },
       child: Container(
-        width: 180, // Defined card width
+        width: cardWidth,
         decoration: BoxDecoration(
           color: AppColors.white,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(12),
           boxShadow: [
             BoxShadow(
               color: AppColors.lightGray.withOpacity(0.3),
@@ -156,22 +192,46 @@ class _PopularItemCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Image Section
-            ClipRRect(
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-              child: Container(
-                height: 120,
-                width: double.infinity,
-                color: AppColors.background,
-                child: imageUrl != null && imageUrl.isNotEmpty
-                    ? Image.network(
-                        imageUrl,
-                        fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) => 
-                          const Icon(Icons.fastfood, size: 50, color: AppColors.primary),
-                      )
-                    : const Icon(Icons.restaurant, size: 50, color: AppColors.primary),
-              ),
+            // Image Section with Popular Tag
+            Stack(
+              children: [
+                ClipRRect(
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+                  child: Container(
+                    height: imageHeight,
+                    width: double.infinity,
+                    color: AppColors.background,
+                    child: imageUrl != null && imageUrl.isNotEmpty
+                        ? Image.network(
+                            imageUrl,
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) => 
+                              const Icon(Icons.fastfood, size: 50, color: AppColors.primary),
+                          )
+                        : const Icon(Icons.restaurant, size: 50, color: AppColors.primary),
+                  ),
+                ),
+                // Popular Tag
+                Positioned(
+                  top: 8,
+                  left: 8,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.orange,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Text(
+                      'Popular',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
             
             // Details Section
@@ -180,44 +240,39 @@ class _PopularItemCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // Title
                   Text(
                     title,
-                    maxLines: 2,
+                    maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontWeight: FontWeight.bold,
-                      fontSize: 16,
+                      fontSize: titleFontSize,
                       color: AppColors.darkText,
                     ),
                   ),
-                  const SizedBox(height: 4),
-                  
-                  // Rating and Price
+                  const SizedBox(height: 2),
+                  // Rating
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      // Rating (Uses a default 4.5 if not available)
-                      Row(
-                        children: [
-                          const Icon(Icons.star, color: Colors.amber, size: 16),
-                          const SizedBox(width: 4),
-                          Text(
-                            item.avgRating > 0 ? rating : '4.5',
-                            style: const TextStyle(fontSize: 14, color: AppColors.darkText),
-                          ),
-                        ],
-                      ),
-                      
-                      // Price
+                      const Icon(Icons.star, color: Colors.amber, size: 10),
+                      const SizedBox(width: 2),
                       Text(
-                        'Ksh $price',
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.primary,
-                        ),
+                        item.avgRating > 0 ? rating : '4.5',
+                        style: const TextStyle(fontSize: 10, color: AppColors.darkText),
                       ),
                     ],
+                  ),
+                  const SizedBox(height: 2),
+                  // Price
+                  Text(
+                    'Ksh $price',
+                    style: TextStyle(
+                      fontSize: priceFontSize,
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.primary,
+                    ),
                   ),
                   const SizedBox(height: 8),
 
@@ -226,19 +281,14 @@ class _PopularItemCard extends StatelessWidget {
                     width: double.infinity,
                     height: 30,
                     child: OutlinedButton(
-                      onPressed: () {
-                        // TODO: Implement quick add to cart functionality (1 item)
-                        ScaffoldMessenger.of(context).showSnackBar(
-                           SnackBar(content: Text('Quick adding 1x $title')),
-                        );
-                      },
+                      onPressed: () => _addToCart(context),
                       style: OutlinedButton.styleFrom(
                         foregroundColor: AppColors.primary,
                         side: const BorderSide(color: AppColors.primary, width: 1),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                         padding: EdgeInsets.zero
                       ),
-                      child: const Text('Add to Cart', style: TextStyle(fontSize: 12)),
+                      child: const Text('Add to Cart', style: TextStyle(fontSize: 11)),
                     ),
                   ),
                 ],
@@ -259,12 +309,17 @@ class _PopularItemSkeletonCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Match the grid card reduction
+    const reduction = 0.80;
+    final double cardWidth = 180 * reduction;
+    final double imageHeight = 120 * reduction;
+    
     // Base container mimicking the final card size and shape
     return Container(
-      width: 180, 
+      width: cardWidth,
       decoration: BoxDecoration(
         color: AppColors.white,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
             color: AppColors.lightGray.withOpacity(0.3),
@@ -278,14 +333,12 @@ class _PopularItemSkeletonCard extends StatelessWidget {
         children: [
           // Image Skeleton (Mimics the 120px height)
           Container(
-            height: 120,
+            height: imageHeight,
             decoration: BoxDecoration(
               color: Colors.grey[300], // Light gray placeholder
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
             ),
-          ),
-          
-          // Details Skeleton
+          ),          // Details Skeleton
           Padding(
             padding: const EdgeInsets.all(10.0),
             child: Column(

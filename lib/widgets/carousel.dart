@@ -1,8 +1,46 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 
+// --- START: CarouselCard Component (The visual wrapper) ---
+
+/// A container designed for the Carousel to give items a modern,
+/// rounded, and 'demure' card look with a subtle shadow.
+class CarouselCard extends StatelessWidget {
+  final Widget child;
+
+  const CarouselCard({super.key, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      // Provides the 'demure' curved look with a subtle shadow
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16.0), // Rounded corners
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.15),
+            spreadRadius: 1,
+            blurRadius: 6,
+            offset: const Offset(0, 3), // subtle shadow
+          ),
+        ],
+      ),
+      // Clip the content (image/text) to match the container's rounded corners
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16.0),
+        child: child,
+      ),
+    );
+  }
+}
+
+// --- END: CarouselCard Component ---
+// -----------------------------------------------------------------
+// --- START: Carousel Component (The logic handler) ---
+
 /// Generic auto-scrolling carousel with a page indicator.
-/// [children] : any widgets you want to rotate.
+/// [children] : any widgets you want to rotate (typically wrapped in CarouselCard).
 /// [height]   : fixed height (default 140).
 /// [interval] : auto-switch interval (default 4s).
 /// [curve]    : page transition curve.
@@ -130,7 +168,8 @@ class _CarouselState extends State<Carousel> {
                 setState(() => _page = i); // Update the page index for the indicator
               },
               itemBuilder: (_, i) => Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8),
+                // Minimal horizontal padding to allow cards to take up max space
+                padding: const EdgeInsets.symmetric(horizontal: 4), 
                 child: widget.children[i],
               ),
             ),
@@ -164,3 +203,4 @@ class _CarouselState extends State<Carousel> {
     );
   }
 }
+// --- END: Carousel Component ---
