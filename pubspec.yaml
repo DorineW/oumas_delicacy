@@ -27,6 +27,7 @@ dependencies:
   flutter_staggered_animations: ^1.0.0
   like_button: ^2.0.5
   flutter_neumorphic: ^3.2.0
+  concentric_transition: ^1.0.3
 
   # Auth & Services
   supabase_flutter: ^2.6.0
@@ -39,6 +40,7 @@ dependencies:
   geocoding: ^4.0.0
   flutter_map: ^7.0.2
   latlong2: ^0.9.1
+  connectivity_plus: ^6.0.0
   
   # File Management
   image_picker: ^1.0.4

@@ -97,9 +97,10 @@ class _CustomerChatScreenState extends State<CustomerChatScreen> {
             final m = sorted[index];
             final isMe = m['sender_id'] == _uid;
             final createdAt = DateTime.tryParse(m['created_at'] as String? ?? '');
+            final isPending = (m['is_pending'] as bool?) ?? false;
             return _ChatBubble(
               message: (m['content'] ?? '') as String,
-              time: _formatTs(createdAt),
+              time: _formatTs(createdAt, isPending: isPending),
               isMe: isMe,
             );
           },
@@ -108,17 +109,21 @@ class _CustomerChatScreenState extends State<CustomerChatScreen> {
     );
   }
 
-  String _formatTs(DateTime? dt) {
+  String _formatTs(DateTime? dt, {bool isPending = false}) {
+    if (isPending) return '⏰ Pending';
     if (dt == null) return '';
-    final now = DateTime.now();
-    
+
+    // Convert UTC to Kenyan local time (EAT, UTC+3)
+    final kenyanTime = dt.toUtc().add(const Duration(hours: 3));
+    final now = DateTime.now().toUtc().add(const Duration(hours: 3));
+
     // Format time in 12-hour format with AM/PM
-    final hour12 = dt.hour == 0 ? 12 : (dt.hour > 12 ? dt.hour - 12 : dt.hour);
-    final amPm = dt.hour >= 12 ? 'PM' : 'AM';
-    final timeStr = '$hour12:${dt.minute.toString().padLeft(2, '0')} $amPm';
-    
-    if (now.difference(dt).inDays >= 1) {
-      return '${dt.month}/${dt.day} $timeStr';
+    final hour12 = kenyanTime.hour == 0 ? 12 : (kenyanTime.hour > 12 ? kenyanTime.hour - 12 : kenyanTime.hour);
+    final amPm = kenyanTime.hour >= 12 ? 'PM' : 'AM';
+    final timeStr = '$hour12:${kenyanTime.minute.toString().padLeft(2, '0')} $amPm';
+
+    if (now.difference(kenyanTime).inDays >= 1) {
+      return '${kenyanTime.month}/${kenyanTime.day} $timeStr';
     }
     return timeStr;
   }
@@ -208,21 +213,64 @@ class _MessageInputState extends State<_MessageInput> {
     if (roomId == null) return; // still initializing
     setState(() => _sending = true);
     try {
-      // optimistic add
+      // optimistic add, marked as pending
       final now = DateTime.now().toIso8601String();
       final parentState = context.findAncestorStateOfType<_CustomerChatScreenState>();
-      parentState?._optimistic.add({
-        'id': 'optimistic_${now}_${text.hashCode}',
-        'room_id': roomId,
-        'sender_id': ChatService.instance.userId,
-        'content': text,
-        'created_at': now,
-      });
-      ChatService.instance.sendMessage(roomId: roomId, content: text).catchError((e) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Send failed: $e')),
-        );
-      });
+      Map<String, dynamic>? optimisticMessage;
+
+      if (parentState != null && parentState.mounted) {
+        optimisticMessage = {
+          'id': 'optimistic_${now}_${text.hashCode}',
+          'room_id': roomId,
+          'sender_id': ChatService.instance.userId,
+          'content': text,
+          'created_at': now,
+          'is_pending': true,
+        };
+
+        parentState.setState(() {
+          parentState._optimistic.add(optimisticMessage!);
+        });
+      }
+
+      try {
+        await ChatService.instance.sendMessage(roomId: roomId, content: text);
+        // On success, clear pending flag so real time is shown once
+        if (parentState != null && parentState.mounted && optimisticMessage != null) {
+          parentState.setState(() {
+            final idx = parentState._optimistic.indexWhere((m) => m['id'] == optimisticMessage!['id']);
+            if (idx != -1) {
+              parentState._optimistic[idx]['is_pending'] = false;
+            }
+          });
+        }
+      } catch (e) {
+        // Remove optimistic message if send fails
+        if (parentState != null && parentState.mounted && optimisticMessage != null) {
+          parentState.setState(() {
+            parentState._optimistic.remove(optimisticMessage);
+          });
+        }
+        
+        // User-friendly error message
+        String friendlyMessage = '✨ Oops! Message couldn\'t be sent';
+        if (e.toString().toLowerCase().contains('network') || 
+            e.toString().toLowerCase().contains('connection') ||
+            e.toString().toLowerCase().contains('timeout')) {
+          friendlyMessage = '📡 Looks like you\'re offline. Check your connection?';
+        }
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(friendlyMessage),
+              backgroundColor: Colors.orange,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+        rethrow;
+      }
       _controller.clear();
       await ChatService.instance.markRoomRead(roomId);
       // NOTE: Removed problematic optimistic flush - the Supabase stream will

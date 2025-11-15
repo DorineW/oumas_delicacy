@@ -12,11 +12,16 @@ class OrderProvider extends ChangeNotifier {
   final List<Order> _orders = [];
   NotificationProvider? _notificationProvider;
   bool _cacheLoaded = false;
+  String? _error;
+  bool _isLoading = false;
 
   // Cache keys
   static const String _cacheKey = 'cached_orders';
   static const String _cacheTimestampKey = 'orders_cache_timestamp';
   static const Duration _cacheValidDuration = Duration(hours: 24);
+
+  String? get error => _error;
+  bool get isLoading => _isLoading;
 
   // ADDED: Set notification provider reference
   void setNotificationProvider(NotificationProvider provider) {
@@ -188,6 +193,13 @@ class OrderProvider extends ChangeNotifier {
       await _loadFromCache();
     }
 
+    // Preserve cached orders during network fetch
+    final cachedOrders = List<Order>.from(_orders);
+    
+    _isLoading = true;
+    _error = null;
+    notifyListeners();
+
     try {
       debugPrint('📥 Loading orders for user: $userId');
       
@@ -226,16 +238,28 @@ class OrderProvider extends ChangeNotifier {
       }
       
       debugPrint('✅ Loaded ${_orders.length} orders');
+      _error = null;
       
       // Save to cache for offline use
       await _saveToCache();
       
-      notifyListeners();
     } catch (e, stackTrace) {
       debugPrint('❌ Failed to load orders: $e');
       debugPrint('Stack: $stackTrace');
-      // Keep cached data if load fails
+      
+      // Restore cached orders
+      _orders.clear();
+      _orders.addAll(cachedOrders);
+      
+      // Set appropriate error message
+      _error = cachedOrders.isEmpty
+          ? 'No internet connection. Please check your network.'
+          : 'Limited connectivity. Showing cached orders.';
+      
       debugPrint('📦 Using ${_orders.length} cached orders');
+    } finally {
+      _isLoading = false;
+      notifyListeners();
     }
   }
 
@@ -245,6 +269,13 @@ class OrderProvider extends ChangeNotifier {
     if (!_cacheLoaded) {
       await _loadFromCache();
     }
+
+    // Preserve cached orders during network fetch
+    final cachedOrders = List<Order>.from(_orders);
+    
+    _isLoading = true;
+    _error = null;
+    notifyListeners();
 
     try {
       debugPrint('📥 Loading ALL orders for admin...');
@@ -283,16 +314,28 @@ class OrderProvider extends ChangeNotifier {
       }
       
       debugPrint('✅ Loaded ${_orders.length} total orders');
+      _error = null;
       
       // Save to cache for offline use
       await _saveToCache();
       
-      notifyListeners();
     } catch (e, stackTrace) {
       debugPrint('❌ Failed to load all orders: $e');
       debugPrint('Stack: $stackTrace');
-      // Keep cached data if load fails
+      
+      // Restore cached orders
+      _orders.clear();
+      _orders.addAll(cachedOrders);
+      
+      // Set appropriate error message
+      _error = cachedOrders.isEmpty
+          ? 'No internet connection. Please check your network.'
+          : 'Limited connectivity. Showing cached orders.';
+      
       debugPrint('📦 Using ${_orders.length} cached orders');
+    } finally {
+      _isLoading = false;
+      notifyListeners();
     }
   }
 

@@ -450,6 +450,9 @@ class AuthService extends ChangeNotifier {
     try {
       debugPrint('🔐 Attempting login for: $email');
       
+      // Load cached profile first for instant display
+      await _loadUserFromCache();
+      
       final response = await Supabase.instance.client.auth.signInWithPassword(
         email: email,
         password: password,
@@ -483,6 +486,9 @@ class AuthService extends ChangeNotifier {
             role: userProfile['role'] as String? ?? 'customer',
           );
           
+          // CRITICAL: Save profile to cache
+          await _saveUserToCache(_currentUser!);
+          
           debugPrint('✅ User profile loaded: ${_currentUser?.name} (Role: ${_currentUser?.role})');
           debugPrint('🔑 Role checks:');
           debugPrint('   - Is Admin: ${_currentUser?.role == 'admin'}');
@@ -495,13 +501,18 @@ class AuthService extends ChangeNotifier {
           debugPrint('⚠️ Error type: ${e.runtimeType}');
           debugPrint('Stack: $stackTrace');
           
-          // Fallback: create user without profile data
-          _currentUser = app.User(
-            id: userId,
-            email: response.user!.email!,
-            role: 'customer', // Default role
-          );
-          debugPrint('⚠️ Using fallback user with customer role');
+          // Preserve cached profile if network fails, otherwise use fallback
+          if (_currentUser == null) {
+            _currentUser = app.User(
+              id: userId,
+              email: response.user!.email!,
+              role: 'customer', // Default role
+            );
+            await _saveUserToCache(_currentUser!);
+            debugPrint('⚠️ Using fallback user with customer role');
+          } else {
+            debugPrint('ℹ️ Keeping cached profile: ${_currentUser?.name}');
+          }
         }
         
         notifyListeners();

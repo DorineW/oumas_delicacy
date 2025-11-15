@@ -236,7 +236,7 @@ class _ManageOrdersScreenState extends State<ManageOrdersScreen>
         children: [
           _buildStatItem('Total', orders.length.toString(), Icons.receipt, AppColors.primary),
           _buildStatItem('Confirmed', pendingCount.toString(), Icons.check_circle, Colors.blue),
-          _buildStatItem('Today', todayCount.toString(), Icons.today, Colors.blue),
+          _buildStatItem('Today', todayCount.toString(), Icons.today, Colors.orange),
           // FIXED: Changed label from 'Revenue' to 'Delivered'
           _buildStatItem('Delivered', 'Ksh ${totalRevenue.toStringAsFixed(0)}', Icons.check_circle, AppColors.success),
         ],
@@ -286,7 +286,7 @@ class _ManageOrdersScreenState extends State<ManageOrdersScreen>
       builder: (context, provider, child) {
         final filteredOrders = _getFilteredOrders(provider.orders);
         
-        final pendingOrders = filteredOrders.where((o) => o.status == OrderStatus.confirmed).toList();
+        final allOrders = filteredOrders; // All orders tab
         final confirmedOrders = filteredOrders.where((o) => o.status == OrderStatus.confirmed).toList();
         final preparingOrders = filteredOrders.where((o) => o.status == OrderStatus.preparing).toList();
         final outForDeliveryOrders = filteredOrders.where((o) => o.status == OrderStatus.outForDelivery).toList();
@@ -317,7 +317,7 @@ class _ManageOrdersScreenState extends State<ManageOrdersScreen>
               indicatorColor: AppColors.white,
               isScrollable: true,
               tabs: const [
-                Tab(text: 'Confirmed'),
+                Tab(text: 'All Orders'),
                 Tab(text: 'Confirmed'),
                 Tab(text: 'Preparing'),
                 Tab(text: 'Out for Delivery'),
@@ -355,7 +355,7 @@ class _ManageOrdersScreenState extends State<ManageOrdersScreen>
                 child: TabBarView(
                   controller: _tabController,
                   children: [
-                    _buildOrderList(pendingOrders),
+                    _buildOrderList(allOrders),
                     _buildOrderList(confirmedOrders),
                     _buildOrderList(preparingOrders),
                     _buildOrderList(outForDeliveryOrders),

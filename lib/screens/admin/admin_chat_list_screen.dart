@@ -34,17 +34,53 @@ class _AdminChatListScreenState extends State<AdminChatListScreen> {
               final rooms = snapshot.data ?? const [];
               final unreadRooms = rooms.where((r) => (r['unread_admin'] ?? 0) > 0).toList();
               if (unreadRooms.isEmpty) return const SizedBox.shrink();
-              return IconButton(
-                icon: const Icon(Icons.mark_email_read),
-                tooltip: 'Mark all as read',
-                onPressed: () async {
-                  for (final r in unreadRooms) {
-                    final id = r['id'];
-                    if (id is String) {
-                      try { await ChatService.instance.markRoomRead(id); } catch (_) {}
-                    }
-                  }
-                },
+
+              // Total unread messages across all rooms for admin
+              final totalUnread = unreadRooms.fold<int>(
+                0,
+                (sum, r) => sum + ((r['unread_admin'] as num?)?.toInt() ?? 0),
+              );
+
+              return Stack(
+                alignment: Alignment.center,
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.chat_bubble),
+                    tooltip: 'Mark all as read',
+                    onPressed: () async {
+                      for (final r in unreadRooms) {
+                        final id = r['id'];
+                        if (id is String) {
+                          try {
+                            await ChatService.instance.markRoomRead(id);
+                          } catch (_) {}
+                        }
+                      }
+                    },
+                  ),
+                  Positioned(
+                    right: 8,
+                    top: 10,
+                    child: Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: const BoxDecoration(
+                        color: Colors.red,
+                        shape: BoxShape.circle,
+                      ),
+                      constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
+                      child: Center(
+                        child: Text(
+                          totalUnread > 99 ? '99+' : totalUnread.toString(),
+                          style: const TextStyle(
+                            color: AppColors.white,
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               );
             },
           ),
@@ -177,7 +213,12 @@ class _AdminChatListScreenState extends State<AdminChatListScreen> {
 
   String _relativeTime(DateTime? time) {
     if (time == null) return '';
-    final diff = DateTime.now().difference(time);
+    
+    // Convert UTC to Kenyan local time (EAT, UTC+3)
+    final kenyanTime = time.toUtc().add(const Duration(hours: 3));
+    final now = DateTime.now().toUtc().add(const Duration(hours: 3));
+    final diff = now.difference(kenyanTime);
+    
     if (diff.inMinutes < 1) return 'now';
     if (diff.inMinutes < 60) return '${diff.inMinutes}m';
     if (diff.inHours < 24) return '${diff.inHours}h';

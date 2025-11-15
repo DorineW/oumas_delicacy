@@ -1,15 +1,18 @@
 // lib/providers/menu_provider.dart
-import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../models/menu_item.dart';
 
 class MenuProvider extends ChangeNotifier {
+    // Returns the top 5 most expensive available menu items as a placeholder for popular items
+    List<MenuItem> get popularItems {
+      final available = _menuItems.where((item) => item.isAvailable).toList();
+      available.sort((a, b) => b.price.compareTo(a.price));
+      return available.take(5).toList();
+    }
   List<MenuItem> _menuItems = [];
   bool _isLoading = false;
   String? _error;
-  bool _cacheLoaded = false;
 
   List<MenuItem> get menuItems => _menuItems;
   bool get isLoading => _isLoading;
@@ -30,83 +33,8 @@ class MenuProvider extends ChangeNotifier {
     return _menuItems.any((item) => item.title == title && item.isAvailable);
   }
 
-  // Cache key for SharedPreferences
-  static const String _cacheKey = 'cached_menu_items';
-  static const String _cacheTimestampKey = 'menu_cache_timestamp';
-  static const Duration _cacheValidDuration = Duration(hours: 24);
-
-  /// Load cached menu items from SharedPreferences
-  Future<void> _loadFromCache() async {
-    if (_cacheLoaded) return;
-    
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final cachedData = prefs.getString(_cacheKey);
-      final timestamp = prefs.getInt(_cacheTimestampKey);
-      
-      if (cachedData != null && timestamp != null) {
-        final cacheAge = DateTime.now().millisecondsSinceEpoch - timestamp;
-        final isCacheValid = cacheAge < _cacheValidDuration.inMilliseconds;
-        
-        final List<dynamic> jsonList = json.decode(cachedData);
-        final items = jsonList.map((json) => MenuItem.fromJson(json)).toList();
-        
-        _menuItems = items;
-        _cacheLoaded = true;
-        
-        debugPrint('📦 Loaded ${items.length} menu items from cache (age: ${(cacheAge / 1000 / 60).toStringAsFixed(0)} minutes, valid: $isCacheValid)');
-        
-        if (!isCacheValid) {
-          _error = 'Cached data may be outdated. Pull to refresh.';
-        }
-        
-        notifyListeners();
-      } else {
-        debugPrint('⚠️ No cached menu items found');
-      }
-    } catch (e) {
-      debugPrint('❌ Error loading menu cache: $e');
-    }
-  }
-
-  /// Save menu items to SharedPreferences cache
-  Future<void> _saveToCache(List<MenuItem> items) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final jsonList = items.map((item) => item.toJson()).toList();
-      final jsonString = json.encode(jsonList);
-      
-      await prefs.setString(_cacheKey, jsonString);
-      await prefs.setInt(_cacheTimestampKey, DateTime.now().millisecondsSinceEpoch);
-      
-      debugPrint('💾 Cached ${items.length} menu items to local storage');
-    } catch (e) {
-      debugPrint('❌ Error saving menu cache: $e');
-    }
-  }
-
-  /// Clear the menu cache
-  Future<void> clearCache() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove(_cacheKey);
-      await prefs.remove(_cacheTimestampKey);
-      debugPrint('🗑️ Menu cache cleared');
-    } catch (e) {
-      debugPrint('❌ Error clearing menu cache: $e');
-    }
-  }
-
   // MAIN: Load menu items with detailed debugging
   Future<void> loadMenuItems() async {
-    // Load from cache first if not already loaded
-    if (!_cacheLoaded) {
-      await _loadFromCache();
-    }
-    
-    // Preserve existing data during loading
-    final cachedItems = List<MenuItem>.from(_menuItems);
-    
     _isLoading = true;
     _error = null;
     notifyListeners();
@@ -160,22 +88,11 @@ class MenuProvider extends ChangeNotifier {
       debugPrint('🎉 Successfully loaded ${items.length} menu items');
       debugPrint('Categories found: ${categories.join(", ")}');
       
-      // Save to cache for offline use
-      await _saveToCache(items);
-      
     } catch (e, stackTrace) {
       debugPrint('❌ Error loading menu items: $e');
       debugPrint('Stack trace: $stackTrace');
-      
-      // Restore cached data on error
-      _menuItems = cachedItems;
-      
-      // Set appropriate error message
-      _error = cachedItems.isEmpty
-          ? 'No internet connection. Please check your network.'
-          : 'Limited connectivity. Showing cached menu.';
-      
-      debugPrint('📦 Restored ${cachedItems.length} cached menu items');
+      _menuItems = [];
+      _error = 'Failed to load menu items: $e';
     } finally {
       _isLoading = false;
       notifyListeners();

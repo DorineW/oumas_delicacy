@@ -2,17 +2,21 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../constants/colors.dart';
 import '../services/auth_service.dart' as app;
 import '../providers/favorites_provider.dart';
 import '../providers/reviews_provider.dart';
 import '../providers/order_provider.dart';
 import '../providers/cart_provider.dart';
+import '../providers/connectivity_provider.dart';
 import 'home_screen.dart';
 import 'login_screen.dart';
+import 'onboarding_screen.dart';
 import 'admin/admin_dashboard_screen.dart';
 import 'rider/rider_dashboard_screen.dart';
 import '../widgets/bike_animation.dart';
+import '../widgets/no_connection_screen.dart';
 
 class AuthWrapper extends StatefulWidget {
   const AuthWrapper({super.key});
@@ -26,17 +30,52 @@ class _AuthWrapperState extends State<AuthWrapper> {
   bool _isInitializing = true;
   bool _isAuthenticated = false;
   String? _initError; // Track initialization errors
+  bool _hasSeenOnboarding = false; // Track onboarding status
+  bool _checkingOnboarding = true; // Track onboarding check
 
   @override
   void initState() {
     super.initState();
-    _initializeAuth();
+    _checkOnboardingStatus();
   }
 
   @override
   void dispose() {
     _authSubscription?.cancel();
     super.dispose();
+  }
+
+  /// Check if user has seen onboarding before
+  Future<void> _checkOnboardingStatus() async {
+    final prefs = await SharedPreferences.getInstance();
+    final hasSeenOnboarding = prefs.getBool('has_seen_onboarding') ?? false;
+    
+    if (mounted) {
+      setState(() {
+        _hasSeenOnboarding = hasSeenOnboarding;
+        _checkingOnboarding = false;
+      });
+      
+      // If user has seen onboarding, proceed to auth check
+      if (hasSeenOnboarding) {
+        _initializeAuth();
+      }
+    }
+  }
+
+  /// Mark onboarding as completed
+  Future<void> _completeOnboarding() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('has_seen_onboarding', true);
+    
+    if (mounted) {
+      setState(() {
+        _hasSeenOnboarding = true;
+      });
+      
+      // Now proceed to auth check
+      _initializeAuth();
+    }
   }
 
   /// Helper function for clearer order loading logic
@@ -58,9 +97,9 @@ class _AuthWrapperState extends State<AuthWrapper> {
     
     // --- STEP 1: Quick Authentication Check ---
     if (session != null) {
-      debugPrint('🔐 AuthWrapper: Found existing session, refreshing profile...');
+      debugPrint('🔐 AuthWrapper: Found existing session, loading cached profile first...');
       
-      // Try to refresh profile but don't crash if it fails
+      // CRITICAL: Load cached profile immediately for instant display
       try {
         await auth.refreshProfile().timeout(
           const Duration(seconds: 5),
@@ -70,6 +109,7 @@ class _AuthWrapperState extends State<AuthWrapper> {
         );
       } catch (e) {
         debugPrint('⚠️ Profile refresh failed (continuing anyway): $e');
+        // Cached data should already be loaded by refreshProfile
       }
       
       // Always proceed to home screen if session exists
@@ -82,7 +122,7 @@ class _AuthWrapperState extends State<AuthWrapper> {
         });
         
         if (auth.currentUser != null) {
-          debugPrint('✅ Authentication complete with profile, loading data in background...');
+          debugPrint('✅ Authentication complete with profile: ${auth.currentUser?.name}, loading data in background...');
           _loadDataInBackground(auth.currentUser!.id, auth);
         } else {
           debugPrint('⚠️ Session exists but no profile loaded - proceeding with session user');
@@ -165,8 +205,34 @@ class _AuthWrapperState extends State<AuthWrapper> {
   Widget build(BuildContext context) {
     // Watch the AuthService for any provider-level changes
     final auth = context.watch<app.AuthService>();
+    final connectivity = context.watch<ConnectivityProvider>();
 
-    // 1. BRANDED LOADING STATE: Show while initializing or checking session
+    // 0. CONNECTIVITY CHECK: Show no connection screen if offline
+    if (!connectivity.isConnected) {
+      return NoConnectionScreen(
+        onRetry: () => connectivity.retry(),
+        customMessage:
+            "You're offline. Please check your internet connection to continue.",
+      );
+    }
+
+    // 1. ONBOARDING CHECK: Show onboarding if not seen yet
+    if (_checkingOnboarding) {
+      return Scaffold(
+        backgroundColor: AppColors.background,
+        body: const Center(
+          child: CircularProgressIndicator(color: AppColors.primary),
+        ),
+      );
+    }
+
+    if (!_hasSeenOnboarding) {
+      return OnboardingPage(
+        onFinish: _completeOnboarding,
+      );
+    }
+
+    // 2. BRANDED LOADING STATE: Show while initializing or checking session
     if (_isInitializing || auth.isLoading) {
       return Scaffold(
         backgroundColor: AppColors.background,
@@ -212,13 +278,13 @@ class _AuthWrapperState extends State<AuthWrapper> {
       );
     }
     
-    // 2. UNAUTHENTICATED STATE: No user found or session expired
+    // 3. UNAUTHENTICATED STATE: No user found or session expired
     if (!_isAuthenticated || auth.currentUser == null) {
       debugPrint('🔓 AuthWrapper: No authenticated user, showing LoginScreen.');
       return const LoginScreen();
     }
     
-    // 3. AUTHENTICATED STATE: User found, route based on role
+    // 4. AUTHENTICATED STATE: User found, route based on role
     final userRole = auth.currentUser!.role;
     final userName = auth.currentUser!.name;
     debugPrint('✅ AuthWrapper: Authenticated user "$userName" with role: $userRole');

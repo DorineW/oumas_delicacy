@@ -30,6 +30,7 @@ import 'providers/notification_provider.dart';
 import 'providers/reviews_provider.dart'; // ADDED
 import 'providers/favorites_provider.dart'; // ADDED: Import
 import 'providers/location_provider.dart'; // ADDED: Import LocationProvider
+import 'providers/connectivity_provider.dart'; // ADDED: Import ConnectivityProvider
 import 'models/notification_model.dart';
 import 'models/cart_item.dart'; // ADDED
 import 'models/order.dart'; // ADDED for DeliveryType
@@ -142,6 +143,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
+        ChangeNotifierProvider(create: (_) => ConnectivityProvider()), // ADDED: Global connectivity monitoring
         ChangeNotifierProvider(create: (_) => AuthService()),
         ChangeNotifierProvider(create: (_) => NotificationService()), // ADDED: Notification preferences service
         ChangeNotifierProvider(create: (_) => CartProvider()),

@@ -1051,65 +1051,6 @@ class _AdminMenuManagementScreenState extends State<AdminMenuManagementScreen> {
           ),
           body: Column(
             children: [
-              // Offline/Error Banner
-              if (menuProvider.error != null)
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: menuProvider.error!.contains('cached') || menuProvider.error!.contains('Limited')
-                        ? Colors.orange.shade50
-                        : Colors.red.shade50,
-                    border: Border(
-                      bottom: BorderSide(
-                        color: menuProvider.error!.contains('cached') || menuProvider.error!.contains('Limited')
-                            ? Colors.orange.shade300
-                            : Colors.red.shade300,
-                      ),
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        menuProvider.error!.contains('cached') || menuProvider.error!.contains('Limited')
-                            ? Icons.cloud_off
-                            : Icons.error_outline,
-                        color: menuProvider.error!.contains('cached') || menuProvider.error!.contains('Limited')
-                            ? Colors.orange.shade700
-                            : Colors.red.shade700,
-                        size: 20,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          menuProvider.error!,
-                          style: TextStyle(
-                            color: menuProvider.error!.contains('cached') || menuProvider.error!.contains('Limited')
-                                ? Colors.orange.shade900
-                                : Colors.red.shade900,
-                            fontSize: 13,
-                          ),
-                        ),
-                      ),
-                      TextButton.icon(
-                        onPressed: menuProvider.isLoading
-                            ? null
-                            : () => menuProvider.refreshMenuItems(),
-                        icon: Icon(
-                          Icons.refresh,
-                          size: 18,
-                          color: menuProvider.isLoading ? Colors.grey : Colors.blue,
-                        ),
-                        label: Text(
-                          'Retry',
-                          style: TextStyle(
-                            color: menuProvider.isLoading ? Colors.grey : Colors.blue,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
               _buildStatsHeader(menuProvider),
               // FIX: Wrap category management in AnimatedSize for smooth visibility/height control
               AnimatedSize(
@@ -1360,7 +1301,6 @@ class _AdminMenuManagementScreenState extends State<AdminMenuManagementScreen> {
                   maxWidth: 500,
                 ),
                 child: Column(
-                  mainAxisSize: MainAxisSize.min,
                   children: [
                     // Header
                     Padding(
@@ -1388,7 +1328,7 @@ class _AdminMenuManagementScreenState extends State<AdminMenuManagementScreen> {
                     ),
                     const Divider(),
                     // Content
-                    Flexible(
+                    Expanded(
                       child: SingleChildScrollView(
                         padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
                         child: Form(

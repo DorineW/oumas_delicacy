@@ -402,6 +402,50 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> with SingleTick
       backgroundColor: AppColors.background,
       body: Column(
         children: [
+          // ADDED: Error/Offline Banner
+          if (provider.error != null)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: provider.error!.contains('cached') || provider.error!.contains('Limited')
+                    ? Colors.orange.shade50
+                    : Colors.red.shade50,
+                border: Border(
+                  bottom: BorderSide(
+                    color: provider.error!.contains('cached') || provider.error!.contains('Limited')
+                        ? Colors.orange.shade300
+                        : Colors.red.shade300,
+                  ),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    provider.error!.contains('cached') || provider.error!.contains('Limited')
+                        ? Icons.wifi_off
+                        : Icons.error_outline,
+                    color: provider.error!.contains('cached') || provider.error!.contains('Limited')
+                        ? Colors.orange.shade700
+                        : Colors.red.shade700,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      provider.error!,
+                      style: TextStyle(
+                        color: provider.error!.contains('cached') || provider.error!.contains('Limited')
+                            ? Colors.orange.shade900
+                            : Colors.red.shade900,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           _buildOrderStats(provider),
           Expanded(
             child: TabBarView(

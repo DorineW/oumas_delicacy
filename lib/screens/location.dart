@@ -6,6 +6,8 @@ import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 import 'package:geolocator/geolocator.dart';
 import '../providers/location_provider.dart';
+import '../providers/connectivity_provider.dart';
+import '../widgets/no_connection_screen.dart';
 import '../constants/colors.dart';
 
 class LocationScreen extends StatefulWidget {
@@ -22,13 +24,14 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
   MapController mapController = MapController();
   bool _isMapReady = false;
   bool _isLoadingLocation = false;
+  bool _hasInitializationError = false;
+  bool _isProcessingTap = false;
+  Completer<void>? _currentOperation;
+  AnimationController? _moveController;
   final TextEditingController _searchController = TextEditingController();
   List<Map<String, dynamic>> _searchResults = [];
   Timer? _debounceTimer;
   bool _isLoadingAddress = false;
-  
-  // REMOVED: Local state for address and coordinates - use provider as single source of truth
-  // REMOVED: _isDisposed flag - use built-in mounted property instead
 
   @override
   void initState() {
@@ -42,100 +45,54 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
   void dispose() {
     _searchController.dispose();
     _debounceTimer?.cancel();
+    _currentOperation?.completeError('Disposed');
+    _moveController?.dispose();
     super.dispose();
   }
 
   // UPDATED: Better location initialization with permission handling
   void _initializeMap() async {
     if (!mounted) return;
-
-    setState(() => _isLoadingLocation = true);
-
-    final locationProvider = context.read<LocationProvider>();
-
+    setState(() {
+      _isLoadingLocation = true;
+      _hasInitializationError = false;
+    });
     try {
+      final locationProvider = context.read<LocationProvider>();
+      // await locationProvider.ensureLocationServices?.call();
+      if (!mounted) return;
       LatLng initialPoint;
-      bool locationFound = false;
-
-      if (widget.initialPosition == null) {
-        // Force fresh location fetch
+      if (widget.initialPosition != null) {
+        initialPoint = LatLng(
+          widget.initialPosition!['latitude'] ?? LocationProvider.defaultLatitude,
+          widget.initialPosition!['longitude'] ?? LocationProvider.defaultLongitude,
+        );
+      } else {
         await locationProvider.initializeLocation();
-
-        if (!mounted) return;
-
         if (locationProvider.latitude != null && locationProvider.longitude != null) {
           initialPoint = LatLng(locationProvider.latitude!, locationProvider.longitude!);
-          locationFound = true;
         } else {
           initialPoint = const LatLng(
             LocationProvider.defaultLatitude,
             LocationProvider.defaultLongitude,
           );
         }
-      } else {
-        // Use provided initial position and reverse geocode it
-        final lat = widget.initialPosition!['latitude'] ?? LocationProvider.defaultLatitude;
-        final lon = widget.initialPosition!['longitude'] ?? LocationProvider.defaultLongitude;
-        
-        initialPoint = LatLng(lat, lon);
-        
-        // Get address for initial position
-        await locationProvider.setLocation(initialPoint.latitude, initialPoint.longitude);
-        
-        if (!mounted) return;
-        
-        locationFound = true;
       }
-
       if (!mounted) return;
-      
-      setState(() {
-        _isMapReady = true;
-      });
-
-      if (locationFound) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) {
-            _animatedMapMove(initialPoint, 15.0);
-          }
-        });
-      }
+      setState(() => _isMapReady = true);
+      await Future.delayed(const Duration(milliseconds: 100));
+      if (mounted) _animatedMapMove(initialPoint, 15.0);
     } catch (e) {
-      debugPrint('❌ Error initializing map: $e');
-
+      debugPrint('Map initialization error: $e');
       if (mounted) {
         setState(() {
           _isMapReady = true;
+          _hasInitializationError = true;
         });
-
-        // Show error after setState to ensure widget tree is stable
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) {
-            final messenger = ScaffoldMessenger.of(context);
-            messenger.showSnackBar(
-              SnackBar(
-                content: Row(
-                  children: [
-                    const Icon(Icons.error, color: Colors.white),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text('Could not get location. Please try again.'),
-                    ),
-                  ],
-                ),
-                backgroundColor: Colors.red,
-                behavior: SnackBarBehavior.floating,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                margin: const EdgeInsets.all(16),
-              ),
-            );
-          }
-        });
+        _showErrorSnackBar('Failed to initialize map: ${e.toString()}');
       }
     } finally {
-      if (mounted) {
-        setState(() => _isLoadingLocation = false);
-      }
+      if (mounted) setState(() => _isLoadingLocation = false);
     }
   }
 
@@ -154,18 +111,16 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
       begin: camera.zoom,
       end: destZoom,
     );
-
-    final controller = AnimationController(
+    _moveController?.dispose();
+    _moveController = AnimationController(
       duration: const Duration(milliseconds: 500),
       vsync: this,
     );
-
     final Animation<double> animation = CurvedAnimation(
-      parent: controller,
+      parent: _moveController!,
       curve: Curves.fastOutSlowIn,
     );
-
-    controller.addListener(() {
+    _moveController!.addListener(() {
       mapController.move(
         LatLng(
           latTween.evaluate(animation),
@@ -174,32 +129,23 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
         zoomTween.evaluate(animation),
       );
     });
-
     animation.addStatusListener((status) {
       if (status == AnimationStatus.completed || status == AnimationStatus.dismissed) {
-        controller.dispose();
+        _moveController?.dispose();
+        _moveController = null;
       }
     });
-
-    controller.forward();
+    _moveController!.forward();
   }
 
   // UPDATED: Improved onMapTap with better address handling
   void _onMapTap(BuildContext context, LatLng point) async {
-    if (!mounted) return;
-    
+    if (!mounted || _isProcessingTap) return;
+    _isProcessingTap = true;
     final locationProvider = context.read<LocationProvider>();
     final messenger = ScaffoldMessenger.of(context);
-
-    setState(() {
-      _isLoadingAddress = true;
-    });
-
-    if (!mounted) return;
-    
-    // Remove any existing snackbar before showing new one
+    setState(() { _isLoadingAddress = true; });
     messenger.clearSnackBars();
-    
     messenger.showSnackBar(
       SnackBar(
         content: const Row(
@@ -223,17 +169,13 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
         margin: const EdgeInsets.all(16),
       ),
     );
-
     await locationProvider.setLocation(point.latitude, point.longitude);
-
     if (mounted) {
       messenger.clearSnackBars();
-      setState(() {
-        _isLoadingAddress = false;
-      });
-
+      setState(() { _isLoadingAddress = false; });
       debugPrint('📍 Map tap - Address: ${locationProvider.deliveryAddress}, Fee: ${locationProvider.deliveryFee}');
     }
+    _isProcessingTap = false;
   }
 
   void _confirmLocation(BuildContext context) {
@@ -450,15 +392,19 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
 
   // ADDED: Extracted search logic
   Future<void> _performSearch(String query) async {
-    if (!mounted) return;
-    
-    final locationProvider = context.read<LocationProvider>();
-    final results = await locationProvider.searchAddress(query);
-    
-    if (mounted) {
-      setState(() {
-        _searchResults = results;
-      });
+    if (!mounted || query.isEmpty) return;
+    _currentOperation?.completeError('Cancelled');
+    _currentOperation = Completer<void>();
+    try {
+      final locationProvider = context.read<LocationProvider>();
+      final results = await locationProvider.searchAddress(query);
+      if (!mounted || _currentOperation!.isCompleted) return;
+      setState(() => _searchResults = results);
+      _currentOperation!.complete();
+    } catch (e) {
+      if (!(_currentOperation?.isCompleted ?? true)) {
+        _currentOperation!.completeError(e);
+      }
     }
   }
 
@@ -636,8 +582,14 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
 
   @override
   Widget build(BuildContext context) {
-    final provider = Provider.of<LocationProvider>(context);
-
+    final connectivity = context.watch<ConnectivityProvider>();
+    if (!connectivity.isConnected) {
+      return NoConnectionScreen(
+        onRetry: () => connectivity.retry(),
+        customMessage:
+            'You need an internet connection to search addresses and load the map tiles.',
+      );
+    }
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
@@ -645,7 +597,6 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
         backgroundColor: AppColors.primary,
         foregroundColor: AppColors.white,
         actions: [
-          // Refresh button
           IconButton(
             icon: _isLoadingLocation 
                 ? const SizedBox(
@@ -657,7 +608,7 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
                     ),
                   )
                 : const Icon(Icons.refresh),
-            onPressed: _isLoadingLocation ? null : _currentLocationButtonPressed,
+            onPressed: _isLoadingLocation ? null : _initializeMap,
             tooltip: 'Refresh Location',
           ),
           IconButton(
@@ -777,15 +728,45 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
                 ),
               ),
             ),
-
-          // Map container with warning overlay
-          Positioned.fill(
-            top: _searchResults.isNotEmpty ? 280 : 80,
-            child: Stack(
-              children: [
-                // Map
-                _isMapReady
-                    ? FlutterMap(
+          // Map container with error/retry
+          Consumer<LocationProvider>(
+            builder: (context, provider, child) {
+              return Positioned.fill(
+                top: _searchResults.isNotEmpty ? 280 : 80,
+                child: Stack(
+                  children: [
+                    if (!_isMapReady)
+                      const Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            CircularProgressIndicator(),
+                            SizedBox(height: 16),
+                            Text('Loading map...'),
+                          ],
+                        ),
+                      )
+                    else if (_hasInitializationError)
+                      Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.error_outline, size: 64, color: Colors.red),
+                            const SizedBox(height: 16),
+                            const Text('Failed to load map', style: TextStyle(fontSize: 18)),
+                            const SizedBox(height: 8),
+                            const Text('Please check your internet connection', textAlign: TextAlign.center),
+                            const SizedBox(height: 24),
+                            ElevatedButton.icon(
+                              onPressed: _initializeMap,
+                              icon: Icon(Icons.refresh),
+                              label: Text('Retry'),
+                            ),
+                          ],
+                        ),
+                      )
+                    else
+                      FlutterMap(
                         mapController: mapController,
                         options: MapOptions(
                           initialCenter: (provider.latitude != null && provider.longitude != null)
@@ -806,8 +787,6 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
                             userAgentPackageName: 'com.yourapp.fooddelivery',
                             subdomains: const ['a', 'b', 'c'],
                           ),
-                          
-                          // Delivery radius circle (5km)
                           CircleLayer(
                             circles: [
                               CircleMarker(
@@ -823,8 +802,6 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
                               ),
                             ],
                           ),
-                          
-                          // Restaurant location marker
                           const MarkerLayer(
                             markers: [
                               Marker(
@@ -838,8 +815,6 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
                               ),
                             ],
                           ),
-                          
-                          // Selected location marker
                           if (provider.latitude != null && provider.longitude != null)
                             MarkerLayer(
                               markers: [
@@ -866,58 +841,47 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
                               ],
                             ),
                         ],
-                      )
-                    : const Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            CircularProgressIndicator(),
-                            SizedBox(height: 16),
-                            Text('Loading map...'),
-                          ],
+                      ),
+                    if (_isMapReady && provider.outsideDeliveryArea)
+                      Positioned(
+                        top: 12,
+                        left: 12,
+                        right: 12,
+                        child: Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.red.withOpacity(0.9),
+                            borderRadius: BorderRadius.circular(8),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.2),
+                                blurRadius: 8,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: const Row(
+                            children: [
+                              Icon(Icons.warning, color: Colors.white),
+                              SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  'You are outside our delivery area (5km radius)',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
-                
-                // Outside delivery zone warning (overlay on map)
-                if (_isMapReady && provider.outsideDeliveryArea)
-                  Positioned(
-                    top: 12,
-                    left: 12,
-                    right: 12,
-                    child: Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.red.withOpacity(0.9),
-                        borderRadius: BorderRadius.circular(8),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.2),
-                            blurRadius: 8,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
-                      ),
-                      child: const Row(
-                        children: [
-                          Icon(Icons.warning, color: Colors.white),
-                          SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              'You are outside our delivery area (5km radius)',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-              ],
-            ),
+                  ],
+                ),
+              );
+            },
           ),
-          
           // Current Location FAB
           if (_isMapReady)
             Positioned(
@@ -937,15 +901,34 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
                     : const Icon(Icons.my_location),
               ),
             ),
-          
           // Address Card
-          if (_isMapReady)
-            Align(
-              alignment: Alignment.bottomCenter,
-              child: _buildAddressCard(provider),
-            ),
+          Consumer<LocationProvider>(
+            builder: (context, provider, child) {
+              return Align(
+                alignment: Alignment.bottomCenter,
+                child: _buildAddressCard(provider),
+              );
+            },
+          ),
         ],
       ),
     );
   }
+  void _showErrorSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const Icon(Icons.error, color: Colors.white),
+            const SizedBox(width: 12),
+            Expanded(child: Text(message)),
+          ],
+        ),
+        backgroundColor: Colors.red,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+
 }

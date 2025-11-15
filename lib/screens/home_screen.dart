@@ -19,6 +19,7 @@ import 'profile_screen.dart';
 import '../services/auth_service.dart';
 import '../screens/login_screen.dart';
 import '../utils/responsive_helper.dart';
+import '../widgets/popular_item_sections.dart';
 
 /* ----------------------------------------------------------
    1.  ENTRY POINT
@@ -31,14 +32,13 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMixin {
   int _currentIndex = 0;
-  // GlobalKey for cart icon (used for fly-to-cart animation)
   final GlobalKey _cartIconKey = GlobalKey();
   
-  final List<Widget> _screens = const [
-    _HomeTab(),
-    DashboardScreen(),
-    CartScreen(),
-    ProfileScreen(),
+  final List<Widget> _screens = [
+    const _HomeTab(),
+    const DashboardScreen(),
+    const CartScreen(),
+    const ProfileScreen(),
   ];
 
   @override
@@ -77,9 +77,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               label: 'Dashboard',
             ),
             BottomNavigationBarItem(
-              // Use Container with GlobalKey wrapper for animation target
               icon: Container(
-                key: _cartIconKey, 
+                key: _cartIconKey,
                 child: cartQty > 0
                     ? Stack(
                         clipBehavior: Clip.none,
@@ -128,7 +127,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 }
 
 /* ----------------------------------------------------------
-   HOME TAB CONTENT
+   UPDATED HOME TAB WITH LANDING PAGE STYLING
 ----------------------------------------------------------- */
 class _HomeTab extends StatefulWidget {
   const _HomeTab();
@@ -141,71 +140,85 @@ class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin 
   final _searchCtrl = TextEditingController();
   String _search = '';
   int _tabIndex = 0;
+  final ScrollController _scrollController = ScrollController();
+  final GlobalKey _menuKey = GlobalKey();
+  final GlobalKey _popularKey = GlobalKey();
 
-  TabController? _tabController; 
+  TabController? _tabController;
   final Map<int, ScrollController> _scrollControllers = {};
 
   @override
   void initState() {
     super.initState();
     
-    // Start loading data immediately. TabController initialization happens in build.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<MenuProvider>().loadMenuItems();
+      final menuProvider = context.read<MenuProvider>();
+      
+      menuProvider.loadMenuItems().then((_) {
+        if (mounted) {
+          final cats = menuProvider.menuItems
+                       .map((e) => e.category)
+                       .toSet()
+                       .toList();
+          
+          _tabController = TabController(length: cats.length + 1, vsync: this);
+          
+          if (mounted) {
+            setState(() {});
+          }
+        }
+      });
     });
   }
 
   @override
   void dispose() {
     _searchCtrl.dispose();
-    _tabController?.dispose(); 
+    _scrollController.dispose();
+    _tabController?.dispose();
     for (final c in _scrollControllers.values) {
       c.dispose();
     }
     super.dispose();
   }
 
+  void _scrollToMenu() {
+    Scrollable.ensureVisible(
+      _menuKey.currentContext!,
+      duration: const Duration(milliseconds: 500),
+      curve: Curves.easeInOut,
+    );
+  }
+
+  void _scrollToPopular() {
+    Scrollable.ensureVisible(
+      _popularKey.currentContext!,
+      duration: const Duration(milliseconds: 500),
+      curve: Curves.easeInOut,
+    );
+  }
+
   ScrollController _controller(int index) =>
       _scrollControllers.putIfAbsent(index, () => ScrollController());
-
-  // --- Category and TabController setup function ---
-  void _setupTabController(List<MenuItem> meals) {
-    // Determine the new list of unique categories (including 'All')
-    final newCategories = ['All', ...meals.map((e) => e.category).toSet()];
-    final newLength = newCategories.length;
-
-    // Only update the controller if it's null or the category list length has changed
-    if (_tabController == null || _tabController!.length != newLength) {
-      _tabController?.dispose();
-      
-      // Ensure the current index is within the bounds of the new length
-      _tabIndex = _tabIndex.clamp(0, newLength > 0 ? newLength - 1 : 0);
-      
-      // Create a new controller
-      _tabController = TabController(length: newLength, vsync: this, initialIndex: _tabIndex);
-      
-      // Force a rebuild to use the new controller
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-         if (mounted) setState(() {});
-      });
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
     final menuProvider = context.watch<MenuProvider>();
     final meals = menuProvider.menuItems;
+    final popularItems = menuProvider.popularItems.map((item) => PopularItem(
+      itemName: item.title,
+      productId: item.productId ?? '',
+      orderCount: 0,
+      avgUnitPrice: item.price.toDouble(),
+      avgRating: 0.0,
+      menuItem: item,
+    )).toList();
+    final isLoading = menuProvider.isLoading;
     
-    // 1. DYNAMICALLY SETUP TAB CONTROLLER HERE
-    if (meals.isNotEmpty) {
-      _setupTabController(meals);
-    }
-
-    // --- LOADING/ERROR/EMPTY STATES ---
-    if (menuProvider.isLoading && meals.isEmpty) {
+    // Show loading state
+    if (isLoading && meals.isEmpty) {
       return Scaffold(
         backgroundColor: AppColors.background,
-        appBar: _buildAppBar(context, menuProvider),
         body: const Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -225,20 +238,20 @@ class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin 
       );
     }
     
+    // Show error state
     if (menuProvider.error != null && meals.isEmpty) {
       return Scaffold(
         backgroundColor: AppColors.background,
-        appBar: _buildAppBar(context, menuProvider),
         body: Center(
           child: Padding(
             padding: const EdgeInsets.all(24.0),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Icon(
+                Icon(
                   Icons.error_outline,
                   size: 80,
-                  color: AppColors.lightGray,
+                  color: AppColors.darkText.withOpacity(0.3),
                 ),
                 const SizedBox(height: 16),
                 const Text(
@@ -275,10 +288,10 @@ class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin 
       );
     }
     
+    // Show empty state
     if (meals.isEmpty) {
       return Scaffold(
         backgroundColor: AppColors.background,
-        appBar: _buildAppBar(context, menuProvider),
         body: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -310,7 +323,6 @@ class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin 
       );
     }
     
-    // --- MAIN CONTENT LOGIC ---
     final cats = ['All', ...meals.map((e) => e.category).toSet()];
     final filtered = meals.where((m) {
       final t = m.title.toLowerCase();
@@ -323,325 +335,533 @@ class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin 
 
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: _buildAppBar(context, menuProvider),
       body: SafeArea(
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            return Column(
-              children: [
-                // Offline/Limited Connectivity Banner
-                if (menuProvider.error != null && menuProvider.error!.contains('cached'))
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    color: Colors.orange.shade100,
-                    child: Row(
-                      children: [
-                        Icon(Icons.cloud_off, color: Colors.orange.shade800, size: 16),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            menuProvider.error!,
-                            style: TextStyle(
-                              color: Colors.orange.shade900,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ),
-                        TextButton(
-                          onPressed: () => menuProvider.refreshMenuItems(),
-                          style: TextButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                            minimumSize: const Size(0, 0),
-                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                          ),
-                          child: Text(
-                            'Retry',
-                            style: TextStyle(
-                              color: Colors.orange.shade900,
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                // Search bar
-                Padding(
-                  padding: EdgeInsets.fromLTRB(16, isLandscape ? 8 : 12, 16, 8),
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: AppColors.white,
-                      borderRadius: BorderRadius.circular(12),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(.1),
-                          blurRadius: 8,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
-                    ),
-                    child: TextField(
-                      controller: _searchCtrl,
-                      onChanged: (v) => setState(() => _search = v),
-                      decoration: InputDecoration(
-                        hintText: 'Search meals…',
-                        prefixIcon: const Icon(Icons.search, color: AppColors.lightGray),
-                        suffixIcon: _search.isNotEmpty
-                            ? IconButton(
-                                icon: const Icon(Icons.clear, color: AppColors.lightGray),
-                                onPressed: () {
-                                  _searchCtrl.clear();
-                                  setState(() => _search = '');
-                                },
-                              )
-                            : null,
-                        border: InputBorder.none,
-                        contentPadding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+        child: SingleChildScrollView(
+          controller: _scrollController,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // 1. Hero Section
+              _buildHeroSection(),
+              
+              // 2. Features/Stats Section
+              _buildFeaturesSection(),
+              
+              // 3. Operating Hours Banner
+              _buildHoursBanner(),
+              
+              // 4. Quick Action Buttons
+              _buildQuickActions(),
+              
+              // 5. Category Quick Navigation
+              _buildCategoryNavigation(),
+              
+              // Search bar (moved down)
+              Padding(
+                padding: EdgeInsets.fromLTRB(16, isLandscape ? 8 : 12, 16, 8),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: AppColors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(.1),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
                       ),
+                    ],
+                  ),
+                  child: TextField(
+                    controller: _searchCtrl,
+                    onChanged: (v) => setState(() => _search = v),
+                    decoration: const InputDecoration(
+                      hintText: 'Search meals…',
+                      prefixIcon: Icon(Icons.search, color: AppColors.lightGray),
+                      border: InputBorder.none,
+                      contentPadding: EdgeInsets.symmetric(vertical: 14, horizontal: 16),
                     ),
                   ),
                 ),
-                
-                // Carousel with time-based meal selection
-                Builder(builder: (context) {
-                  final now = DateTime.now().hour;
-                  final closed = now < 7 || now >= 21;
+              ),
+              
+              // 6. Promotional Carousel
+              _buildPromotionalCarousel(meals),
+              
+              // 7. Popular Items Section (with key for scrolling)
+              Container(
+                key: _popularKey,
+                child: PopularItemsSection(
+                  popularItems: popularItems,
+                  isLoading: isLoading,
+                ),
+              ),
+              
+              // 8. Full Menu Section (with key for scrolling)
+              Container(
+                key: _menuKey,
+                child: _buildFullMenuSection(cats, filtered, isLandscape),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
-                  if (closed) {
-                    return _closedCard();
-                  } else {
-                    final carouselMeals = _getTimeBasedMeals(meals, now);
-                    
-                    if (carouselMeals.isEmpty) {
-                      return Container(
-                        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                        padding: const EdgeInsets.all(20),
-                        decoration: BoxDecoration(
-                          color: Colors.orange.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: Colors.orange.withOpacity(0.3)),
+  // ========== LANDING PAGE SECTIONS ==========
+
+  // 1. Hero Section
+  Widget _buildHeroSection() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [AppColors.primary, AppColors.primary.withOpacity(0.8)],
+        ),
+      ),
+      child: Column(
+        children: [
+          // Logo and branding
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.restaurant, color: Colors.white, size: 32),
+              const SizedBox(width: 8),
+              Text(
+                "Ouma's Delicacy",
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 28,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          // Tagline
+          Text(
+            "Authentic Homemade Meals\nDelivered to Your Doorstep",
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 18,
+              height: 1.4,
+            ),
+          ),
+          const SizedBox(height: 20),
+          // CTA Buttons
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              ElevatedButton(
+                onPressed: _scrollToMenu,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.white,
+                  foregroundColor: AppColors.primary,
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(25),
+                  ),
+                ),
+                child: const Text('Order Now'),
+              ),
+              const SizedBox(width: 12),
+              OutlinedButton(
+                onPressed: _scrollToPopular,
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.white,
+                  side: const BorderSide(color: Colors.white),
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(25),
+                  ),
+                ),
+                child: const Text('View Specials'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // 2. Features/Stats Section
+  Widget _buildFeaturesSection() {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 20),
+      color: AppColors.background,
+      child: Column(
+        children: [
+          const Text(
+            'Why Choose Ouma\'s?',
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+              color: AppColors.darkText,
+            ),
+          ),
+          const SizedBox(height: 30),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _buildFeatureItem(Icons.local_shipping, 'Fast Delivery', '30-45 min'),
+              _buildFeatureItem(Icons.verified_user, 'Quality Guaranteed', '100% Fresh'),
+              _buildFeatureItem(Icons.star, 'Customer Rated', '4.8/5 Stars'),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFeatureItem(IconData icon, String title, String subtitle) {
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: AppColors.primary.withOpacity(0.1),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(icon, color: AppColors.primary, size: 24),
+        ),
+        const SizedBox(height: 8),
+        Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
+        Text(subtitle, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+      ],
+    );
+  }
+
+  // 3. Operating Hours Banner
+  Widget _buildHoursBanner() {
+    final now = DateTime.now();
+    final isOpen = now.hour >= 7 && now.hour < 21;
+    
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isOpen ? Colors.green.shade50 : Colors.orange.shade50,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isOpen ? Colors.green.shade100 : Colors.orange.shade100,
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            isOpen ? Icons.check_circle : Icons.schedule,
+            color: isOpen ? Colors.green : Colors.orange,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  isOpen ? 'We\'re Open!' : 'Currently Closed',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: isOpen ? Colors.green : Colors.orange,
+                  ),
+                ),
+                const Text(
+                  'Daily: 7:00 AM - 9:00 PM',
+                  style: TextStyle(fontSize: 12, color: Colors.grey),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // 4. Quick Action Buttons
+  Widget _buildQuickActions() {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 20),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        children: [
+          _buildQuickAction(Icons.timer, 'Express', Colors.blue),
+          _buildQuickAction(Icons.local_offer, 'Deals', Colors.orange),
+          _buildQuickAction(Icons.favorite, 'Favorites', Colors.red),
+          _buildQuickAction(Icons.history, 'Recent', Colors.green),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildQuickAction(IconData icon, String label, Color color) {
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.1),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(icon, color: color, size: 24),
+        ),
+        const SizedBox(height: 4),
+        Text(label, style: const TextStyle(fontSize: 12)),
+      ],
+    );
+  }
+
+  // 5. Category Quick Navigation
+  Widget _buildCategoryNavigation() {
+    final categories = ['Breakfast', 'Lunch', 'Dinner', 'Desserts', 'Drinks'];
+    
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 16),
+            child: Text(
+              'Quick Categories',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: AppColors.darkText,
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              children: categories.map((category) {
+                return Container(
+                  margin: const EdgeInsets.only(right: 8),
+                  child: Chip(
+                    label: Text(category),
+                    backgroundColor: AppColors.primary.withOpacity(0.1),
+                    labelStyle: const TextStyle(color: AppColors.primary),
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // 6. Enhanced Promotional Carousel
+  Widget _buildPromotionalCarousel(List<MenuItem> meals) {
+    final now = DateTime.now().hour;
+    final closed = now < 7 || now >= 21;
+    
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Text(
+            'Today\'s Specials',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: AppColors.darkText,
+            ),
+          ),
+        ),
+        Builder(builder: (context) {
+          if (closed) {
+            return _closedCard();
+          } else {
+            final carouselMeals = _getTimeBasedMeals(meals, now);
+            if (carouselMeals.isEmpty) {
+              return Container(
+                margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: Colors.orange.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.info, color: Colors.orange),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        'No meals available at this time. Check back soon!',
+                        style: TextStyle(
+                          color: AppColors.darkText.withOpacity(0.7),
                         ),
-                        child: Row(
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }
+            return Column(children: [
+              Carousel(
+                height: 150,
+                interval: const Duration(seconds: 4),
+                children: carouselMeals.take(4).map((m) => _carouselCard(context, m, now)).toList(),
+              ),
+              const SizedBox(height: 12),
+            ]);
+          }
+        }),
+      ],
+    );
+  }
+
+  // 8. Full Menu Section
+  Widget _buildFullMenuSection(List<String> cats, List<MenuItem> filtered, bool isLandscape) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Text(
+            'Full Menu',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: AppColors.darkText,
+            ),
+          ),
+        ),
+        
+        // Category tabs
+        if (_tabController != null)
+          Container(
+            color: AppColors.white,
+            child: TabBar(
+              controller: _tabController!,
+              isScrollable: true,
+              indicatorColor: AppColors.primary,
+              labelColor: AppColors.primary,
+              unselectedLabelColor: AppColors.darkText,
+              indicatorWeight: 3,
+              labelStyle: const TextStyle(fontWeight: FontWeight.bold),
+              unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.normal),
+              tabs: cats.map((c) => Tab(text: c)).toList(),
+              onTap: (i) => setState(() => _tabIndex = i),
+            ),
+          ),
+        
+        // Grid section
+        SizedBox(
+          height: 600,
+          child: _tabController == null
+              ? const Center(child: CircularProgressIndicator())
+              : TabBarView(
+                  controller: _tabController!,
+                  children: cats.asMap().entries.map((e) {
+                    final list = e.key == 0 ? filtered : filtered.where((m) => m.category == cats[e.key]).toList();
+                    if (list.isEmpty) {
+                      return Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            const Icon(Icons.info, color: Colors.orange),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Text(
-                                'No featured meals available at this time.',
-                                style: TextStyle(
-                                  color: AppColors.darkText.withOpacity(0.7),
-                                ),
+                            Icon(
+                              Icons.fastfood,
+                              size: 80,
+                              color: AppColors.darkText.withOpacity(0.3),
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              'No Meals Found',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: AppColors.darkText.withOpacity(0.5),
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              _search.isEmpty 
+                                  ? 'No meals in this category'
+                                  : 'Try adjusting your search',
+                              style: TextStyle(
+                                color: AppColors.darkText.withOpacity(0.4),
                               ),
                             ),
                           ],
                         ),
                       );
                     }
-                    
-                    return Column(children: [
-                      Carousel(
-                        height: isLandscape ? 120 : 150,
-                        interval: const Duration(seconds: 4),
-                        children: carouselMeals.map((m) => _carouselCard(context, m, now)).toList(),
-                      ),
-                      SizedBox(height: isLandscape ? 8 : 12),
-                    ]);
-                  }
-                }),
-                
-                // Category tabs
-                if (_tabController != null) 
-                  Container(
-                    color: AppColors.white,
-                    child: TabBar(
-                      controller: _tabController!, 
-                      isScrollable: true,
-                      indicatorColor: AppColors.primary,
-                      labelColor: AppColors.primary,
-                      unselectedLabelColor: AppColors.darkText,
-                      indicatorWeight: 3,
-                      labelStyle: const TextStyle(fontWeight: FontWeight.bold),
-                      unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.normal),
-                      tabs: cats.map((c) => Tab(text: c)).toList(),
-                      onTap: (i) => setState(() {
-                          _tabIndex = i; 
-                          _tabController!.index = i; 
-                      }),
-                    ),
-                  ),
-                
-                // Grid section
-                Expanded(
-                  child: _tabController == null
-                      ? const Center(child: CircularProgressIndicator())
-                      : TabBarView(
-                            controller: _tabController!, 
-                            children: cats.asMap().entries.map((e) {
-                          final list = e.key == 0 ? filtered : filtered.where((m) => m.category == cats[e.key]).toList();
-                          if (list.isEmpty) {
-                            return Center(
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(
-                                    Icons.fastfood,
-                                    size: 80,
-                                    color: AppColors.darkText.withOpacity(0.3),
-                                  ),
-                                  const SizedBox(height: 16),
-                                  Text(
-                                    'No Meals Found',
-                                    style: TextStyle(
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.bold,
-                                      color: AppColors.darkText.withOpacity(0.5),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    _search.isEmpty 
-                                      ? 'No meals in this category'
-                                      : 'Try adjusting your search',
-                                    style: TextStyle(
-                                      color: AppColors.darkText.withOpacity(0.4),
-                                    ),
-                                  ),
-                                ],
+                    return LayoutBuilder(
+                      builder: (context, gridConstraints) {
+                        return SingleChildScrollView(
+                          controller: _controller(e.key),
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          padding: EdgeInsets.fromLTRB(16, isLandscape ? 8 : 16, 16, 16),
+                          child: ConstrainedBox(
+                            constraints: BoxConstraints(
+                              minHeight: gridConstraints.maxHeight,
+                            ),
+                            child: GridView.builder(
+                              shrinkWrap: true,
+                              physics: const NeverScrollableScrollPhysics(),
+                              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: ResponsiveHelper.getGridCrossAxisCount(context),
+                                childAspectRatio: ResponsiveHelper.getGridChildAspectRatio(context),
+                                crossAxisSpacing: 12,
+                                mainAxisSpacing: 12,
                               ),
-                            );
-                          }
-                          return LayoutBuilder(
-                            builder: (context, gridConstraints) {
-                              return SingleChildScrollView(
-                                controller: _controller(e.key),
-                                physics: const AlwaysScrollableScrollPhysics(),
-                                padding: EdgeInsets.fromLTRB(16, isLandscape ? 8 : 16, 16, 16),
-                                child: ConstrainedBox(
-                                  constraints: BoxConstraints(
-                                    minHeight: gridConstraints.maxHeight,
-                                  ),
-                                  child: GridView.builder(
-                                    shrinkWrap: true,
-                                    physics: const NeverScrollableScrollPhysics(),
-                                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                                      crossAxisCount: ResponsiveHelper.getGridCrossAxisCount(context),
-                                      childAspectRatio: ResponsiveHelper.getGridChildAspectRatio(context),
-                                      crossAxisSpacing: 12,
-                                      mainAxisSpacing: 12,
-                                    ),
-                                    itemCount: list.length,
-                                    itemBuilder: (_, i) => _RiderStyleMealCard(meal: list[i]),
-                                  ),
-                                ),
-                              );
-                            },
-                          );
-                        }).toList(),
-                      ),
+                              itemCount: list.length,
+                              itemBuilder: (_, i) => _RiderStyleMealCard(meal: list[i]),
+                            ),
+                          ),
+                        );
+                      },
+                    );
+                  }).toList(),
                 ),
-              ],
-            );
-          },
-        ),
-      ),
-    );
-  }
-
-  PreferredSizeWidget _buildAppBar(BuildContext context, MenuProvider menuProvider) {
-    return AppBar(
-      title: const Text("Ouma's Delicacy"),
-      backgroundColor: AppColors.primary,
-      elevation: 4,
-      automaticallyImplyLeading: false,
-      titleTextStyle: const TextStyle(color: AppColors.white, fontSize: 18, fontWeight: FontWeight.bold),
-      actions: [
-        IconButton(
-          icon: menuProvider.isLoading 
-              ? const SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                  ),
-                )
-              : const Icon(Icons.refresh, color: Colors.white),
-          tooltip: 'Refresh Menu',
-          onPressed: menuProvider.isLoading ? null : () => menuProvider.refreshMenuItems(),
-        ),
-        IconButton(
-          icon: const Icon(Icons.close, color: Colors.white),
-          tooltip: 'Close App',
-          onPressed: () {
-            SystemNavigator.pop();
-          },
         ),
       ],
     );
   }
 
-  // FIXED LOGIC: Get time-based meals based on meal weight
-  List<MenuItem> _getTimeBasedMeals(List<MenuItem> meals, int hour) {
-    // 1. Define preferred meal weights based on time of day
-    final String preferredWeight;
-    final List<String> fallbackWeights; 
+  // ========== HELPER METHODS ==========
 
-    if (hour >= 7 && hour < 10) { // 7:00 AM - 9:59 AM (Breakfast)
+  List<MenuItem> _getTimeBasedMeals(List<MenuItem> meals, int hour) {
+    String preferredWeight;
+    
+    if (hour >= 7 && hour < 10) {
       preferredWeight = 'Light';
-      fallbackWeights = ['Medium', 'Heavy'];
-    } else if (hour >= 10 && hour < 12) { // 10:00 AM - 11:59 AM (Brunch)
+    } else if (hour >= 10 && hour < 12) {
       preferredWeight = 'Medium';
-      fallbackWeights = ['Light', 'Heavy'];
-    } else if (hour >= 12 && hour < 16) { // 12:00 PM - 3:59 PM (Lunch)
+    } else if (hour >= 12 && hour < 16) {
       preferredWeight = 'Heavy';
-      fallbackWeights = ['Medium', 'Light'];
-    } else { // 4:00 PM - 8:59 PM (Dinner/Evening)
+    } else {
       preferredWeight = 'Heavy';
-      fallbackWeights = ['Medium', 'Light'];
     }
     
     final menuProvider = context.read<MenuProvider>();
     
-    // 2. Filter available meals (must be in stock)
-    final availableMeals = meals.where((m) => menuProvider.isItemAvailable(m.title)).toList();
+    final preferredMeals = meals.where((m) => 
+      (m.mealWeight.name == preferredWeight) && menuProvider.isItemAvailable(m.title)
+    ).toList();
     
-    // 3. Build prioritized lists
-    final List<MenuItem> carouselMeals = [];
-    
-    // Add preferred weight meals
-    final preferredList = availableMeals
-        .where((m) => m.mealWeight.name == preferredWeight)
-        .toList();
-    
-    preferredList.shuffle();
-    carouselMeals.addAll(preferredList);
-    
-    // Add fallback weights in order if the list is still short (max 4 needed)
-    if (carouselMeals.length < 4) {
-      for (final weight in fallbackWeights) {
-        if (carouselMeals.length >= 4) break;
-        
-        final fallbackList = availableMeals
-            .where((m) => 
-                m.mealWeight.name == weight && 
-                !carouselMeals.contains(m) // Ensure no duplicates
-            )
-            .toList();
-        
-        fallbackList.shuffle();
-        // Add only enough to reach 4 items total
-        carouselMeals.addAll(fallbackList.take(4 - carouselMeals.length));
-      }
+    if (preferredMeals.length >= 4) {
+      preferredMeals.shuffle();
+      return preferredMeals.take(4).toList();
     }
     
-    // Ensure we only return a maximum of 4 items.
-    return carouselMeals.take(4).toList(); 
+    final otherMeals = meals.where((m) => 
+      (m.mealWeight.name != preferredWeight) && menuProvider.isItemAvailable(m.title)
+    ).toList();
+    
+    final combined = [...preferredMeals, ...otherMeals];
+    combined.shuffle();
+    return combined.take(4).toList();
   }
 
-  // Get meal period name
   String _getMealPeriodName(int hour) {
     if (hour >= 7 && hour < 10) {
       return 'Breakfast';
@@ -654,14 +874,13 @@ class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin 
     }
   }
 
-  // Carousel card with meal period name
-  Widget _carouselCard(BuildContext context, MenuItem m, int hour) { 
+  Widget _carouselCard(BuildContext context, MenuItem m, int hour) {
     final mealPeriod = _getMealPeriodName(hour);
     
     return GestureDetector(
       onTap: () => Navigator.push(
         context,
-        MaterialPageRoute(builder: (_) => MealDetailScreen(meal: m)), 
+        MaterialPageRoute(builder: (_) => MealDetailScreen(meal: m)),
       ),
       child: Container(
         margin: const EdgeInsets.symmetric(horizontal: 8),
@@ -694,7 +913,6 @@ class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin 
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        // Show meal period instead of "Special Offer"
                         Row(
                           children: [
                             Icon(
@@ -715,7 +933,7 @@ class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin 
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          m.title, 
+                          m.title,
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
@@ -726,7 +944,7 @@ class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin 
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          'Ksh ${m.price}', 
+                          'Ksh ${m.price}',
                           style: TextStyle(
                             color: AppColors.white.withOpacity(0.9),
                             fontSize: 14,
@@ -746,7 +964,6 @@ class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin 
     );
   }
 
-  // Get icon for meal period
   IconData _getMealPeriodIcon(int hour) {
     if (hour >= 7 && hour < 10) {
       return Icons.free_breakfast;
@@ -759,9 +976,8 @@ class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin 
     }
   }
 
-  // Circular plate widget
-  Widget _circularPlate(BuildContext context, MenuItem m) { 
-    final imageValue = m.imageUrl; 
+  Widget _circularPlate(BuildContext context, MenuItem m) {
+    final imageValue = m.imageUrl;
     
     return Material(
       elevation: 6,
@@ -779,8 +995,7 @@ class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin 
     );
   }
 
-  // Build image helper
-  Widget _buildImage(String? imageValue, double iconSize) { 
+  Widget _buildImage(String? imageValue, double iconSize) {
     if (imageValue == null) {
       return Icon(Icons.fastfood, size: iconSize, color: AppColors.primary);
     }
@@ -800,7 +1015,6 @@ class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin 
     );
   }
 
-  // Floating dots animation for carousel background
   Widget _floatingDots() {
     return const Positioned.fill(
       child: Stack(
@@ -814,7 +1028,6 @@ class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin 
     );
   }
 
-  // Closed card for when restaurant is closed
   Widget _closedCard() {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -881,28 +1094,26 @@ class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin 
   }
 }
 
-// ----------  FLY TO CART ANIMATION  ----------
+// ========== FLY TO CART ANIMATION ==========
+
 OverlayEntry? _currentOverlay;
 
 void _flyToCart(BuildContext context, GlobalKey cartKey, Widget flyingWidget, VoidCallback onEnd) {
   final overlay = Overlay.of(context);
   final renderBox = context.findRenderObject() as RenderBox?;
-  
-  // Use GlobalKey to find cart icon directly
   final cartRenderBox = cartKey.currentContext?.findRenderObject() as RenderBox?;
   
   if (renderBox == null || cartRenderBox == null) {
-    debugPrint('❌ Fly-to-cart: Could not find renderBoxes');
-    onEnd(); // fallback
+    debugPrint('Fly-to-cart: Could not find renderBoxes');
+    onEnd();
     return;
   }
 
   final start = renderBox.localToGlobal(Offset.zero);
   final cartSize = cartRenderBox.size;
-  // Aim for center of cart icon
   final end = cartRenderBox.localToGlobal(Offset(cartSize.width / 2, cartSize.height / 2));
 
-  debugPrint('✅ Fly-to-cart: Starting animation from $start to $end');
+  debugPrint('Fly-to-cart: Starting animation from $start to $end');
 
   late OverlayEntry entry;
   entry = OverlayEntry(
@@ -988,11 +1199,10 @@ class _FlyingWidgetState extends State<_FlyingWidget>
   }
 }
 
-/* ----------------------------------------------------------
-   MEAL CARD
------------------------------------------------------------ */
+// ========== MEAL CARD ==========
+
 class _RiderStyleMealCard extends StatefulWidget {
-  final MenuItem meal; 
+  final MenuItem meal;
   const _RiderStyleMealCard({required this.meal});
 
   @override
@@ -1020,10 +1230,9 @@ class _RiderStyleMealCardState extends State<_RiderStyleMealCard>
   Future<void> _addToCart() async {
     if (_qty <= 0) return;
 
-    // Check availability
     final menuProvider = context.read<MenuProvider>();
-    final isAvailable = menuProvider.isItemAvailable(widget.meal.title); 
-    
+    final isAvailable = menuProvider.isItemAvailable(widget.meal.title);
+
     if (!isAvailable) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -1032,7 +1241,7 @@ class _RiderStyleMealCardState extends State<_RiderStyleMealCard>
               const Icon(Icons.error, color: Colors.white),
               const SizedBox(width: 8),
               Expanded(
-                child: Text('${widget.meal.title} is currently out of stock'), 
+                child: Text('${widget.meal.title} is currently out of stock'),
               ),
             ],
           ),
@@ -1049,7 +1258,7 @@ class _RiderStyleMealCardState extends State<_RiderStyleMealCard>
 
     final homeScreenState = context.findAncestorStateOfType<_HomeScreenState>();
     if (homeScreenState == null) {
-      debugPrint('❌ Could not find HomeScreen state');
+      debugPrint('Could not find HomeScreen state');
       return;
     }
 
@@ -1057,16 +1266,15 @@ class _RiderStyleMealCardState extends State<_RiderStyleMealCard>
 
     final cart = context.read<CartProvider>();
     cart.addItem(CartItem(
-      id: '${widget.meal.title}_${DateTime.now().millisecondsSinceEpoch}', 
-      menuItemId: widget.meal.id ?? '', 
-      mealTitle: widget.meal.title, 
-      price: widget.meal.price, 
+      id: '${widget.meal.title}_${DateTime.now().millisecondsSinceEpoch}',
+      menuItemId: widget.meal.id ?? '',
+      mealTitle: widget.meal.title,
+      price: widget.meal.price,
       quantity: addedQuantity,
-      mealImage: widget.meal.imageUrl ?? '', 
+      mealImage: widget.meal.imageUrl ?? '',
     ));
 
-    // Build fly widget
-    final imageUrl = widget.meal.imageUrl; 
+    final imageUrl = widget.meal.imageUrl;
     Widget flyWidget;
     
     if (imageUrl != null && imageUrl.startsWith('assets/')) {
@@ -1099,7 +1307,7 @@ class _RiderStyleMealCardState extends State<_RiderStyleMealCard>
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('$addedQuantity × ${widget.meal.title} added to cart'), 
+          content: Text('$addedQuantity × ${widget.meal.title} added to cart'),
           backgroundColor: AppColors.primary,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           margin: const EdgeInsets.fromLTRB(16, 0, 16, 24),
@@ -1110,8 +1318,7 @@ class _RiderStyleMealCardState extends State<_RiderStyleMealCard>
     });
   }
 
-  // Build image widget helper
-  Widget _buildImageWidget(String? imageUrl) { 
+  Widget _buildImageWidget(String? imageUrl) {
     Widget errorWidget = const Icon(Icons.fastfood, size: 60, color: AppColors.primary);
     
     if (imageUrl == null) {
@@ -1157,7 +1364,6 @@ class _RiderStyleMealCardState extends State<_RiderStyleMealCard>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Image section with fixed height
             Container(
               height: isLandscape ? 100 : 120,
               decoration: BoxDecoration(
@@ -1204,14 +1410,12 @@ class _RiderStyleMealCardState extends State<_RiderStyleMealCard>
                 ],
               ),
             ),
-            // Content
             Padding(
               padding: EdgeInsets.all(isLandscape ? 6 : 10),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Title
                   Text(
                     m.title,
                     style: TextStyle(
@@ -1224,9 +1428,8 @@ class _RiderStyleMealCardState extends State<_RiderStyleMealCard>
                     overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 2),
-                  // Price
                   Text(
-                    'Ksh ${m.price.toStringAsFixed(2)}',
+                    'Ksh ${m.price}',
                     style: TextStyle(
                       fontSize: isLandscape ? 12 : 14,
                       fontWeight: FontWeight.bold,
@@ -1234,7 +1437,6 @@ class _RiderStyleMealCardState extends State<_RiderStyleMealCard>
                     ),
                   ),
                   const SizedBox(height: 6),
-                  // Quantity picker and Add to Cart button
                   Row(
                     children: [
                       Expanded(
@@ -1322,18 +1524,14 @@ class _RiderStyleMealCardState extends State<_RiderStyleMealCard>
     return IconButton(
       padding: EdgeInsets.zero,
       iconSize: isLandscape ? 13 : 14,
-      onPressed: () {
-        HapticFeedback.lightImpact();
-        onTap();
-      },
+      onPressed: onTap,
       icon: Icon(icon, color: AppColors.primary),
     );
   }
 }
 
-/* ----------------------------------------------------------
-   SIMPLE ANIMATED DOT FOR CAROUSEL
------------------------------------------------------------ */
+// ========== ANIMATED DOT ==========
+
 class AnimatedDot extends StatefulWidget {
   final int index;
   const AnimatedDot({super.key, required this.index});
