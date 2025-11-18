@@ -65,7 +65,7 @@ class UserAddress {
 
   // Short format for labels
   String get shortDisplay {
-    return label.isNotEmpty ? '$label: $descriptiveDirections' : descriptiveDirections;
+    return descriptiveDirections;
   }
 
   UserAddress copyWith({

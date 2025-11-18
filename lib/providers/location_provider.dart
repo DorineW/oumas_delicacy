@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'dart:math'; // ADDED: Import for cos, asin, sqrt
 import 'package:geolocator/geolocator.dart';
+import '../models/location.dart'; // ADDED: Import Location model
 
 class LocationProvider with ChangeNotifier {
   double? _latitude;
@@ -13,6 +14,7 @@ class LocationProvider with ChangeNotifier {
   String? _error;
   Position? _currentPosition;
   bool _outsideDeliveryArea = false; // ADDED: Delivery zone check
+  Location? _activeLocation; // ADDED: Store active location for delivery calculations
 
   double? get latitude => _latitude;
   double? get longitude => _longitude;
@@ -21,6 +23,7 @@ class LocationProvider with ChangeNotifier {
   String? get error => _error;
   Position? get currentPosition => _currentPosition;
   bool get outsideDeliveryArea => _outsideDeliveryArea; // ADDED
+  Location? get activeLocation => _activeLocation; // ADDED: Expose active location
 
   // Dynamic location - will be set from LocationManagementProvider
   double? _restaurantLat;
@@ -31,7 +34,23 @@ class LocationProvider with ChangeNotifier {
   static const double fallbackLatitude = -1.303960; 
   static const double fallbackLongitude = 36.790900;
 
-  // Set restaurant location dynamically
+  // Set restaurant location dynamically from Location model
+  void setActiveLocation(Location location) {
+    _activeLocation = location;
+    if (location.lat != null && location.lon != null) {
+      _restaurantLat = location.lat;
+      _restaurantLon = location.lon;
+      _maxDeliveryDistanceKm = location.deliveryRadiusKm ?? 5.0;
+      _checkDeliveryArea();
+      notifyListeners();
+      debugPrint('✅ Active location set: ${location.name} (${location.lat}, ${location.lon})');
+      debugPrint('   Delivery radius: ${location.deliveryRadiusKm}km');
+      debugPrint('   Base fee: KES ${location.deliveryBaseFee}');
+      debugPrint('   Rate per km: KES ${location.deliveryRatePerKm}/km');
+    }
+  }
+
+  // Legacy method - kept for backward compatibility
   void setRestaurantLocation(double lat, double lon, double deliveryRadius) {
     _restaurantLat = lat;
     _restaurantLon = lon;
@@ -160,15 +179,26 @@ class LocationProvider with ChangeNotifier {
     }
   }
 
-  // ADDED: Forward geocoding (search by text)
+  // UPDATED: Forward geocoding (search by text) - supports any location in Kenya
   Future<List<Map<String, dynamic>>> searchAddress(String query) async {
     if (query.isEmpty) return [];
     
     try {
+      // Encode the query for URL
+      final encodedQuery = Uri.encodeComponent(query);
+      
+      // Search anywhere in Kenya without geographic restrictions
+      // This allows search to work for any location added by admin
       final url = Uri.parse(
         'https://nominatim.openstreetmap.org/search?'
-        'q=$query&format=json&limit=5&countrycodes=ke' // ADDED: Limit to Kenya
+        'q=$encodedQuery&'
+        'format=json&'
+        'limit=10&'
+        'countrycodes=ke&'
+        'addressdetails=1' // Include address breakdown
       );
+      
+      debugPrint('🔍 Searching: $query');
       
       final response = await http.get(
         url,
@@ -178,18 +208,71 @@ class LocationProvider with ChangeNotifier {
         },
       ).timeout(const Duration(seconds: 10));
 
-      if (response.statusCode != 200) return [];
+      if (response.statusCode != 200) {
+        debugPrint('❌ Search failed: ${response.statusCode}');
+        return [];
+      }
       
       final results = json.decode(response.body) as List;
-      return results
-          .map((r) => {
-                'name': r['display_name'],
-                'lat': double.parse(r['lat']),
-                'lon': double.parse(r['lon']),
-              })
-          .toList();
+      debugPrint('✅ Found ${results.length} results');
+      
+      // Filter and format results with better display names
+      final formattedResults = <Map<String, dynamic>>[];
+      
+      for (final r in results) {
+        final lat = double.tryParse(r['lat']?.toString() ?? '');
+        final lon = double.tryParse(r['lon']?.toString() ?? '');
+        
+        if (lat == null || lon == null) continue;
+        
+        // Build a better display name using address components
+        String displayName;
+        final address = r['address'] as Map<String, dynamic>?;
+        
+        if (address != null) {
+          // Prioritize relevant address components
+          final parts = <String>[];
+          
+          if (address['road'] != null) parts.add(address['road']);
+          if (address['suburb'] != null) parts.add(address['suburb']);
+          else if (address['neighbourhood'] != null) parts.add(address['neighbourhood']);
+          
+          if (address['city'] != null) {
+            parts.add(address['city']);
+          } else if (address['town'] != null) {
+            parts.add(address['town']);
+          } else if (address['county'] != null) {
+            parts.add(address['county']);
+          }
+          
+          displayName = parts.isNotEmpty ? parts.join(', ') : r['display_name'];
+        } else {
+          displayName = r['display_name'];
+        }
+        
+        // Limit display name length
+        if (displayName.length > 100) {
+          displayName = '${displayName.substring(0, 97)}...';
+        }
+        
+        formattedResults.add({
+          'name': displayName,
+          'lat': lat,
+          'lon': lon,
+          'type': r['type'] ?? 'place',
+          'importance': r['importance'] ?? 0.0,
+        });
+      }
+      
+      // Sort by importance (Nominatim's relevance score)
+      formattedResults.sort((a, b) => 
+        (b['importance'] as double).compareTo(a['importance'] as double)
+      );
+      
+      // Return top 5 most relevant results
+      return formattedResults.take(5).toList();
     } catch (e) {
-      debugPrint('Address search error: $e');
+      debugPrint('❌ Address search error: $e');
       return [];
     }
   }
@@ -231,8 +314,7 @@ class LocationProvider with ChangeNotifier {
     return 12742 * asin(sqrt(a)); // Distance in km
   }
 
-  // ADDED: Delivery Fee Logic - will be calculated by LocationManagementProvider
-  // This is a fallback for backward compatibility
+  // UPDATED: Delivery Fee Logic - uses active location's settings
   int get deliveryFee {
     if (_latitude == null || _longitude == null) {
       return 0; // No location set, no delivery fee
@@ -246,7 +328,12 @@ class LocationProvider with ChangeNotifier {
       return 0; // Outside delivery area
     }
 
-    // Simple tiered pricing for fallback (real pricing from LocationManagementProvider)
+    // Use active location's calculation method if available
+    if (_activeLocation != null) {
+      return _activeLocation!.calculateDeliveryFee(distance);
+    }
+
+    // Fallback to simple tiered pricing if no active location set
     if (distance <= 1.0) {
       return 50;
     } else if (distance <= 2.0) {
@@ -258,6 +345,18 @@ class LocationProvider with ChangeNotifier {
     } else {
       return 250;
     }
+  }
+
+  // ADDED: Get delivery fee details for display
+  String getDeliveryFeeDescription() {
+    final fee = deliveryFee;
+    if (fee == 0) {
+      if (_latitude == null || _longitude == null) {
+        return 'Set location';
+      }
+      return 'Outside delivery area';
+    }
+    return 'KES $fee';
   }
 
   String _parseAddress(Map<String, dynamic> data) {

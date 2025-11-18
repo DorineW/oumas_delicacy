@@ -2,31 +2,33 @@
 class ProductInventory {
   final String id;
   final String productId;
-  final String locationId;
+  final String? locationId; // Optional - not used in single location system
   final int quantity;
   final int minimumStockAlert;
   final DateTime? lastRestockDate;
   final DateTime createdAt;
   final DateTime updatedAt;
   final String? locationName;
+  final String? productName;
 
   ProductInventory({
     required this.id,
     required this.productId,
-    required this.locationId,
+    this.locationId, // Optional
     required this.quantity,
     required this.minimumStockAlert,
     this.lastRestockDate,
     required this.createdAt,
     required this.updatedAt,
     this.locationName,
+    this.productName,
   });
 
   factory ProductInventory.fromJson(Map<String, dynamic> json) {
     return ProductInventory(
       id: json['id'] ?? '',
       productId: json['product_id'] ?? '',
-      locationId: json['location_id'] ?? '',
+      locationId: json['location_id'], // Can be null
       quantity: json['quantity'] ?? 0,
       minimumStockAlert: json['minimum_stock_alert'] ?? 10,
       lastRestockDate: json['last_restock_date'] != null 
@@ -35,6 +37,7 @@ class ProductInventory {
       createdAt: DateTime.parse(json['created_at']),
       updatedAt: DateTime.parse(json['updated_at']),
       locationName: json['locations']?['name'],
+      productName: json['products']?['name'],
     );
   }
 
@@ -65,6 +68,7 @@ class ProductInventory {
     DateTime? createdAt,
     DateTime? updatedAt,
     String? locationName,
+    String? productName,
   }) {
     return ProductInventory(
       id: id ?? this.id,
@@ -76,17 +80,18 @@ class ProductInventory {
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       locationName: locationName ?? this.locationName,
+      productName: productName ?? this.productName,
     );
   }
 }
 
-// Low Stock Alert model (from view)
+// Low Stock Alert model (from view) - Single location system
 class LowStockAlert {
   final String id;
   final String productId;
   final String productName;
-  final String locationId;
-  final String locationName;
+  final String? category; // UPDATED: Category from StoreItems
+  final bool trackInventory; // UPDATED: Track inventory flag
   final int quantity;
   final int minimumStockAlert;
   final int unitsBelowMinimum;
@@ -97,8 +102,8 @@ class LowStockAlert {
     required this.id,
     required this.productId,
     required this.productName,
-    required this.locationId,
-    required this.locationName,
+    this.category,
+    required this.trackInventory,
     required this.quantity,
     required this.minimumStockAlert,
     required this.unitsBelowMinimum,
@@ -111,9 +116,9 @@ class LowStockAlert {
       id: json['id'] as String,
       productId: json['product_id'] as String,
       productName: json['product_name'] as String,
-      locationId: json['location_id'] as String,
-      locationName: json['location_name'] as String,
-      quantity: json['quantity'] as int,
+      category: json['category'] as String?,
+      trackInventory: json['track_inventory'] as bool? ?? true,
+      quantity: json['current_stock'] as int,
       minimumStockAlert: json['minimum_stock_alert'] as int,
       unitsBelowMinimum: json['units_below_minimum'] as int,
       lastRestockDate: json['last_restock_date'] != null

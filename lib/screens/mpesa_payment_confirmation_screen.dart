@@ -26,22 +26,21 @@ class MpesaPaymentConfirmationScreen extends StatefulWidget {
 class _MpesaPaymentConfirmationScreenState
     extends State<MpesaPaymentConfirmationScreen> {
   Timer? _statusCheckTimer;
-  Timer? _stkQueryTimer;
   Timer? _timeCounterTimer;
   String _orderStatus = 'waiting';
-  String? _stkQueryStatus;
-  String? _mpesaReceiptNumber; // ADDED: M-Pesa receipt/transaction code
-  String? _actualOrderId; // ADDED: Store actual order ID once created
-  DateTime? _paymentCompletedAt; // ADDED: Store exact payment completion time
-  int _stkQueryCount = 0;
+  String? _mpesaReceiptNumber;
+  String? _actualOrderId;
+  DateTime? _paymentCompletedAt;
   int _secondsElapsed = 0;
+  late final MpesaService _mpesaService;
+  StreamSubscription? _paymentStatusSubscription;
 
   @override
   void initState() {
     super.initState();
+    _mpesaService = MpesaService();
     _actualOrderId = widget.orderId; // Initialize with provided orderId (may be null)
     _startPaymentPolling();
-    _startStkQueryPolling();
     _startTimeCounter();
   }
 
@@ -59,130 +58,69 @@ class _MpesaPaymentConfirmationScreenState
   }
 
   void _startPaymentPolling() {
-    debugPrint('🔄 Starting payment status polling...');
-    int pollCount = 0;
-    const maxPolls = 36; // 3 minutes max (36 * 5 seconds)
+    debugPrint('🔄 Starting payment status listening...');
     
-    _statusCheckTimer = Timer.periodic(const Duration(seconds: 5), (timer) async {
-      if (!mounted) {
-        timer.cancel();
-        return;
-      }
-
-      pollCount++;
-
-      // CHANGED: Use checkoutRequestId to check payment status
-      final statusResult = await MpesaService.checkPaymentStatus(
-        checkoutRequestId: widget.checkoutRequestId,
-      );
-
-      if (statusResult['success'] == true) {
-        final status = statusResult['status'];
-        debugPrint('📊 Payment status: $status');
-        
-        setState(() {
-          _orderStatus = status;
-          // Update order ID when order is created
-          if (statusResult['orderId'] != null && _actualOrderId == null) {
-            _actualOrderId = statusResult['orderId'];
-            debugPrint('✅ Order created with ID: $_actualOrderId');
-          }
-          // Update receipt number if available
-          if (statusResult['mpesaReceipt'] != null && _mpesaReceiptNumber == null) {
-            _mpesaReceiptNumber = statusResult['mpesaReceipt'];
-            debugPrint('✅ M-Pesa Receipt: $_mpesaReceiptNumber');
-          }
-          // Capture payment completion timestamp
-          if (status == 'confirmed' && _paymentCompletedAt == null) {
+    // Use real-time status listening via Stream
+    _paymentStatusSubscription = _mpesaService
+        .listenToPaymentStatus(widget.checkoutRequestId)
+        .listen((status) {
+      if (!mounted) return;
+      
+      debugPrint('📊 Payment status changed: $status');
+      
+      setState(() {
+        // Map payment status to order status
+        if (status == 'completed') {
+          _orderStatus = 'confirmed';
+          if (_paymentCompletedAt == null) {
             _paymentCompletedAt = DateTime.now();
           }
-        });
+        } else if (status == 'failed' || status == 'cancelled') {
+          _orderStatus = status;
+        } else {
+          _orderStatus = 'waiting';
+        }
+      });
 
-        if (status == 'confirmed' || status == 'cancelled') {
-          // Order confirmed via M-Pesa payment
-          if (status == 'confirmed' && _actualOrderId != null) {
-            debugPrint('✅ Order created, awaiting customer confirmation');
-            timer.cancel();
-            _stkQueryTimer?.cancel();
-            
-            // Navigate after a short delay
-            Future.delayed(const Duration(seconds: 2), () {
-              if (mounted) {
-                _navigateToHome();
-              }
-            });
-          } else if (status == 'cancelled') {
-            debugPrint('❌ Payment cancelled/failed');
-            timer.cancel();
-            _stkQueryTimer?.cancel();
-            
-            // Navigate after a short delay
-            Future.delayed(const Duration(seconds: 3), () {
-              if (mounted) {
-                _navigateToHome();
-              }
-            });
+      // Navigate after status change
+      if (status == 'completed') {
+        debugPrint('✅ Payment completed');
+        _statusCheckTimer?.cancel();
+        Future.delayed(const Duration(seconds: 2), () {
+          if (mounted) {
+            _navigateToHome();
           }
-        }
-      } else {
-        // Payment check failed - likely no order exists yet or payment failed
-        debugPrint('⚠️ Payment status check failed (poll $pollCount/$maxPolls)');
-        
-        // After 1 minute (12 polls), assume payment failed
-        if (pollCount >= 12 && _actualOrderId == null) {
-          debugPrint('❌ No order created after 1 minute - payment likely failed');
-          setState(() {
-            _orderStatus = 'failed';
-          });
-          timer.cancel();
-          _stkQueryTimer?.cancel();
-          
-          // Show error and navigate
-          Future.delayed(const Duration(seconds: 3), () {
-            if (mounted) {
-              _navigateToHome();
-            }
-          });
-        }
-        
-        // Stop polling after max attempts
-        if (pollCount >= maxPolls) {
-          debugPrint('⏱️ Max polling attempts reached');
-          timer.cancel();
-        }
-      }
-    });
-  }
-
-  void _startStkQueryPolling() {
-    debugPrint('🔍 Starting STK query polling...');
-    
-    // REDUCED: Poll every 30 seconds instead of 10 to avoid rate limiting
-    // Safaricom allows max 5 requests per minute
-    _stkQueryTimer = Timer.periodic(const Duration(seconds: 30), (timer) async {
-      if (!mounted || _stkQueryCount >= 6 || _orderStatus != 'waiting') {
-        timer.cancel();
-        return;
-      }
-
-      final queryResult = await MpesaService.queryStkStatus(
-        checkoutRequestId: widget.checkoutRequestId,
-      );
-
-      if (queryResult['success'] == true) {
-        setState(() {
-          _stkQueryStatus = queryResult['resultDesc'] ?? 'Querying...';
         });
-
-        if (queryResult['resultCode'] == '0') {
-          debugPrint('✅ STK query successful');
-          timer.cancel();
-        }
+      } else if (status == 'failed' || status == 'cancelled') {
+        debugPrint('❌ Payment $status');
+        _statusCheckTimer?.cancel();
+        Future.delayed(const Duration(seconds: 3), () {
+          if (mounted) {
+            _navigateToHome();
+          }
+        });
       }
-
-      _stkQueryCount++;
+    });
+    
+    // Set a timeout after 2 minutes
+    _statusCheckTimer = Timer(const Duration(minutes: 2), () {
+      if (!mounted) return;
+      if (_orderStatus == 'waiting') {
+        debugPrint('⏱️ Payment timeout reached');
+        setState(() {
+          _orderStatus = 'failed';
+        });
+        _paymentStatusSubscription?.cancel();
+        Future.delayed(const Duration(seconds: 2), () {
+          if (mounted) {
+            _navigateToHome();
+          }
+        });
+      }
     });
   }
+
+
 
   void _navigateToHome() {
     // Navigate back to the root and clear all previous routes
@@ -195,8 +133,8 @@ class _MpesaPaymentConfirmationScreenState
 
   @override
   void dispose() {
+    _paymentStatusSubscription?.cancel();
     _statusCheckTimer?.cancel();
-    _stkQueryTimer?.cancel();
     _timeCounterTimer?.cancel();
     super.dispose();
   }
@@ -414,35 +352,6 @@ class _MpesaPaymentConfirmationScreenState
                 if (_orderStatus == 'confirmed') ...[
                   const SizedBox(height: 16),
                   _buildReceipt(),
-                ],
-
-                // STK Query Status
-                if (_stkQueryStatus != null && _orderStatus == 'waiting') ...[
-                  const SizedBox(height: 16),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.blue.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.blue),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.info_outline, color: Colors.blue),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Text(
-                            _stkQueryStatus!,
-                            style: const TextStyle(
-                              fontSize: 14,
-                              color: Colors.blue,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
                 ],
 
                 // Action Button

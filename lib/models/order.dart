@@ -72,6 +72,9 @@ class Order {
   final OrderStatus status;
   final DeliveryType deliveryType;
   final Map<String, dynamic>? deliveryAddress; // jsonb in DB
+  final String? deliveryAddressId; // FK to UserAddresses.id
+  final double? deliveryLat; // For rider navigation
+  final double? deliveryLon; // For rider navigation
   final String? riderId;
   final String? riderName;
   final String? cancellationReason;
@@ -93,6 +96,9 @@ class Order {
     required this.status,
     required this.deliveryType,
     this.deliveryAddress,
+    this.deliveryAddressId,
+    this.deliveryLat,
+    this.deliveryLon,
     this.riderId,
     this.riderName,
     this.cancellationReason,
@@ -117,6 +123,9 @@ class Order {
     String? riderId,
     String? riderName,
     Map<String, dynamic>? deliveryAddress, // FIXED: Map type
+    String? deliveryAddressId,
+    double? deliveryLat,
+    double? deliveryLon,
     DateTime? deliveredAt,
     DateTime? cancelledAt,
   }) {
@@ -137,6 +146,9 @@ class Order {
       riderId: riderId ?? this.riderId,
       riderName: riderName ?? this.riderName,
       deliveryAddress: deliveryAddress ?? this.deliveryAddress,
+      deliveryAddressId: deliveryAddressId ?? this.deliveryAddressId,
+      deliveryLat: deliveryLat ?? this.deliveryLat,
+      deliveryLon: deliveryLon ?? this.deliveryLon,
       deliveredAt: deliveredAt ?? this.deliveredAt,
       cancelledAt: cancelledAt ?? this.cancelledAt,
     );
@@ -170,6 +182,9 @@ class Order {
           ? DeliveryType.delivery 
           : DeliveryType.pickup,
       deliveryAddress: json['delivery_address'] as Map<String, dynamic>?, // FIXED: jsonb type
+      deliveryAddressId: json['delivery_address_id'] as String?,
+      deliveryLat: (json['delivery_lat'] as num?)?.toDouble(),
+      deliveryLon: (json['delivery_lon'] as num?)?.toDouble(),
       riderId: json['rider_id'] as String?,
       riderName: json['rider_name'] as String?,
       cancellationReason: json['cancellation_reason'] as String?,
@@ -193,6 +208,9 @@ class Order {
       'tax': tax,
       'total': totalAmount,
       'delivery_address': deliveryAddress,
+      'delivery_address_id': deliveryAddressId,
+      'delivery_lat': deliveryLat,
+      'delivery_lon': deliveryLon,
       'placed_at': date.toIso8601String(),
       'delivered_at': deliveredAt?.toIso8601String(),
       'cancelled_at': cancelledAt?.toIso8601String(),

@@ -1,17 +1,13 @@
 // lib/services/mpesa_service.dart
 import 'dart:async';
-import 'dart:convert';
 import 'package:flutter/foundation.dart';
-import 'package:http/http.dart' as http;
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class MpesaService {
-  // Using ngrok public URL for M-Pesa callbacks
-  static const String baseUrl = 'https://chaim-eared-kaylin.ngrok-free.dev/api';
-  // Change to 'http://10.0.2.2:3000/api' if using Android emulator
-  // Change to 'https://your-ngrok-url.ngrok.io/api' for production testing
+  final SupabaseClient _supabase = Supabase.instance.client;
 
   /// Format phone number to 254XXXXXXXXX format
-  static String formatPhoneNumber(String phone) {
+  String formatPhoneNumber(String phone) {
     // Remove all non-digit characters
     String cleaned = phone.replaceAll(RegExp(r'\D'), '');
     
@@ -32,167 +28,178 @@ class MpesaService {
     return cleaned;
   }
 
-  /// Initiate STK Push payment
-  static Future<Map<String, dynamic>> initiateStkPush({
+  /// Initiate M-Pesa STK Push using Supabase Edge Function
+  Future<Map<String, dynamic>> initiatePayment({
+    required String phoneNumber,
+    required int amount,
+    String? orderId,
+    required String accountReference,
+    String? transactionDesc,
+  }) async {
+    try {
+      final formattedPhone = formatPhoneNumber(phoneNumber);
+      
+      debugPrint('🔄 Initiating M-Pesa payment...');
+      debugPrint('Phone: $phoneNumber → $formattedPhone, Amount: $amount');
+
+      final response = await _supabase.functions.invoke(
+        'mpesa-stk-push',
+        body: {
+          'phoneNumber': formattedPhone,
+          'amount': amount,
+          'orderId': orderId,
+          'accountReference': accountReference,
+          'transactionDesc': transactionDesc ?? 'Payment for order $accountReference',
+        },
+      );
+
+      if (response.status != 200) {
+        debugPrint('❌ STK Push failed: ${response.data}');
+        throw Exception('Failed to initiate payment: ${response.data}');
+      }
+
+      final data = response.data as Map<String, dynamic>;
+      
+      if (data['success'] == true) {
+        debugPrint('✅ STK Push sent successfully');
+        return {
+          'success': true,
+          'message': data['message'],
+          'checkoutRequestId': data['checkoutRequestId'],
+          'merchantRequestId': data['merchantRequestId'],
+          'transactionId': data['transactionId'],
+        };
+      } else {
+        throw Exception(data['error'] ?? 'Payment initiation failed');
+      }
+    } catch (e) {
+      debugPrint('❌ Payment error: $e');
+      return {
+        'success': false,
+        'error': e.toString(),
+      };
+    }
+  }
+
+  /// Check payment status by polling the database
+  Future<String?> checkPaymentStatus(String checkoutRequestId) async {
+    try {
+      final response = await _supabase
+          .from('mpesa_transactions')
+          .select('status, result_desc')
+          .eq('checkout_request_id', checkoutRequestId)
+          .maybeSingle();
+
+      if (response == null) return null;
+      return response['status'] as String?;
+    } catch (e) {
+      debugPrint('Error checking payment status: $e');
+      return null;
+    }
+  }
+
+  /// Listen to payment status changes in real-time
+  Stream<String> listenToPaymentStatus(String checkoutRequestId) {
+    return _supabase
+        .from('mpesa_transactions')
+        .stream(primaryKey: ['id'])
+        .eq('checkout_request_id', checkoutRequestId)
+        .map((data) {
+          if (data.isEmpty) return 'pending';
+          return data.first['status'] as String;
+        });
+  }
+
+  /// Get user's transaction history
+  Future<List<Map<String, dynamic>>> getUserTransactions() async {
+    try {
+      final userId = _supabase.auth.currentUser?.id;
+      if (userId == null) return [];
+
+      final response = await _supabase
+          .from('mpesa_transactions')
+          .select()
+          .eq('user_auth_id', userId)
+          .order('created_at', ascending: false);
+
+      return List<Map<String, dynamic>>.from(response);
+    } catch (e) {
+      debugPrint('Error fetching transactions: $e');
+      return [];
+    }
+  }
+
+  /// Get receipt for a transaction
+  Future<Map<String, dynamic>?> getReceipt(String transactionId) async {
+    try {
+      final response = await _supabase
+          .from('receipts')
+          .select('''
+            *,
+            receipt_items(*)
+          ''')
+          .eq('transaction_id', transactionId)
+          .maybeSingle();
+
+      return response;
+    } catch (e) {
+      debugPrint('Error fetching receipt: $e');
+      return null;
+    }
+  }
+
+  /// Legacy method - for backward compatibility
+  @Deprecated('Use initiatePayment instead')
+  Future<Map<String, dynamic>> initiateStkPush({
     required String phoneNumber,
     required int amount,
     required String userId,
-    required Map<String, dynamic> orderDetails, // CHANGED: Added orderDetails
+    required Map<String, dynamic> orderDetails,
   }) async {
-    try {
-      // Format phone number to 254XXXXXXXXX
-      final formattedPhone = formatPhoneNumber(phoneNumber);
-      
-      debugPrint('📱 Initiating M-Pesa STK push...');
-      debugPrint('   Phone: $phoneNumber → $formattedPhone');
-      debugPrint('   Amount: KSh $amount');
-
-      final response = await http.post(
-        Uri.parse('$baseUrl/payments/initiate-stk'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'phoneNumber': formattedPhone,
-          'amount': amount,
-          'userId': userId,
-          'orderDetails': orderDetails, // CHANGED: Send order details
-        }),
-      ).timeout(
-        const Duration(seconds: 30),
-        onTimeout: () => throw TimeoutException('Connection timed out'),
-      );
-
-      debugPrint('📥 Response status: ${response.statusCode}');
-      debugPrint('📥 Response body: ${response.body}');
-
-      final data = jsonDecode(response.body);
-
-      if (response.statusCode == 200 && data['success'] == true) {
-        debugPrint('✅ STK push initiated successfully');
-        return {
-          'success': true,
-          'checkoutRequestID': data['checkoutRequestID'],
-          'message': data['message'],
-          'paymentId': data['paymentId'],
-          'environment': data['environment'],
-          'testPhoneUsed': data['testPhoneUsed'],
-        };
-      } else {
-        debugPrint('❌ STK push failed: ${data['error']}');
-        return {
-          'success': false,
-          'error': data['error'] ?? 'Payment initiation failed',
-          'details': data['details'],
-        };
-      }
-    } catch (e) {
-      debugPrint('❌ Exception during STK push: $e');
-      return {
-        'success': false,
-        'error': 'Failed to connect to payment server',
-        'details': e.toString(),
-      };
-    }
+    return initiatePayment(
+      phoneNumber: phoneNumber,
+      amount: amount,
+      orderId: orderDetails['orderId'],
+      accountReference: orderDetails['orderReference'] ?? 'ORDER',
+      transactionDesc: orderDetails['description'],
+    );
   }
 
-  /// Query STK Push status
-  static Future<Map<String, dynamic>> queryStkStatus({
+  /// Legacy method - for backward compatibility
+  @Deprecated('Use checkPaymentStatus instead')
+  Future<Map<String, dynamic>> queryStkStatus({
     required String checkoutRequestId,
   }) async {
-    try {
-      debugPrint('🔍 Querying STK status for: $checkoutRequestId');
-
-      final response = await http.post(
-        Uri.parse('$baseUrl/payments/query-stk-status'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'checkoutRequestId': checkoutRequestId,
-        }),
-      ).timeout(const Duration(seconds: 15));
-
-      final data = jsonDecode(response.body);
-
-      if (response.statusCode == 200 && data['success'] == true) {
-        return {
-          'success': true,
-          'resultCode': data['data']['ResultCode'],
-          'resultDesc': data['data']['ResultDesc'],
-        };
-      } else {
-        return {
-          'success': false,
-          'error': data['error'] ?? 'Failed to query status',
-        };
-      }
-    } catch (e) {
-      debugPrint('❌ Exception during STK query: $e');
-      return {
-        'success': false,
-        'error': 'Failed to query payment status',
-      };
-    }
+    final status = await checkPaymentStatus(checkoutRequestId);
+    return {
+      'success': status != null,
+      'resultCode': status == 'completed' ? 0 : (status == 'failed' ? 1 : null),
+      'resultDesc': status,
+    };
   }
 
-  /// Check payment status by checkoutRequestId (when order doesn't exist yet)
-  static Future<Map<String, dynamic>> checkPaymentStatus({
-    required String checkoutRequestId,
-  }) async {
-    try {
-      final response = await http.get(
-        Uri.parse('$baseUrl/payments/$checkoutRequestId/status'),
-      ).timeout(const Duration(seconds: 10));
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        return {
-          'success': true,
-          'status': data['status'],
-          'orderId': data['orderId'],
-          'total': data['total'],
-          'placedAt': data['placedAt'],
-        };
-      } else {
-        return {
-          'success': false,
-          'error': 'Failed to check payment status',
-        };
-      }
-    } catch (e) {
-      debugPrint('❌ Exception checking payment status: $e');
-      return {
-        'success': false,
-        'error': 'Failed to connect to server',
-      };
-    }
-  }
-
-  /// Check order status (legacy - for when order ID is known)
-  static Future<Map<String, dynamic>> checkOrderStatus({
+  /// Legacy method - for backward compatibility  
+  @Deprecated('Use checkPaymentStatus instead')
+  Future<Map<String, dynamic>> checkOrderStatus({
     required String orderId,
   }) async {
     try {
-      final response = await http.get(
-        Uri.parse('$baseUrl/orders/$orderId/status'),
-      ).timeout(const Duration(seconds: 10));
+      final response = await _supabase
+          .from('orders')
+          .select('status, total, placed_at')
+          .eq('id', orderId)
+          .maybeSingle();
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        return {
-          'success': true,
-          'status': data['status'],
-          'total': data['total'],
-          'placedAt': data['placed_at'],
-        };
-      } else if (response.statusCode == 404) {
-        return {
-          'success': false,
-          'error': 'Order not found',
-        };
-      } else {
-        return {
-          'success': false,
-          'error': 'Failed to check order status',
-        };
+      if (response == null) {
+        return {'success': false, 'error': 'Order not found'};
       }
+
+      return {
+        'success': true,
+        'status': response['status'],
+        'total': response['total'],
+        'placedAt': response['placed_at'],
+      };
     } catch (e) {
       debugPrint('❌ Exception checking order status: $e');
       return {

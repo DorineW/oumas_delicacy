@@ -9,10 +9,10 @@ import 'package:supabase_flutter/supabase_flutter.dart'; // ADDED
 
 import '../constants/colors.dart';
 import '../services/auth_service.dart';
-import 'location.dart'; // ADDED
 import '../utils/phone_utils.dart';
 import '../providers/address_provider.dart';
 import '../models/user_address.dart';
+import 'customer_address_management_screen.dart';
 
 class EditProfileScreen extends StatefulWidget {
   const EditProfileScreen({super.key});
@@ -36,7 +36,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   bool _isSaving = false;
 
   List<UserAddress> _addresses = [];
-  String? _defaultAddressId; // Changed from index to ID
 
   // payment stored as map (simple): { 'brand': 'Visa', 'last4': '4242' }
   Map<String, String>? _paymentMethod;
@@ -86,11 +85,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         
         setState(() {
           _addresses = List.from(addressProvider.addresses);
-          // Find default address
-          final defaultAddr = _addresses.where((addr) => addr.isDefault).firstOrNull;
-          if (defaultAddr != null) {
-            _defaultAddressId = defaultAddr.id;
-          }
         });
         
         debugPrint('✅ Loaded ${_addresses.length} addresses from UserAddresses table');
@@ -296,63 +290,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     );
   }
 
-  Future<void> _addAddressDialog() async {
-    // Navigate to map to select address
-    await _selectAddressFromMap();
-  }
-
-  Future<void> _removeAddress(int idx) async {
-    final addressToRemove = _addresses[idx];
-    
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Delete Address'),
-        content: Text('Are you sure you want to delete "${addressToRemove.label}"?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    );
-    
-    if (confirmed == true && mounted) {
-      try {
-        final addressProvider = Provider.of<AddressProvider>(context, listen: false);
-        await addressProvider.deleteAddress(addressToRemove.id);
-        
-        setState(() {
-          _addresses.removeAt(idx);
-          if (_defaultAddressId == addressToRemove.id) {
-            _defaultAddressId = _addresses.isNotEmpty ? _addresses.first.id : null;
-          }
-        });
-        
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Address deleted successfully'),
-            backgroundColor: AppColors.success,
-          ),
-        );
-      } catch (e) {
-        debugPrint('❌ Error deleting address: $e');
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to delete address: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
-  }
-
   String? _validateEmail(String? v) {
     final val = v?.trim() ?? '';
     if (val.isEmpty) return 'Email required';
@@ -367,65 +304,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     final digits = val.replaceAll(RegExp(r'\D'), '');
     if (digits.length < 6) return 'Enter a valid phone number';
     return null;
-  }
-
-  // Navigate to location screen for address selection
-  Future<void> _selectAddressFromMap() async {
-    final result = await Navigator.push<Map<String, dynamic>>(
-      context,
-      MaterialPageRoute(
-        builder: (_) => const LocationScreen(),
-      ),
-    );
-
-    if (result != null && mounted) {
-      final address = result['address'] as String;
-      final lat = (result['latitude'] as num).toDouble();
-      final lng = (result['longitude'] as num).toDouble();
-      
-      // Save via AddressProvider
-      final addressProvider = Provider.of<AddressProvider>(context, listen: false);
-      
-      try {
-        final newAddress = await addressProvider.addAddress(
-          label: 'Location ${_addresses.length + 1}',
-          latitude: lat,
-          longitude: lng,
-          descriptiveDirections: address,
-          setAsDefault: _addresses.isEmpty, // First address is default
-        );
-        
-        if (newAddress != null) {
-          setState(() {
-            _addresses.add(newAddress);
-            if (newAddress.isDefault) {
-              _defaultAddressId = newAddress.id;
-            }
-          });
-        }
-        
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Row(
-              children: [
-                Icon(Icons.check_circle, color: Colors.white),
-                SizedBox(width: 8),
-                Expanded(child: Text('Address added successfully')),
-              ],
-            ),
-            backgroundColor: AppColors.success,
-          ),
-        );
-      } catch (e) {
-        debugPrint('❌ Error saving address: $e');
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to save address: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
   }
 
   @override
@@ -586,54 +464,126 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 ),
                 SizedBox(height: isLandscape ? 16 : 20),
 
-                // UPDATED: Addresses section
-                _buildSectionHeader('Delivery Addresses', Icons.location_on, onAdd: _addAddressDialog),
+                // UPDATED: Addresses section - Link to dedicated screen
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: AppColors.primary.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(Icons.location_on, size: 18, color: AppColors.primary),
+                    ),
+                    const SizedBox(width: 8),
+                    const Text(
+                      'Delivery Addresses',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.darkText,
+                      ),
+                    ),
+                    const Spacer(),
+                    TextButton.icon(
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const CustomerAddressManagementScreen(),
+                          ),
+                        ).then((_) {
+                          // Reload addresses when returning
+                          _loadSavedProfile();
+                        });
+                      },
+                      icon: const Icon(Icons.edit, size: 18),
+                      label: const Text('Manage'),
+                      style: TextButton.styleFrom(foregroundColor: AppColors.primary),
+                    ),
+                  ],
+                ),
                 SizedBox(height: isLandscape ? 8 : 12),
                 
-                if (_addresses.isEmpty)
-                  Container(
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      color: AppColors.white,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: AppColors.lightGray.withOpacity(0.3)),
-                    ),
-                    child: Column(
-                      children: [
-                        Icon(Icons.location_off, size: 48, color: AppColors.darkText.withOpacity(0.3)),
-                        const SizedBox(height: 8),
-                        Text('No addresses yet', style: TextStyle(color: AppColors.darkText.withOpacity(0.5))),
-                        const SizedBox(height: 12),
-                        OutlinedButton.icon(
-                          onPressed: _selectAddressFromMap,
-                          icon: const Icon(Icons.map),
-                          label: const Text('Select from Map'),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: AppColors.primary,
-                            side: const BorderSide(color: AppColors.primary),
-                          ),
-                        ),
-                      ],
-                    ),
-                  )
-                else
-                  // ADDED: Add from map button
-                  Column(
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: AppColors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: AppColors.lightGray.withOpacity(0.3)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      ..._addresses.asMap().entries.map((e) => _buildAddressCard(e.key, e.value)),
-                      const SizedBox(height: 8),
-                      OutlinedButton.icon(
-                        onPressed: _selectAddressFromMap,
-                        icon: const Icon(Icons.map),
-                        label: const Text('Add from Map'),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: AppColors.primary,
-                          side: const BorderSide(color: AppColors.primary),
-                          minimumSize: const Size(double.infinity, 48),
+                      if (_addresses.isEmpty) ...[
+                        Row(
+                          children: [
+                            Icon(Icons.location_off, size: 24, color: AppColors.darkText.withOpacity(0.3)),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                'No delivery addresses saved',
+                                style: TextStyle(
+                                  color: AppColors.darkText.withOpacity(0.6),
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
-                      ),
+                      ] else ...[
+                        Row(
+                          children: [
+                            const Icon(Icons.check_circle, size: 20, color: AppColors.success),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                '${_addresses.length} ${_addresses.length == 1 ? 'address' : 'addresses'} saved',
+                                style: const TextStyle(
+                                  color: AppColors.darkText,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        if (_addresses.any((addr) => addr.isDefault)) ...[
+                          const SizedBox(height: 8),
+                          const Divider(),
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              const Icon(Icons.home, size: 18, color: AppColors.primary),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text(
+                                      'Default Address:',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.grey,
+                                      ),
+                                    ),
+                                    Text(
+                                      _addresses.firstWhere((addr) => addr.isDefault).label,
+                                      style: const TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ],
                     ],
                   ),
+                ),
                 
                 SizedBox(height: isLandscape ? 16 : 20),
 
@@ -775,187 +725,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           fillColor: AppColors.white,
           contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
         ),
-      ),
-    );
-  }
-
-  // Modern address card - displays UserAddress
-  Widget _buildAddressCard(int idx, UserAddress addr) {
-    final isDefault = _defaultAddressId == addr.id;
-    
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: AppColors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: isDefault ? AppColors.primary : AppColors.lightGray.withOpacity(0.3),
-          width: isDefault ? 2 : 1,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: ListTile(
-        leading: Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: (isDefault ? AppColors.primary : AppColors.lightGray).withOpacity(0.1),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Icon(
-            isDefault ? Icons.home : Icons.location_on_outlined,
-            color: isDefault ? AppColors.primary : AppColors.darkText,
-            size: 20,
-          ),
-        ),
-        title: Text(
-          addr.label,
-          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-        ),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              addr.descriptiveDirections,
-              style: const TextStyle(fontSize: 12, color: AppColors.darkText),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
-            if (isDefault) 
-              const Text(
-                'Default',
-                style: TextStyle(fontSize: 12, color: AppColors.primary, fontWeight: FontWeight.w600),
-              ),
-          ],
-        ),
-        trailing: PopupMenuButton<String>(
-          onSelected: (choice) async {
-            if (choice == 'set_default') {
-              try {
-                final addressProvider = Provider.of<AddressProvider>(context, listen: false);
-                await addressProvider.setDefaultAddress(addr.id);
-                setState(() {
-                  _defaultAddressId = addr.id;
-                  // Refresh addresses to update isDefault flags
-                  _addresses = List.from(addressProvider.addresses);
-                });
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Default address updated'),
-                    backgroundColor: AppColors.success,
-                  ),
-                );
-              } catch (e) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('Failed to set default: $e'),
-                    backgroundColor: Colors.red,
-                  ),
-                );
-              }
-            } else if (choice == 'remove') {
-              _removeAddress(idx);
-            } else if (choice == 'edit') {
-              _editAddressDialog(idx);
-            }
-          },
-          itemBuilder: (_) => [
-            if (!isDefault) const PopupMenuItem(value: 'set_default', child: Row(children: [Icon(Icons.check_circle), SizedBox(width: 8), Text('Set Default')])),
-            const PopupMenuItem(value: 'edit', child: Row(children: [Icon(Icons.edit), SizedBox(width: 8), Text('Edit')])),
-            const PopupMenuItem(value: 'remove', child: Row(children: [Icon(Icons.delete), SizedBox(width: 8), Text('Remove')])),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // NEW: Modern payment card
-  // ...existing helper methods (_validateEmail, _validatePhone, etc.)...
-
-  Future<void> _editAddressDialog(int idx) async {
-    final address = _addresses[idx];
-    final labelController = TextEditingController(text: address.label);
-    final directionsController = TextEditingController(text: address.descriptiveDirections);
-    final formKey = GlobalKey<FormState>();
-    
-    await showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Edit Address', style: TextStyle(fontWeight: FontWeight.bold)),
-        content: Form(
-          key: formKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextFormField(
-                controller: labelController,
-                decoration: const InputDecoration(
-                  labelText: 'Label (e.g., Home, Work)',
-                  prefixIcon: Icon(Icons.label),
-                ),
-                validator: (v) => (v == null || v.trim().isEmpty) ? 'Label required' : null,
-              ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: directionsController,
-                decoration: const InputDecoration(
-                  labelText: 'Directions',
-                  prefixIcon: Icon(Icons.directions),
-                ),
-                maxLines: 3,
-                validator: (v) => (v == null || v.trim().isEmpty) ? 'Directions required' : null,
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.primary,
-              foregroundColor: AppColors.white,
-            ),
-            onPressed: () async {
-              if (formKey.currentState!.validate()) {
-                try {
-                  final addressProvider = Provider.of<AddressProvider>(context, listen: false);
-                  await addressProvider.updateAddress(
-                    addressId: address.id,
-                    label: labelController.text.trim(),
-                    descriptiveDirections: directionsController.text.trim(),
-                  );
-                  
-                  setState(() {
-                    _addresses = List.from(addressProvider.addresses);
-                  });
-                  
-                  Navigator.pop(ctx);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Address updated successfully'),
-                      backgroundColor: AppColors.success,
-                    ),
-                  );
-                } catch (e) {
-                  debugPrint('❌ Error updating address: $e');
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('Failed to update address: $e'),
-                      backgroundColor: Colors.red,
-                    ),
-                  );
-                }
-              }
-            },
-            child: const Text('Save'),
-          ),
-        ],
       ),
     );
   }

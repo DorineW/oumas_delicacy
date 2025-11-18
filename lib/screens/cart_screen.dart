@@ -6,7 +6,8 @@ import 'package:provider/provider.dart';
 import '../models/cart_item.dart';
 import '../constants/colors.dart';
 import '../providers/cart_provider.dart';
-import '../providers/menu_provider.dart'; // ADDED: Import menu provider
+import '../providers/menu_provider.dart';
+import '../providers/store_provider.dart'; // ADDED: Import store provider
 import 'checkout_screen.dart';
 // Removed delivery fee from cart; no location dependency needed here
 
@@ -19,9 +20,10 @@ class CartScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final cart = context.watch<CartProvider>();
     final menuProvider = context.watch<MenuProvider>();
+    final storeProvider = context.watch<StoreProvider>();
     final items = cart.items;
 
-    // FIXED: Check for unavailable items properly
+    // FIXED: Check for unavailable items in BOTH menu and store
     WidgetsBinding.instance.addPostFrameCallback((_) {
       // Ensure the BuildContext is still valid before mutating providers / showing UI
       if (!context.mounted) return;
@@ -29,7 +31,11 @@ class CartScreen extends StatelessWidget {
       final unavailableItems = <CartItem>[];
       
       for (final item in items) {
-        if (!menuProvider.isItemAvailable(item.mealTitle)) {
+        // Check if item exists in menu OR store
+        final isInMenu = menuProvider.isItemAvailable(item.mealTitle);
+        final isInStore = storeProvider.isItemAvailable(item.mealTitle);
+        
+        if (!isInMenu && !isInStore) {
           unavailableItems.add(item);
         }
       }

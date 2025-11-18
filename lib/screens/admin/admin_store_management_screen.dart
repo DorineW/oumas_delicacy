@@ -9,7 +9,9 @@ import 'package:provider/provider.dart';
 import '../../constants/colors.dart';
 import '../../models/store_item.dart';
 import '../../models/location.dart';
+import '../../models/product_inventory.dart';
 import '../../providers/store_provider.dart';
+import '../../providers/inventory_provider.dart';
 import '../../widgets/smart_product_image.dart';
 
 class AdminStoreManagementScreen extends StatefulWidget {
@@ -34,14 +36,12 @@ class _AdminStoreManagementScreenState extends State<AdminStoreManagementScreen>
   int? _editingIndex;
   
   String? _selectedCategory;
-  String? _selectedLocationId;
   bool _showNewCategoryField = false;
   bool _isAvailable = true;
+  bool _trackInventory = true;
 
   // Store the item being processed globally for confirmation dialogs
   StoreItem? _itemToProcess;
-  String? _locationIdForItem;
-  int? _initialStockForItem;
 
   @override
   void dispose() {
@@ -67,12 +67,10 @@ class _AdminStoreManagementScreenState extends State<AdminStoreManagementScreen>
       _editingImageString = null;
       _editingIndex = null;
       _selectedCategory = null;
-      _selectedLocationId = null;
       _showNewCategoryField = false;
       _isAvailable = true;
+      _trackInventory = true;
       _itemToProcess = null;
-      _locationIdForItem = null;
-      _initialStockForItem = null;
     });
   }
 
@@ -86,7 +84,7 @@ class _AdminStoreManagementScreenState extends State<AdminStoreManagementScreen>
       _descriptionController.text = item.description;
       _showNewCategoryField = false;
       _isAvailable = item.available;
-      _selectedLocationId = item.locationId;
+      _trackInventory = item.trackInventory;
       _initialStockController.text = (item.currentStock ?? 0).toString();
 
       _selectedImageBytes = null;
@@ -216,6 +214,7 @@ class _AdminStoreManagementScreenState extends State<AdminStoreManagementScreen>
         unitOfMeasure: 'Piece', // Legacy field
         unitDescription: _unitDescriptionController.text.trim(),
         available: _isAvailable,
+        trackInventory: _trackInventory,
         imageUrl: _selectedImageBytes == null ? _editingImageString : null,
         createdAt: _editingIndex != null
             ? storeProvider.storeItems[_editingIndex!].createdAt
@@ -224,8 +223,6 @@ class _AdminStoreManagementScreenState extends State<AdminStoreManagementScreen>
       );
 
       _itemToProcess = newItem;
-      _locationIdForItem = _selectedLocationId;
-      _initialStockForItem = int.tryParse(_initialStockController.text) ?? 0;
       
       if (_editingIndex != null) {
         final oldItem = storeProvider.storeItems[_editingIndex!];
@@ -410,22 +407,15 @@ class _AdminStoreManagementScreenState extends State<AdminStoreManagementScreen>
                       fontSize: 12,
                     ),
                   ),
-                  if (_locationIdForItem != null && _initialStockForItem != null && _initialStockForItem! > 0)
-                    Text(
-                      '• Initial Stock: $_initialStockForItem at selected location',
-                      style: TextStyle(
-                        color: AppColors.success.withOpacity(0.8),
-                        fontSize: 12,
-                      ),
-                    )
-                  else
-                    Text(
-                      '• Initial Stock: 0 (no location selected)',
-                      style: TextStyle(
-                        color: AppColors.success.withOpacity(0.8),
-                        fontSize: 12,
-                      ),
+                  Text(
+                    _trackInventory 
+                      ? '• Track Inventory: Yes (add stock via Inventory Management)'
+                      : '• Track Inventory: No (always available)',
+                    style: TextStyle(
+                      color: AppColors.success.withOpacity(0.8),
+                      fontSize: 12,
                     ),
+                  ),
                 ],
               ),
             ),
@@ -479,11 +469,7 @@ class _AdminStoreManagementScreenState extends State<AdminStoreManagementScreen>
         updatedAt: newItem.updatedAt,
       );
 
-      await storeProvider.addStoreItem(
-        itemWithImage, 
-        _locationIdForItem, 
-        _initialStockForItem ?? 0
-      );
+      await storeProvider.addStoreItem(itemWithImage);
 
       if (!mounted) return;
       Navigator.of(context).pop(); // Close loading dialog
@@ -797,60 +783,29 @@ class _AdminStoreManagementScreenState extends State<AdminStoreManagementScreen>
                   ),
                   const SizedBox(height: 16),
 
-                  // Initial Stock (only for new items)
-                  if (!isEditing) ...[
-                    DropdownButtonFormField<String>(
-                      value: _selectedLocationId,
-                      decoration: const InputDecoration(
-                        labelText: 'Initial Location (Optional)',
-                        border: OutlineInputBorder(),
-                        helperText: 'Leave empty to add item without stock',
-                      ),
-                      isExpanded: true,
-                      items: [
-                        const DropdownMenuItem(
-                          value: null,
-                          child: Text(
-                            'None - Add without inventory',
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        ...storeProvider.locations.map((location) => DropdownMenuItem(
-                              value: location.id,
-                              child: Text(
-                                '${location.name} (${location.locationType})',
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            )),
-                      ],
-                      onChanged: (value) {
-                        setDialogState(() {
-                          _selectedLocationId = value;
-                          if (value == null) {
-                            _initialStockController.text = '0';
-                          }
-                        });
-                      },
+                  // Inventory Tracking
+                  SwitchListTile(
+                    title: const Text('Track Inventory'),
+                    subtitle: Text(
+                      _trackInventory 
+                        ? 'Stock levels managed automatically' 
+                        : 'Always available (no stock tracking)',
+                      style: TextStyle(fontSize: 12, color: Colors.grey[600]),
                     ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: _initialStockController,
-                      decoration: InputDecoration(
-                        labelText: 'Initial Stock Quantity',
-                        border: const OutlineInputBorder(),
-                        helperText: _selectedLocationId == null 
-                            ? 'Select a location first to set stock'
-                            : 'Stock will be added to selected location',
-                      ),
-                      keyboardType: TextInputType.number,
-                      enabled: _selectedLocationId != null,
-                    ),
-                    const SizedBox(height: 16),
-                  ],
-
+                    value: _trackInventory,
+                    onChanged: (value) {
+                      setDialogState(() {
+                        _trackInventory = value;
+                      });
+                    },
+                  ),
+                  
                   // Availability
                   SwitchListTile(
                     title: const Text('Available for Sale'),
+                    subtitle: _trackInventory 
+                      ? const Text('Stock-based visibility', style: TextStyle(fontSize: 12))
+                      : const Text('Manual control', style: TextStyle(fontSize: 12)),
                     value: _isAvailable,
                     onChanged: (value) {
                       setDialogState(() {
@@ -965,10 +920,14 @@ class _AdminStoreManagementScreenState extends State<AdminStoreManagementScreen>
             );
           }
 
-          return ListView.builder(
-            padding: const EdgeInsets.all(16),
-            itemCount: items.length,
-            itemBuilder: (context, index) {
+          return RefreshIndicator(
+            onRefresh: () async {
+              await storeProvider.loadStoreItems();
+            },
+            child: ListView.builder(
+              padding: const EdgeInsets.all(16),
+              itemCount: items.length,
+              itemBuilder: (context, index) {
               final item = items[index];
               final stock = item.currentStock ?? 0;
               final isLowStock = stock > 0 && stock <= 5;
@@ -1102,6 +1061,7 @@ class _AdminStoreManagementScreenState extends State<AdminStoreManagementScreen>
                 ),
               );
             },
+            ),
           );
         },
       ),
@@ -1115,87 +1075,106 @@ class _AdminStoreManagementScreenState extends State<AdminStoreManagementScreen>
     );
   }
 
-  void _showStockManagementDialog(StoreItem item) {
-    final storeProvider = Provider.of<StoreProvider>(context, listen: false);
-    final stockController = TextEditingController(
-      text: (item.currentStock ?? 0).toString(),
+  void _showStockManagementDialog(StoreItem item) async {
+    final inventoryProvider = Provider.of<InventoryProvider>(context, listen: false);
+    final stockController = TextEditingController();
+    final minStockController = TextEditingController();
+    
+    // Load current global stock
+    await inventoryProvider.loadInventory();
+    final inventory = inventoryProvider.inventory.firstWhere(
+      (inv) => inv.productId == item.productId,
+      orElse: () => ProductInventory(
+        id: '',
+        productId: item.productId,
+        quantity: 0,
+        minimumStockAlert: 10,
+        lastRestockDate: null,
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+      ),
     );
-    String? selectedLocationId = item.locationId ?? storeProvider.locations.firstOrNull?.id;
+    
+    stockController.text = inventory.quantity.toString();
+    minStockController.text = inventory.minimumStockAlert.toString();
+
+    if (!mounted) return;
 
     showDialog(
       context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: Text('Manage Stock - ${item.name}'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (storeProvider.locations.isEmpty)
-                const Text('No locations available. Please add a warehouse or store location.'),
-              
-              if (storeProvider.locations.isNotEmpty) ...[
-                DropdownButtonFormField<String>(
-                  value: selectedLocationId,
-                  decoration: const InputDecoration(
-                    labelText: 'Location *',
-                    border: OutlineInputBorder(),
-                  ),
-                  isExpanded: true,
-                  items: storeProvider.locations.map((location) => DropdownMenuItem(
-                        value: location.id,
-                        child: Text(
-                          '${location.name} (${location.locationType})',
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      )).toList(),
-                  onChanged: (value) {
-                    setDialogState(() {
-                      selectedLocationId = value;
-                    });
-                  },
-                ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: stockController,
-                  decoration: const InputDecoration(
-                    labelText: 'Stock Quantity *',
-                    border: OutlineInputBorder(),
-                    helperText: 'This will replace the current stock level',
-                  ),
-                  keyboardType: TextInputType.number,
-                ),
-              ],
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: selectedLocationId == null ? null : () async {
-                final quantity = int.tryParse(stockController.text) ?? 0;
-                Navigator.of(context).pop();
-                
-                try {
-                  await storeProvider.updateInventory(
-                    item.productId,
-                    selectedLocationId!,
-                    quantity,
-                  );
-                  _showSuccessSnackBar('Stock updated successfully!', Colors.green);
-                } catch (e) {
-                  _showErrorSnackBar('Failed to update stock: $e');
-                }
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                foregroundColor: Colors.white,
+      builder: (context) => AlertDialog(
+        title: Text('Manage Stock - ${item.name}'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextFormField(
+              controller: stockController,
+              decoration: const InputDecoration(
+                labelText: 'Stock Quantity *',
+                border: OutlineInputBorder(),
+                helperText: 'Current inventory level',
               ),
-              child: const Text('Update Stock'),
+              keyboardType: TextInputType.number,
+            ),
+            const SizedBox(height: 16),
+            TextFormField(
+              controller: minStockController,
+              decoration: const InputDecoration(
+                labelText: 'Minimum Stock Alert',
+                border: OutlineInputBorder(),
+                helperText: 'Alert threshold for low stock',
+              ),
+              keyboardType: TextInputType.number,
             ),
           ],
         ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              final quantity = int.tryParse(stockController.text);
+              final minStock = int.tryParse(minStockController.text) ?? 10;
+              
+              if (quantity == null) {
+                _showErrorSnackBar('Please enter a valid number');
+                return;
+              }
+              
+              Navigator.of(context).pop();
+              
+              try {
+                // Update global inventory
+                if (inventory.id.isEmpty) {
+                  // Add new inventory
+                  await inventoryProvider.addInventoryItem(
+                    productId: item.productId,
+                    initialQuantity: quantity,
+                    minimumStockAlert: minStock,
+                  );
+                } else {
+                  // Update existing inventory
+                  await inventoryProvider.updateInventoryItem(
+                    inventoryId: inventory.id,
+                    quantity: quantity,
+                    minimumStockAlert: minStock,
+                  );
+                }
+                await inventoryProvider.loadInventory();
+                _showSuccessSnackBar('Stock updated successfully!', Colors.green);
+              } catch (e) {
+                _showErrorSnackBar('Failed to update stock: $e');
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Update Stock'),
+          ),
+        ],
       ),
     );
   }

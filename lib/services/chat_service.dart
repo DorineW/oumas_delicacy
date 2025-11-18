@@ -29,44 +29,62 @@ class ChatService {
 
   /// Stream all chat rooms for admin view with customer names
   /// 
-  /// NOTE: Current implementation queries users table for each room on every update.
-  /// IMPROVEMENT NEEDED: Use a Supabase JOIN/RPC function or create a database view
-  /// that includes customer names to avoid N+1 queries and improve performance.
-  /// Example SQL View:
+  /// NOTE: Improved implementation with caching to reduce N+1 queries.
+  /// For production: Consider creating a Supabase database view:
   /// CREATE VIEW chat_rooms_with_names AS
   ///   SELECT cr.*, u.name as customer_name, u.email as customer_email
   ///   FROM chat_rooms cr
   ///   LEFT JOIN users u ON cr.customer_id = u.auth_id;
   Stream<List<Map<String, dynamic>>> streamAdminRooms() {
+    final Map<String, String> _customerNameCache = {};
+    
     return _client
         .from('chat_rooms')
         .stream(primaryKey: ['id'])
         .order('last_message_at', ascending: false)
-        .map((rows) async {
-          // Fetch customer names for each room
+        .asyncMap((rows) async {
+          // Fetch customer names for each room with caching
           final enriched = <Map<String, dynamic>>[];
+          
+          // Batch fetch all unique customer IDs not in cache
+          final uncachedIds = rows
+              .map((row) => row['customer_id'] as String?)
+              .where((id) => id != null && !_customerNameCache.containsKey(id))
+              .toSet();
+          
+          if (uncachedIds.isNotEmpty) {
+            try {
+              final users = await _client
+                  .from('users')
+                  .select('auth_id, name, email')
+                  .inFilter('auth_id', uncachedIds.toList());
+              
+              for (final user in users) {
+                final authId = user['auth_id'] as String?;
+                if (authId != null) {
+                  String? userName = (user['name'] as String?)?.trim();
+                  if (userName == null || userName.isEmpty) {
+                    userName = user['email'] as String?;
+                  }
+                  _customerNameCache[authId] = userName ?? 'Customer';
+                }
+              }
+            } catch (_) {
+              // If batch fetch fails, continue with cache
+            }
+          }
+          
+          // Enrich rows with cached names
           for (final row in rows) {
             final customerId = row['customer_id'] as String?;
-            String? customerName;
-            if (customerId != null) {
-              try {
-                final userRow = await _client
-                    .from('users')
-                    .select('name, email')
-                    .eq('auth_id', customerId)
-                    .maybeSingle();
-                if (userRow != null) {
-                  customerName = (userRow['name'] as String?)?.trim();
-                  if (customerName == null || customerName.isEmpty) {
-                    customerName = userRow['email'] as String?;
-                  }
-                }
-              } catch (_) {}
-            }
-            enriched.add({...row, 'customer_name': customerName ?? 'Customer'});
+            final customerName = customerId != null 
+                ? (_customerNameCache[customerId] ?? 'Customer')
+                : 'Customer';
+            enriched.add({...row, 'customer_name': customerName});
           }
+          
           return enriched;
-        }).asyncMap((future) => future);
+        });
   }
 
   Stream<Map<String, dynamic>?> streamSingleRoom(String roomId) {

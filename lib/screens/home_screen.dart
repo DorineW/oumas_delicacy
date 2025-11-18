@@ -15,13 +15,13 @@ import '../providers/menu_provider.dart';
 import '../providers/favorites_provider.dart';
 import '../providers/reviews_provider.dart';
 import '../providers/location_provider.dart';
+import '../providers/location_management_provider.dart'; // ADDED
 import '../providers/address_provider.dart';
 import '../models/user_address.dart';
 import '../services/auth_service.dart';
 import 'location.dart';
 import 'dashboard_screen.dart';
 import 'cart_screen.dart';
-import 'meal_detail_screen.dart';
 import 'profile_screen.dart';
 import '../screens/login_screen.dart';
 import '../utils/responsive_helper.dart';
@@ -172,7 +172,7 @@ class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin 
       final loc = defaultAddress.shortDisplay;
       // Trim: show only first 30 chars, add ... if longer
       if (loc.length > 30) {
-        return loc.substring(0, 30) + '...';
+        return '${loc.substring(0, 30)}...';
       }
       return loc;
     }
@@ -181,9 +181,9 @@ class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin 
     final locationProvider = Provider.of<LocationProvider>(context, listen: true);
     final loc = locationProvider.deliveryAddress ?? '';
     if (loc.length > 30) {
-      return loc.substring(0, 30) + '...';
+      return '${loc.substring(0, 30)}...';
     }
-    return loc.isEmpty ? 'Set delivery location' : loc;
+    return loc.isEmpty ? 'Set location' : loc;
   }
   final _searchCtrl = TextEditingController();
   String _search = '';
@@ -194,14 +194,39 @@ class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin 
   TabController? _tabController;
   final Map<int, ScrollController> _scrollControllers = {};
 
+  // ADDED: Helper to load active location for delivery fee display
+  Future<void> _loadActiveLocation(LocationProvider locationProvider, LocationManagementProvider locationManagementProvider) async {
+    try {
+      if (locationManagementProvider.locations.isEmpty) {
+        await locationManagementProvider.loadLocations();
+      }
+      
+      final activeLocations = locationManagementProvider.activeLocations;
+      if (activeLocations.isNotEmpty) {
+        locationProvider.setActiveLocation(activeLocations.first);
+        debugPrint('📍 Home: Active location loaded: ${activeLocations.first.name}');
+      }
+    } catch (e) {
+      debugPrint('❌ Home: Error loading active location: $e');
+    }
+  }
+
   @override
   void initState() {
     super.initState();
     
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final menuProvider = context.read<MenuProvider>();
+      final addressProvider = context.read<AddressProvider>();
+      final locationProvider = context.read<LocationProvider>();
+      final locationManagementProvider = context.read<LocationManagementProvider>();
       
-      menuProvider.loadMenuItems().then((_) {
+      // Load menu items, saved addresses, and active location in parallel
+      Future.wait([
+        menuProvider.loadMenuItems(),
+        addressProvider.loadAddresses(), // Load saved addresses
+        _loadActiveLocation(locationProvider, locationManagementProvider), // Load active location for delivery fee display
+      ]).then((_) {
         if (mounted) {
           final cats = menuProvider.menuItems
                        .map((e) => e.category)
@@ -210,10 +235,14 @@ class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin 
           
           _tabController = TabController(length: cats.length + 1, vsync: this);
           
+          debugPrint('✅ Home: Loaded ${menuProvider.menuItems.length} menu items and ${addressProvider.addresses.length} saved addresses');
+          
           if (mounted) {
             setState(() {});
           }
         }
+      }).catchError((error) {
+        debugPrint('❌ Home: Error loading data: $error');
       });
     });
   }
@@ -269,23 +298,78 @@ class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin 
                           );
                           if (updated == true && mounted) setState(() {});
                         },
-                        child: Row(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Icon(Icons.location_on, color: RedColors.primary, size: 22),
-                            const SizedBox(width: 6),
-                            Expanded(
-                              child: Text(
-                                _shortLocation,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 15,
-                                  color: RedColors.darkText,
-                                  overflow: TextOverflow.ellipsis,
+                            Row(
+                              children: [
+                                const Icon(Icons.location_on, color: RedColors.primary, size: 22),
+                                const SizedBox(width: 6),
+                                Expanded(
+                                  child: Text(
+                                    _shortLocation,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 15,
+                                      color: RedColors.darkText,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    maxLines: 1,
+                                  ),
                                 ),
-                                maxLines: 1,
-                              ),
+                                const Icon(Icons.chevron_right, color: RedColors.primary, size: 18),
+                              ],
                             ),
-                            const Icon(Icons.chevron_right, color: RedColors.primary, size: 18),
+                            // Delivery fee display with bike icon
+                            Consumer<LocationProvider>(
+                              builder: (context, locationProvider, _) {
+                                final activeLocation = locationProvider.activeLocation;
+                                
+                                // Don't show anything if no active location loaded
+                                if (activeLocation == null) {
+                                  return const SizedBox.shrink();
+                                }
+                                
+                                final hasUserLocation = locationProvider.latitude != null && 
+                                                       locationProvider.longitude != null;
+                                
+                                String displayText;
+                                Color textColor = RedColors.lightGray;
+                                
+                                if (!hasUserLocation) {
+                                  // Show base fee when user hasn't set location
+                                  final baseFee = activeLocation.deliveryBaseFee ?? 50;
+                                  displayText = 'Delivery from KES $baseFee';
+                                } else {
+                                  final fee = locationProvider.deliveryFee;
+                                  
+                                  if (fee > 0) {
+                                    displayText = 'Delivery: KES $fee';
+                                  } else {
+                                    displayText = 'Outside delivery area';
+                                    textColor = Colors.orange;
+                                  }
+                                }
+                                
+                                return Padding(
+                                  padding: const EdgeInsets.only(left: 28, top: 4),
+                                  child: Row(
+                                    children: [
+                                      const Icon(Icons.pedal_bike, color: RedColors.lightGray, size: 16),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        displayText,
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          color: textColor,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              },
+                            ),
                           ],
                         ),
                       ),
@@ -562,10 +646,14 @@ class _HomeTabState extends State<_HomeTab> with SingleTickerProviderStateMixin 
     final nextColor = pastelColors[(currentIndex + 1) % pastelColors.length];
     
     return GestureDetector(
-      onTap: () => Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => MealDetailScreen(meal: m)),
-      ),
+      onTap: () {
+        showModalBottomSheet(
+          context: context,
+          isScrollControlled: true,
+          backgroundColor: Colors.transparent,
+          builder: (_) => MealDetailSheet(meal: m),
+        );
+      },
       child: Row(
         children: [
           // Left half - Pastel background with text
@@ -1551,8 +1639,22 @@ class _PopularItemCard extends StatelessWidget {
     this.onNavigateToCart,
   });
 
+  void _showMenuItemModal(BuildContext context, MenuItem meal) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => MealDetailSheet(meal: meal),
+    );
+  }
+
   void _addToCart(BuildContext context) {
     if (item.menuItem == null) return;
+    
+    HapticFeedback.lightImpact();
+    
+    final homeScreenState = context.findAncestorStateOfType<_HomeScreenState>();
+    if (homeScreenState == null) return;
     
     final cartProvider = Provider.of<CartProvider>(context, listen: false);
     final cartItem = CartItem(
@@ -1566,8 +1668,47 @@ class _PopularItemCard extends StatelessWidget {
     
     cartProvider.addItem(cartItem);
     
-    // Call navigation callback
-    onNavigateToCart?.call();
+    // Create flying widget
+    final imageUrl = item.menuItem!.imageUrl;
+    Widget flyWidget;
+    
+    if (imageUrl != null && imageUrl.startsWith('assets/')) {
+      flyWidget = ClipOval(
+        child: Image.asset(
+          imageUrl,
+          width: 50,
+          height: 50,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => const Icon(Icons.fastfood, size: 40, color: RedColors.primary),
+        ),
+      );
+    } else if (imageUrl != null) {
+      flyWidget = ClipOval(
+        child: Image.network(
+          imageUrl,
+          width: 50,
+          height: 50,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => const Icon(Icons.fastfood, size: 40, color: RedColors.primary),
+        ),
+      );
+    } else {
+      flyWidget = const Icon(Icons.fastfood, size: 40, color: RedColors.primary);
+    }
+    
+    _flyToCart(context, homeScreenState._cartIconKey, flyWidget, () {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('1 × ${item.menuItem!.title} added to cart'),
+          backgroundColor: RedColors.primary,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          margin: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    });
   }
 
   @override
@@ -1585,10 +1726,7 @@ class _PopularItemCard extends StatelessWidget {
     return GestureDetector(
       onTap: () {
         if (item.menuItem != null) {
-           Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => MealDetailScreen(meal: item.menuItem!)),
-          );
+          _showMenuItemModal(context, item.menuItem!);
         }
       },
       child: Container(
@@ -1888,7 +2026,7 @@ class _MealDetailSheetState extends State<MealDetailSheet> {
     
     final userId = authService.currentUser?.id ?? 'guest';
     final productId = widget.meal.id ?? '';
-    final isFavorite = favoritesProvider.isFavorite(userId, productId);
+    final isFavorite = favoritesProvider.isFavorite(userId, productId, type: FavoriteItemType.menuItem);
     
     return Container(
       height: MediaQuery.of(context).size.height * 0.85,
@@ -1998,7 +2136,7 @@ class _MealDetailSheetState extends State<MealDetailSheet> {
                               onPressed: () async {
                                 if (userId != 'guest' && productId.isNotEmpty) {
                                   HapticFeedback.lightImpact();
-                                  await favoritesProvider.toggleFavorite(userId, productId);
+                                  await favoritesProvider.toggleFavorite(userId, productId, type: FavoriteItemType.menuItem);
                                 }
                               },
                             ),

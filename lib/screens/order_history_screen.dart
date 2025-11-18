@@ -4,8 +4,10 @@ import 'package:provider/provider.dart';
 import '../constants/colors.dart';
 import '../models/order.dart';
 import '../models/cart_item.dart';
+import '../models/receipt.dart';
 import '../providers/order_provider.dart';
 import '../providers/cart_provider.dart';
+import '../services/receipt_service.dart';
 
 class OrderHistoryScreen extends StatefulWidget {
   // optional: pass the current customerId to show only their orders
@@ -331,7 +333,49 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> with SingleTick
   }
 
   // Payment Receipt Dialog
-  void _showPaymentReceipt(Order order) {
+  void _showPaymentReceipt(Order order) async {
+    // Show loading dialog
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(
+        child: Card(
+          child: Padding(
+            padding: EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(height: 16),
+                Text('Loading receipt...'),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
+    // Fetch receipt from database
+    final receiptService = ReceiptService();
+    final receipt = await receiptService.getReceiptByOrderId(order.id);
+
+    if (!mounted) return;
+
+    // Close loading dialog
+    Navigator.of(context).pop();
+
+    if (receipt == null) {
+      // Show error if no receipt found
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Receipt not found. Payment may still be processing.'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    // Show receipt dialog
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -396,15 +440,21 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> with SingleTick
                 const Divider(height: 32, color: AppColors.success),
                 
                 // Receipt Details
+                _buildReceiptRow('Receipt Number', receipt.receiptNumber),
+                const SizedBox(height: 12),
                 _buildReceiptRow('Order Number', order.orderNumber),
                 const SizedBox(height: 12),
-                _buildReceiptRow('Date', '${order.date.day}/${order.date.month}/${order.date.year}'),
+                _buildReceiptRow('Transaction ID', receipt.transactionId),
                 const SizedBox(height: 12),
-                _buildReceiptRow('Time', '${order.date.hour.toString().padLeft(2, '0')}:${order.date.minute.toString().padLeft(2, '0')}'),
+                _buildReceiptRow('Date', '${receipt.issueDate.day}/${receipt.issueDate.month}/${receipt.issueDate.year}'),
                 const SizedBox(height: 12),
-                _buildReceiptRow('Payment Method', 'M-Pesa'),
+                _buildReceiptRow('Time', '${receipt.issueDate.hour.toString().padLeft(2, '0')}:${receipt.issueDate.minute.toString().padLeft(2, '0')}'),
                 const SizedBox(height: 12),
-                _buildReceiptRow('Delivery Type', order.deliveryType == DeliveryType.delivery ? 'Delivery' : 'Pickup'),
+                _buildReceiptRow('Payment Method', receipt.paymentMethod),
+                const SizedBox(height: 12),
+                _buildReceiptRow('Customer', receipt.customerName),
+                const SizedBox(height: 12),
+                _buildReceiptRow('Phone', receipt.customerPhone),
                 
                 const Divider(height: 32, color: AppColors.success),
                 
@@ -418,19 +468,19 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> with SingleTick
                   ),
                 ),
                 const SizedBox(height: 8),
-                ...order.items.map((item) => Padding(
+                ...receipt.items.map((item) => Padding(
                   padding: const EdgeInsets.symmetric(vertical: 4),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Expanded(
                         child: Text(
-                          '${item.title} x${item.quantity}',
+                          '${item.itemDescription} x${item.quantity}',
                           style: const TextStyle(fontSize: 13),
                         ),
                       ),
                       Text(
-                        'KSh ${(item.price * item.quantity).toStringAsFixed(2)}',
+                        'KSh ${item.totalPrice.toStringAsFixed(2)}',
                         style: const TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w600,
@@ -440,54 +490,77 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> with SingleTick
                   ),
                 )),
                 
-                // Delivery Fee
-                if (order.deliveryType == DeliveryType.delivery) ...[
-                  const SizedBox(height: 8),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                const Divider(height: 24, color: AppColors.success),
+                
+                // Pricing Summary
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppColors.cardBackground,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Column(
                     children: [
-                      Text(
-                        'Delivery Fee',
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: AppColors.darkText.withOpacity(0.7),
-                        ),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text('Subtotal', style: TextStyle(fontSize: 13)),
+                          Text(
+                            '${receipt.currency} ${receipt.subtotal.toStringAsFixed(2)}',
+                            style: const TextStyle(fontSize: 13),
+                          ),
+                        ],
                       ),
-                      Text(
-                        'KSh 100.00',
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.darkText.withOpacity(0.7),
+                      if (receipt.taxAmount > 0) ...[
+                        const SizedBox(height: 8),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text('Tax', style: TextStyle(fontSize: 13)),
+                            Text(
+                              '${receipt.currency} ${receipt.taxAmount.toStringAsFixed(2)}',
+                              style: const TextStyle(fontSize: 13),
+                            ),
+                          ],
                         ),
+                      ],
+                      if (receipt.discountAmount > 0) ...[
+                        const SizedBox(height: 8),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text('Discount', style: TextStyle(fontSize: 13, color: AppColors.success)),
+                            Text(
+                              '-${receipt.currency} ${receipt.discountAmount.toStringAsFixed(2)}',
+                              style: const TextStyle(fontSize: 13, color: AppColors.success),
+                            ),
+                          ],
+                        ),
+                      ],
+                      const SizedBox(height: 8),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text(
+                            'Total Paid',
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.darkText,
+                            ),
+                          ),
+                          Text(
+                            '${receipt.currency} ${receipt.totalAmount.toStringAsFixed(2)}',
+                            style: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.success,
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
-                ],
-                
-                const Divider(height: 24, color: AppColors.success),
-                
-                // Total
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      'Total Amount',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.darkText,
-                      ),
-                    ),
-                    Text(
-                      'KSh ${order.totalAmount.toStringAsFixed(2)}',
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.success,
-                      ),
-                    ),
-                  ],
                 ),
                 
                 const SizedBox(height: 24),

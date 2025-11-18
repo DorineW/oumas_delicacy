@@ -22,8 +22,7 @@ import 'screens/order_history_screen.dart'; // ADDED
 import 'services/auth_service.dart';
 import 'services/notification_service.dart'; // ADDED: Import NotificationService
 import 'providers/cart_provider.dart';
-import 'providers/menu_provider.dart';
-import 'providers/inventory_provider.dart'; // ADDED: Inventory provider import
+import 'providers/menu_provider.dart'; // ADDED: Inventory provider import
 import 'providers/order_provider.dart';
 import 'providers/rider_provider.dart';
 import 'providers/notification_provider.dart';
@@ -34,6 +33,8 @@ import 'providers/address_provider.dart'; // ADDED: Import AddressProvider for U
 import 'providers/location_management_provider.dart'; // ADDED: Import LocationManagementProvider
 import 'providers/connectivity_provider.dart'; // ADDED: Import ConnectivityProvider
 import 'providers/store_provider.dart'; // ADDED: Import StoreProvider
+import 'providers/inventory_provider.dart'; // ADDED: Import InventoryProvider
+import 'providers/mpesa_provider.dart'; // ADDED: Import MpesaProvider
 import 'models/notification_model.dart';
 import 'models/cart_item.dart'; // ADDED
 import 'models/order.dart'; // ADDED for DeliveryType
@@ -151,11 +152,12 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         ChangeNotifierProvider(create: (_) => NotificationService()), // ADDED: Notification preferences service
         ChangeNotifierProvider(create: (_) => CartProvider()),
         ChangeNotifierProvider(create: (_) => MenuProvider()),
-        ChangeNotifierProvider(create: (_) => InventoryProvider()), // ADDED: Inventory provider
         ChangeNotifierProvider(create: (_) => NotificationProvider()),
         ChangeNotifierProvider(create: (_) => LocationProvider()), // ADDED: Register LocationProvider
         ChangeNotifierProvider(create: (_) => AddressProvider()), // ADDED: Address provider for UserAddresses table
         ChangeNotifierProvider(create: (_) => LocationManagementProvider()), // ADDED: Location management provider
+        ChangeNotifierProvider(create: (_) => InventoryProvider(Supabase.instance.client)), // ADDED: Inventory provider for admin inventory management
+        ChangeNotifierProvider(create: (_) => MpesaProvider()), // ADDED: M-Pesa payment provider
         ChangeNotifierProxyProvider<NotificationProvider, OrderProvider>(
           create: (context) => OrderProvider(),
           update: (context, notifProvider, orderProvider) {
@@ -196,11 +198,11 @@ class _AppContentState extends State<_AppContent> {
         final menuProvider = Provider.of<MenuProvider>(context, listen: false);
         await menuProvider.loadMenuItems();
         
-        // ADDED: Load inventory items
-        final inventoryProvider = Provider.of<InventoryProvider>(context, listen: false);
-        await inventoryProvider.loadInventoryItems();
+        // Load reviews for all users (needed for meal detail screens)
+        final reviewsProvider = Provider.of<ReviewsProvider>(context, listen: false);
+        await reviewsProvider.loadReviews();
         
-        // NOTE: Favorites and Reviews will load per-user after login
+        // NOTE: Favorites will load per-user after login
         // NOTE: Orders will load per-user after login based on role
       }
     });

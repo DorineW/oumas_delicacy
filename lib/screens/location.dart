@@ -6,6 +6,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 import 'package:geolocator/geolocator.dart';
 import '../providers/location_provider.dart';
+import '../providers/location_management_provider.dart'; // ADDED
 import '../providers/connectivity_provider.dart';
 import '../widgets/no_connection_screen.dart';
 import '../constants/colors.dart';
@@ -30,6 +31,7 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
   AnimationController? _moveController;
   final TextEditingController _searchController = TextEditingController();
   List<Map<String, dynamic>> _searchResults = [];
+  bool _isSearching = false;
   Timer? _debounceTimer;
   bool _isLoadingAddress = false;
 
@@ -50,7 +52,7 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
     super.dispose();
   }
 
-  // UPDATED: Better location initialization with permission handling
+  // UPDATED: Better location initialization with permission handling and active location loading
   void _initializeMap() async {
     if (!mounted) return;
     setState(() {
@@ -59,6 +61,21 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
     });
     try {
       final locationProvider = context.read<LocationProvider>();
+      final locationManagementProvider = context.read<LocationManagementProvider>();
+      
+      // Load locations from database if not already loaded
+      if (locationManagementProvider.locations.isEmpty) {
+        await locationManagementProvider.loadLocations();
+      }
+      
+      // Set the first active location as the restaurant location
+      final activeLocations = locationManagementProvider.activeLocations;
+      if (activeLocations.isNotEmpty && mounted) {
+        final firstLocation = activeLocations.first;
+        locationProvider.setActiveLocation(firstLocation);
+        debugPrint('📍 Active location loaded: ${firstLocation.name}');
+      }
+      
       // await locationProvider.ensureLocationServices?.call();
       if (!mounted) return;
       LatLng initialPoint;
@@ -393,15 +410,66 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
   // ADDED: Extracted search logic
   Future<void> _performSearch(String query) async {
     if (!mounted || query.isEmpty) return;
+    
+    setState(() => _isSearching = true);
+    
     _currentOperation?.completeError('Cancelled');
     _currentOperation = Completer<void>();
+    
     try {
       final locationProvider = context.read<LocationProvider>();
       final results = await locationProvider.searchAddress(query);
+      
       if (!mounted || _currentOperation!.isCompleted) return;
-      setState(() => _searchResults = results);
+      
+      setState(() {
+        _searchResults = results;
+        _isSearching = false;
+      });
+      
+      if (results.isEmpty && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Row(
+              children: [
+                Icon(Icons.search_off, color: Colors.white),
+                SizedBox(width: 12),
+                Expanded(child: Text('No results found. Try a different search term.')),
+              ],
+            ),
+            backgroundColor: Colors.orange,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            margin: const EdgeInsets.all(16),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+      
       _currentOperation!.complete();
     } catch (e) {
+      debugPrint('❌ Search error: $e');
+      
+      if (mounted) {
+        setState(() => _isSearching = false);
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.error, color: Colors.white),
+                const SizedBox(width: 12),
+                Expanded(child: Text('Search failed: ${e.toString()}')),
+              ],
+            ),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            margin: const EdgeInsets.all(16),
+          ),
+        );
+      }
+      
       if (!(_currentOperation?.isCompleted ?? true)) {
         _currentOperation!.completeError(e);
       }
@@ -655,24 +723,35 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
                       onSubmitted: (value) => _searchAddress(value, immediate: true),
                       textInputAction: TextInputAction.search,
                       decoration: InputDecoration(
-                        hintText: 'Search location (e.g. Moi Avenue, Nairobi)',
+                        hintText: 'Search location (e.g. Moi Avenue, Westlands, Karen)',
                         hintStyle: const TextStyle(fontSize: 14),
-                        prefixIcon: const Icon(Icons.search, color: AppColors.primary),
+                        prefixIcon: _isSearching
+                            ? const Padding(
+                                padding: EdgeInsets.all(12),
+                                child: SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                ),
+                              )
+                            : const Icon(Icons.search, color: AppColors.primary),
                         suffixIcon: _searchController.text.isNotEmpty
                             ? Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  IconButton(
-                                    icon: const Icon(Icons.arrow_forward, color: AppColors.primary),
-                                    onPressed: () => _searchAddress(_searchController.text, immediate: true),
-                                    tooltip: 'Search',
-                                  ),
+                                  if (!_isSearching)
+                                    IconButton(
+                                      icon: const Icon(Icons.arrow_forward, color: AppColors.primary),
+                                      onPressed: () => _searchAddress(_searchController.text, immediate: true),
+                                      tooltip: 'Search',
+                                    ),
                                   IconButton(
                                     icon: const Icon(Icons.clear),
                                     onPressed: () {
                                       setState(() {
                                         _searchController.clear();
                                         _searchResults = [];
+                                        _isSearching = false;
                                       });
                                     },
                                   ),
@@ -787,34 +866,36 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
                             userAgentPackageName: 'com.yourapp.fooddelivery',
                             subdomains: const ['a', 'b', 'c'],
                           ),
-                          CircleLayer(
-                            circles: [
-                              CircleMarker(
-                                point: const LatLng(
-                                  -1.303960,
-                                  36.790900,
+                          if (provider.activeLocation != null && provider.activeLocation!.lat != null && provider.activeLocation!.lon != null)
+                            CircleLayer(
+                              circles: [
+                                CircleMarker(
+                                  point: LatLng(
+                                    provider.activeLocation!.lat!,
+                                    provider.activeLocation!.lon!,
+                                  ),
+                                  color: AppColors.primary.withOpacity(0.2),
+                                  borderColor: AppColors.primary.withOpacity(0.5),
+                                  borderStrokeWidth: 2,
+                                  useRadiusInMeter: true,
+                                  radius: (provider.activeLocation!.deliveryRadiusKm ?? 2.0) * 1000,
                                 ),
-                                color: AppColors.primary.withOpacity(0.2),
-                                borderColor: AppColors.primary.withOpacity(0.5),
-                                borderStrokeWidth: 2,
-                                useRadiusInMeter: true,
-                                radius: 5000,
-                              ),
-                            ],
-                          ),
-                          const MarkerLayer(
-                            markers: [
-                              Marker(
-                                point: LatLng(
-                                  -1.303960,
-                                  36.790900,
+                              ],
+                            ),
+                          if (provider.activeLocation != null && provider.activeLocation!.lat != null && provider.activeLocation!.lon != null)
+                            MarkerLayer(
+                              markers: [
+                                Marker(
+                                  point: LatLng(
+                                    provider.activeLocation!.lat!,
+                                    provider.activeLocation!.lon!,
+                                  ),
+                                  width: 40,
+                                  height: 40,
+                                  child: const Icon(Icons.restaurant, color: Colors.red, size: 30),
                                 ),
-                                width: 40,
-                                height: 40,
-                                child: Icon(Icons.restaurant, color: Colors.red, size: 30),
-                              ),
-                            ],
-                          ),
+                              ],
+                            ),
                           if (provider.latitude != null && provider.longitude != null)
                             MarkerLayer(
                               markers: [

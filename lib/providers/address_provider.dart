@@ -2,7 +2,9 @@
 
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:geolocator/geolocator.dart';
 import '../models/user_address.dart';
+import '../models/location.dart';
 
 class AddressProvider with ChangeNotifier {
   final SupabaseClient _supabase = Supabase.instance.client;
@@ -279,8 +281,128 @@ class AddressProvider with ChangeNotifier {
     }
   }
 
+  /// Calculate distance between address and location (in kilometers)
+  Future<double> calculateDistanceToLocation({
+    required UserAddress address,
+    required Location location,
+  }) async {
+    if (location.lat == null || location.lon == null) {
+      throw Exception('Location coordinates not available');
+    }
+
+    final distanceInMeters = Geolocator.distanceBetween(
+      address.latitude,
+      address.longitude,
+      location.lat!,
+      location.lon!,
+    );
+
+    return distanceInMeters / 1000; // Convert to kilometers
+  }
+
+  /// Check if address is within location's delivery zone
+  Future<bool> isAddressInDeliveryZone({
+    required UserAddress address,
+    required Location location,
+  }) async {
+    try {
+      final distance = await calculateDistanceToLocation(
+        address: address,
+        location: location,
+      );
+
+      return location.canDeliverTo(distance);
+    } catch (e) {
+      debugPrint('❌ Error checking delivery zone: $e');
+      return false;
+    }
+  }
+
+  /// Calculate delivery fee for address from location
+  Future<int?> calculateDeliveryFee({
+    required UserAddress address,
+    required Location location,
+  }) async {
+    try {
+      final distance = await calculateDistanceToLocation(
+        address: address,
+        location: location,
+      );
+
+      final fee = location.calculateDeliveryFee(distance);
+      
+      if (fee == -1) {
+        // Outside delivery zone
+        return null;
+      }
+
+      return fee;
+    } catch (e) {
+      debugPrint('❌ Error calculating delivery fee: $e');
+      return null;
+    }
+  }
+
+  /// Get delivery info for an address from a location
+  Future<DeliveryZoneInfo> getDeliveryInfo({
+    required UserAddress address,
+    required Location location,
+  }) async {
+    try {
+      final distance = await calculateDistanceToLocation(
+        address: address,
+        location: location,
+      );
+
+      final inZone = location.canDeliverTo(distance);
+      final fee = inZone ? location.calculateDeliveryFee(distance) : null;
+
+      return DeliveryZoneInfo(
+        distance: distance,
+        isInZone: inZone,
+        deliveryFee: fee,
+        deliveryRadius: location.deliveryRadiusKm,
+      );
+    } catch (e) {
+      debugPrint('❌ Error getting delivery info: $e');
+      return DeliveryZoneInfo(
+        distance: 0,
+        isInZone: false,
+        deliveryFee: null,
+        deliveryRadius: location.deliveryRadiusKm,
+      );
+    }
+  }
+
   void clearError() {
     _error = null;
     notifyListeners();
+  }
+}
+
+/// Helper class for delivery zone information
+class DeliveryZoneInfo {
+  final double distance; // in kilometers
+  final bool isInZone;
+  final int? deliveryFee; // null if outside zone
+  final double? deliveryRadius;
+
+  DeliveryZoneInfo({
+    required this.distance,
+    required this.isInZone,
+    this.deliveryFee,
+    this.deliveryRadius,
+  });
+
+  String get distanceDisplay => '${distance.toStringAsFixed(1)} km';
+
+  String get statusMessage {
+    if (!isInZone) {
+      if (deliveryRadius != null) {
+        return 'Outside delivery zone (${deliveryRadius!.toStringAsFixed(1)} km radius)';
+      }
+      return 'Outside delivery zone';
+    }
+    return 'Within delivery zone';
   }
 }

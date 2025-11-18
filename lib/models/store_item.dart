@@ -10,6 +10,7 @@ class StoreItem {
   final String category;
   final String unitOfMeasure; // Legacy field, kept for compatibility
   final String? unitDescription; // New flexible field: "500g", "2L", "Half", etc.
+  final bool trackInventory; // If true, uses ProductInventory. If false, always available.
   final DateTime createdAt;
   final DateTime updatedAt;
   final int? currentStock;
@@ -27,6 +28,7 @@ class StoreItem {
     required this.category,
     required this.unitOfMeasure,
     this.unitDescription,
+    this.trackInventory = true, // Default to tracking inventory
     required this.createdAt,
     required this.updatedAt,
     this.currentStock,
@@ -35,24 +37,18 @@ class StoreItem {
   });
 
   factory StoreItem.fromJson(Map<String, dynamic> json) {
-    // Helper to safely extract inventory data
-    dynamic getInventoryValue(String key) {
-      if (json['inventory'] is List && (json['inventory'] as List).isNotEmpty) {
-        return json['inventory'][0][key];
-      } else if (json['inventory'] is Map) {
-        return json['inventory'][key];
-      }
-      return null;
-    }
-
-    // Helper to safely extract location data
-    String? getLocationName() {
-      if (json['inventory'] is List && (json['inventory'] as List).isNotEmpty) {
-        return json['inventory'][0]['locations']?['name'];
-      } else if (json['inventory'] is Map) {
-        return json['inventory']['locations']?['name'];
-      }
-      return null;
+    // Extract current stock - check multiple possible locations
+    int? currentStock;
+    if (json['current_stock'] != null) {
+      currentStock = json['current_stock'] as int?;
+    } else if (json['ProductInventory'] is List && (json['ProductInventory'] as List).isNotEmpty) {
+      currentStock = json['ProductInventory'][0]['quantity'] as int?;
+    } else if (json['ProductInventory'] is Map) {
+      currentStock = json['ProductInventory']['quantity'] as int?;
+    } else if (json['inventory'] is List && (json['inventory'] as List).isNotEmpty) {
+      currentStock = json['inventory'][0]['quantity'] as int?;
+    } else if (json['inventory'] is Map) {
+      currentStock = json['inventory']['quantity'] as int?;
     }
 
     return StoreItem(
@@ -66,11 +62,12 @@ class StoreItem {
       category: json['category'] ?? 'General',
       unitOfMeasure: json['unit_of_measure'] ?? 'Piece',
       unitDescription: json['unit_description'],
+      trackInventory: json['track_inventory'] ?? true,
       createdAt: DateTime.parse(json['created_at']),
       updatedAt: DateTime.parse(json['updated_at']),
-      currentStock: getInventoryValue('quantity'),
-      locationId: getInventoryValue('location_id'),
-      locationName: getLocationName(),
+      currentStock: currentStock,
+      locationId: null, // No longer used in single location system
+      locationName: null, // No longer used in single location system
     );
   }
 
@@ -86,6 +83,7 @@ class StoreItem {
       'category': category,
       'unit_of_measure': unitOfMeasure,
       'unit_description': unitDescription,
+      'track_inventory': trackInventory,
       'created_at': createdAt.toIso8601String(),
       'updated_at': updatedAt.toIso8601String(),
     };
@@ -100,6 +98,7 @@ class StoreItem {
     String? category,
     String? unitOfMeasure,
     String? unitDescription,
+    bool? trackInventory,
     int? currentStock,
     String? locationId,
     String? locationName,
@@ -115,6 +114,7 @@ class StoreItem {
       category: category ?? this.category,
       unitOfMeasure: unitOfMeasure ?? this.unitOfMeasure,
       unitDescription: unitDescription ?? this.unitDescription,
+      trackInventory: trackInventory ?? this.trackInventory,
       createdAt: createdAt,
       updatedAt: updatedAt,
       currentStock: currentStock ?? this.currentStock,
@@ -124,10 +124,10 @@ class StoreItem {
   }
 
   // Stock management helpers
-  bool get hasStockTracking => currentStock != null;
-  bool get isOutOfStock => currentStock != null && currentStock == 0;
-  bool get isLowStock => currentStock != null && currentStock! > 0 && currentStock! <= 10;
-  bool get isInStock => currentStock == null || currentStock! > 0;
+  bool get hasStockTracking => trackInventory;
+  bool get isOutOfStock => trackInventory && currentStock != null && currentStock == 0;
+  bool get isLowStock => trackInventory && currentStock != null && currentStock! > 0 && currentStock! <= 10;
+  bool get isInStock => !trackInventory || currentStock == null || currentStock! > 0;
   
   String get stockStatus {
     if (!hasStockTracking) return 'Not tracked';

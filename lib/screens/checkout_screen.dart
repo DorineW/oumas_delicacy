@@ -14,14 +14,18 @@ import '../services/auth_service.dart';
 import '../services/mpesa_service.dart'; // ADDED: M-Pesa service
 import '../providers/cart_provider.dart';
 import '../providers/menu_provider.dart';
+import '../providers/store_provider.dart';
 import '../providers/order_provider.dart';
 import '../providers/address_provider.dart';
 import '../providers/location_management_provider.dart';
+import '../providers/mpesa_provider.dart';
 import '../models/user_address.dart';
 import '../constants/colors.dart';
 import 'location.dart'; // UPDATED: Use existing LocationScreen
 import '../providers/location_provider.dart'; // ADDED: Import LocationProvider (Removed duplicate import)
 import 'mpesa_payment_confirmation_screen.dart'; // ADDED: M-Pesa confirmation screen
+import 'customer_address_management_screen.dart'; // ADDED: Address management screen
+import '../widgets/mpesa_payment_button.dart';
 import '../utils/error_snackbar.dart';
 import '../utils/phone_utils.dart';
 
@@ -45,12 +49,14 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   String? _selectedAddressId; // ADDED: Track selected address ID
   bool _isLocationLoading = false;
   bool _isProcessing = false;
+  bool _isCalculatingFee = false; // ADDED: Track delivery fee calculation
 
   final _formKey = GlobalKey<FormState>();
 
   final TextEditingController _phoneController = TextEditingController();
   final TextEditingController _mpesaPhoneController = TextEditingController();
   final TextEditingController _deliveryAddressController = TextEditingController();
+  final TextEditingController _specialInstructionsController = TextEditingController();
 
   @override
   void initState() {
@@ -60,7 +66,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     _phoneController.text = localDefault;
     _mpesaPhoneController.text = localDefault; // Auto-fill M-Pesa number in local format
 
-    _loadDefaultAddress();
+    // Use post-frame callback to avoid calling notifyListeners during build
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _loadDefaultAddress();
+      }
+    });
   }
 
   @override
@@ -68,6 +79,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     _phoneController.dispose();
     _mpesaPhoneController.dispose();
     _deliveryAddressController.dispose();
+    _specialInstructionsController.dispose();
     super.dispose();
   }
 
@@ -130,7 +142,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             _deliveryAddressController.text = locationProvider.deliveryAddress ?? 'Location selected (details required)';
             
             if (deliveryDetails != null && deliveryDetails['canDeliver'] == true) {
-              _deliveryFee = deliveryDetails['fee'] as int;
+              _deliveryFee = deliveryDetails['deliveryFee'] as int;
               debugPrint('📍 Delivery from: ${nearestLocation.name}, Fee: $_deliveryFee');
             } else {
               _deliveryFee = 0;
@@ -260,7 +272,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     // Load default address from UserAddresses table
     try {
       final addressProvider = Provider.of<AddressProvider>(context, listen: false);
-      await addressProvider.loadAddresses();
+      
+      // Only reload if not already loaded (optimized - preloaded from home screen)
+      if (addressProvider.addresses.isEmpty) {
+        await addressProvider.loadAddresses();
+      }
       
       final defaultAddress = addressProvider.addresses.where((addr) => addr.isDefault).firstOrNull;
       
@@ -269,6 +285,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           _selectedAddressId = defaultAddress.id;
           _deliveryLatLng = LatLng(defaultAddress.latitude, defaultAddress.longitude);
           _deliveryAddressController.text = defaultAddress.displayAddress;
+          _isCalculatingFee = true; // Show loading
         });
         
         // Use LocationManagementProvider to calculate delivery fee from nearest location
@@ -299,18 +316,25 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             
             setState(() {
               if (deliveryDetails != null && deliveryDetails['canDeliver'] == true) {
-                _deliveryFee = deliveryDetails['fee'] as int;
+                _deliveryFee = deliveryDetails['deliveryFee'] as int;
               } else {
                 _deliveryFee = 0;
               }
+              _isCalculatingFee = false; // Done loading
             });
           } else {
-            setState(() => _deliveryFee = 0);
+            setState(() {
+              _deliveryFee = 0;
+              _isCalculatingFee = false;
+            });
           }
           
           debugPrint('📍 Loaded default address: ${defaultAddress.label} with fee: $_deliveryFee');
         } catch (e) {
           debugPrint('⚠️ Could not calculate delivery fee: $e');
+          if (mounted) {
+            setState(() => _isCalculatingFee = false);
+          }
         }
       } else {
         debugPrint('ℹ️ No default address found');
@@ -318,140 +342,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     } catch (e) {
       debugPrint('⚠️ Error loading addresses: $e');
     }
-  }
-
-  Future<void> _payNow() async {
-    if (!mounted) return;
-    
-    // 1. REQUIRED: Run Form Validation first
-    if (!_formKey.currentState!.validate()) {
-      if (!mounted) return;
-      _showErrorSnackBar('Please fix the errors in the form (phone number issues, etc.)');
-      return;
-    }
-
-    // 2. REQUIRED: Validate delivery location is selected
-    if (_deliveryLatLng == null) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Row(
-            children: [
-              Icon(Icons.location_off, color: Colors.white),
-              SizedBox(width: 8),
-              Expanded(child: Text('Please select a delivery location (Current Location or Map)')),
-            ],
-          ),
-          backgroundColor: Colors.orange,
-        ),
-      );
-      return;
-    }
-
-    // 3. Validate delivery address details are provided
-    if (_deliveryAddressController.text.trim().isEmpty) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter delivery address details (building, floor, etc.)')),
-      );
-      return;
-    }
-
-    // 4. Check item availability
-    final menuProvider = context.read<MenuProvider>();
-    final cartProvider = context.read<CartProvider>();
-
-    final unavailableItems = widget.selectedItems.where(
-      (item) => !menuProvider.isItemAvailable(item.mealTitle)
-    ).toList();
-
-    if (unavailableItems.isNotEmpty) {
-      if (!mounted) return;
-      _showUnavailableItemsDialog(unavailableItems, cartProvider);
-      return;
-    }
-
-    // Process order directly
-    if (!mounted) return;
-    _processOrder();
-  }
-
-  // ADDED: Method to show dialog for unavailable items
-  void _showUnavailableItemsDialog(List<CartItem> unavailableItems, CartProvider cart) {
-    // Remove unavailable items
-    for (final item in unavailableItems) {
-      cart.removeItem(item.id);
-    }
-
-    // Build content widgets explicitly
-    final List<Widget> contentWidgets = [
-      const Text('The following items are currently out of stock and have been removed:'),
-      const SizedBox(height: 12),
-    ];
-
-    for (final item in unavailableItems) {
-      contentWidgets.add(
-        Padding(
-          padding: const EdgeInsets.only(bottom: 8),
-          child: Row(
-            children: [
-              const Icon(Icons.close, color: Colors.red, size: 16),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  '${item.quantity}x ${item.mealTitle}',
-                  style: const TextStyle(fontWeight: FontWeight.w600),
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    contentWidgets.add(const SizedBox(height: 12));
-
-    if (cart.items.isEmpty) {
-      contentWidgets.add(
-        Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: Colors.red.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: const Text(
-            'Your cart is now empty. Please add items to continue.',
-            style: TextStyle(fontSize: 12),
-          ),
-        ),
-      );
-    }
-
-    // Show dialog
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        title: const Row(
-          children: [
-            Icon(Icons.warning, color: Colors.orange),
-            SizedBox(width: 8),
-            Text('Items Unavailable'),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: contentWidgets,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).popUntil((route) => route.isFirst),
-            child: const Text('Back to Menu'),
-          ),
-        ],
-      ),
-    );
   }
 
   // TEMPORARILY COMMENTED OUT FOR TESTING - M-Pesa payment dialog
@@ -598,143 +488,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   }
   */
 
-  // UPDATED: Process order with M-Pesa payment
-  void _processOrder() async {
-    setState(() => _isProcessing = true);
-
-    try {
-      final auth = context.read<AuthService>();
-      final cartProvider = context.read<CartProvider>();
-      final currentUser = auth.currentUser;
-      final customerId = currentUser?.id ?? 'guest';
-      final customerName = currentUser?.name ?? 'Guest User';
-      
-      // Validate M-Pesa phone number
-      final mpesaPhone = _mpesaPhoneController.text.trim();
-      if (mpesaPhone.isEmpty) {
-        if (!mounted) return;
-        ErrorSnackbar.showWarning(context, 'Please enter M-Pesa phone number');
-        setState(() => _isProcessing = false);
-        return;
-      }
-
-      // Determine delivery type
-      final DeliveryType orderDeliveryType = _deliveryLatLng != null
-          ? DeliveryType.delivery
-          : DeliveryType.pickup;
-
-      // CHANGED: Prepare order details but DON'T save to database yet
-      // Order will be created by backend after payment succeeds
-      
-      // Create order items data
-      final orderItems = widget.selectedItems.map((item) {
-        return {
-          'id': item.id,
-          'menuItemId': item.menuItemId,
-          'title': item.mealTitle,
-          'quantity': item.quantity,
-          'price': item.price,
-        };
-      }).toList();
-
-      // Prepare order details to send to backend
-      final orderDetails = {
-        'customerId': customerId,
-        'customerName': customerName,
-        'deliveryPhone': _phoneController.text.isNotEmpty
-            ? PhoneUtils.normalizeKenyan(_phoneController.text)
-            : null,
-        'items': orderItems,
-        'subtotal': subtotalAmount,
-        'deliveryFee': orderDeliveryType == DeliveryType.delivery ? _deliveryFee : 0,
-        'tax': tax,
-        'totalAmount': totalAmount,
-        'deliveryType': orderDeliveryType.name,
-        'deliveryAddress': _deliveryAddressController.text.isNotEmpty
-            ? {'address': _deliveryAddressController.text}
-            : null,
-        'deliveryAddressId': _selectedAddressId, // ADDED: Link to UserAddresses table
-      };
-
-      // Normalize M-Pesa phone number using PhoneUtils
-      final formattedPhone = PhoneUtils.normalizeKenyan(mpesaPhone);
-
-      // Initiate M-Pesa payment (backend will create order after payment confirms)
-      debugPrint('💳 Initiating M-Pesa payment...');
-      final paymentResult = await MpesaService.initiateStkPush(
-        phoneNumber: formattedPhone,
-        amount: totalAmount,
-        userId: customerId,
-        orderDetails: orderDetails, // ADDED: Send order details to backend
-      );
-
-      if (!mounted) {
-        setState(() => _isProcessing = false);
-        return;
-      }
-
-      if (paymentResult['success'] == true) {
-        debugPrint('✅ STK push initiated successfully');
-        
-        // Clear cart items after successful payment initiation
-        for (final item in widget.selectedItems) {
-          cartProvider.removeItem(item.id);
-        }
-
-        // Navigate to M-Pesa confirmation screen
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (context) => MpesaPaymentConfirmationScreen(
-              orderId: null, // CHANGED: No order ID yet
-              totalAmount: totalAmount,
-              checkoutRequestId: paymentResult['checkoutRequestID'],
-              phoneNumber: formattedPhone,
-            ),
-          ),
-        );
-      } else {
-        // Payment initiation failed
-        debugPrint('❌ Payment initiation failed: ${paymentResult['error']}');
-        
-        if (!mounted) return;
-        _showErrorSnackBar(
-          paymentResult['error'] ?? 'Failed to initiate payment. Please try again.',
-        );
-        setState(() => _isProcessing = false);
-      }
-    } catch (e) {
-      debugPrint('❌ Error processing order: $e');
-      
-      if (!mounted) {
-        setState(() => _isProcessing = false);
-        return;
-      }
-
-      // CHANGED: Display a generic error message for the user, while logging the detail.
-      _showErrorSnackBar('Order processing failed due to a network or server issue. Please check your connection and try again.');
-      setState(() => _isProcessing = false);
-    }
-  }
-
-  void _showErrorSnackBar(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          children: [
-            const Icon(Icons.error, color: Colors.white),
-            const SizedBox(width: 8),
-            Expanded(child: Text(message)),
-          ],
-        ),
-        backgroundColor: Colors.red,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        margin: const EdgeInsets.all(16),
-      ),
-    );
-  }
-
   Widget _buildSelectedItemsList() {
     return Container(
       padding: const EdgeInsets.all(16),
@@ -812,21 +565,26 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             ],
           ),
 
-          // ADDED: Delivery Fee
-          if (_deliveryLatLng != null)
-            Padding(
-              padding: const EdgeInsets.only(top: 8.0),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text('Delivery Fee', style: TextStyle(fontWeight: FontWeight.w500, fontSize: 14)),
-                  Text(
-                    'KES $_deliveryFee',
-                    style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 14, color: AppColors.primary),
+          // Delivery Fee (always show)
+          Padding(
+            padding: const EdgeInsets.only(top: 8.0),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('Delivery Fee', style: TextStyle(fontWeight: FontWeight.w500, fontSize: 14)),
+                Text(
+                  _deliveryLatLng != null 
+                      ? 'KES $_deliveryFee' 
+                      : 'Set location',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w500, 
+                    fontSize: 14, 
+                    color: _deliveryLatLng != null ? AppColors.primary : Colors.grey,
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
+          ),
 
           const Divider(height: 24, thickness: 1.5),
 
@@ -891,6 +649,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               ),
             ],
           ),
+          const SizedBox(height: 16),
+
+          // Saved Addresses Selector
+          _buildSavedAddressesSelector(),
           const SizedBox(height: 16),
 
           if (_deliveryLatLng == null) ...[
@@ -1003,14 +765,97 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     style: TextStyle(fontWeight: FontWeight.w500, color: AppColors.darkText),
                   ),
                   const Spacer(),
-                  Text(
-                    'KES $_deliveryFee',
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppColors.primary),
-                  ),
+                  _isCalculatingFee
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary),
+                        )
+                      : Text(
+                          'KES $_deliveryFee',
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppColors.primary),
+                        ),
                 ],
               ),
             ),
           ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSpecialInstructionsSection() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.edit_note, color: AppColors.primary, size: 20),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Order Instructions (Optional)',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.darkText),
+                    ),
+                    Text(
+                      'Add special notes for your order',
+                      style: TextStyle(fontSize: 11, color: AppColors.darkText),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          
+          TextFormField(
+            controller: _specialInstructionsController,
+            maxLines: 3,
+            maxLength: 200,
+            keyboardType: TextInputType.multiline,
+            decoration: InputDecoration(
+              hintText: 'e.g., "Please call when you arrive", "Leave at gate", "Deliver to 3rd floor"...',
+              hintStyle: TextStyle(fontSize: 13, color: AppColors.darkText.withOpacity(0.5)),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: BorderSide(color: AppColors.primary.withOpacity(0.3)),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: BorderSide(color: AppColors.primary.withOpacity(0.2)),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: const BorderSide(color: AppColors.primary, width: 2),
+              ),
+              filled: true,
+              fillColor: AppColors.background,
+              counterStyle: TextStyle(fontSize: 11, color: AppColors.darkText.withOpacity(0.5)),
+            ),
+          ),
         ],
       ),
     );
@@ -1125,54 +970,347 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     );
   }
 
+  /// Build saved addresses dropdown selector
+  Widget _buildSavedAddressesSelector() {
+    return Consumer<AddressProvider>(
+      builder: (context, addressProvider, child) {
+        if (addressProvider.isLoading) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        final addresses = addressProvider.addresses;
+        
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'Saved Delivery Addresses',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.darkText,
+                  ),
+                ),
+                TextButton.icon(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const CustomerAddressManagementScreen(),
+                      ),
+                    ).then((_) {
+                      // Reload addresses when returning
+                      addressProvider.loadAddresses();
+                    });
+                  },
+                  icon: const Icon(Icons.add, size: 16),
+                  label: const Text('Manage'),
+                  style: TextButton.styleFrom(
+                    foregroundColor: AppColors.primary,
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            
+            if (addresses.isEmpty)
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.orange.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.info, color: Colors.orange, size: 20),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'No saved addresses',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.darkText,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          const Text(
+                            'Add an address or select location below',
+                            style: TextStyle(fontSize: 12, color: Colors.black87),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              )
+            else
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                decoration: BoxDecoration(
+                  border: Border.all(color: AppColors.primary.withOpacity(0.3)),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<String>(
+                    isExpanded: true,
+                    value: _selectedAddressId,
+                    hint: const Text('Select a saved address'),
+                    items: addresses.map((address) {
+                      return DropdownMenuItem<String>(
+                        value: address.id,
+                        child: Row(
+                          children: [
+                            Icon(
+                              address.isDefault ? Icons.home : Icons.location_on,
+                              size: 18,
+                              color: address.isDefault ? AppColors.success : AppColors.primary,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    address.label.isNotEmpty ? address.label : 'Address',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 14,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  Text(
+                                    address.displayAddress,
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: AppColors.darkText.withOpacity(0.7),
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ],
+                              ),
+                            ),
+                            if (address.isDefault)
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: AppColors.success.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: const Text(
+                                  'Default',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    color: AppColors.success,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      );
+                    }).toList(),
+                    onChanged: (String? newValue) {
+                      if (newValue != null) {
+                        final selectedAddress = addresses.firstWhere((addr) => addr.id == newValue);
+                        _selectSavedAddress(selectedAddress);
+                      }
+                    },
+                  ),
+                ),
+              ),
+            
+            if (addresses.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              const Divider(),
+              const SizedBox(height: 8),
+              const Text(
+                'Or choose a different location:',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                  color: Colors.black54,
+                ),
+              ),
+            ],
+          ],
+        );
+      },
+    );
+  }
+
+  /// Select a saved address and calculate delivery fee
+  Future<void> _selectSavedAddress(UserAddress address) async {
+    setState(() => _isCalculatingFee = true); // Show loading
+    
+    try {
+      final addressProvider = Provider.of<AddressProvider>(context, listen: false);
+      final locationManagementProvider = Provider.of<LocationManagementProvider>(context, listen: false);
+      
+      // Load locations if not loaded
+      if (locationManagementProvider.locations.isEmpty) {
+        await locationManagementProvider.loadLocations();
+      }
+      
+      // Find nearest active location
+      final nearestLocation = locationManagementProvider.getNearestLocation(
+        address.latitude,
+        address.longitude,
+      );
+      
+      if (nearestLocation == null) {
+      if (mounted) {
+        setState(() => _isCalculatingFee = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No restaurant/store location serves your area'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
+      
+      // Check delivery zone and calculate fee
+      final deliveryInfo = await addressProvider.getDeliveryInfo(
+        address: address,
+        location: nearestLocation,
+      );
+      
+      if (!deliveryInfo.isInZone) {
+        if (mounted) {
+          setState(() => _isCalculatingFee = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(deliveryInfo.statusMessage),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 4),
+            ),
+          );
+        }
+        return;
+      }      // Address is valid, set it
+      setState(() {
+        _selectedAddressId = address.id;
+        _deliveryLatLng = LatLng(address.latitude, address.longitude);
+        _deliveryAddressController.text = address.displayAddress;
+        _deliveryFee = deliveryInfo.deliveryFee ?? 0;
+        _isCalculatingFee = false; // Done loading
+      });
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Delivering from ${nearestLocation.name}\\n'
+              'Distance: ${deliveryInfo.distanceDisplay}\\n'
+              'Fee: KES ${deliveryInfo.deliveryFee}',
+            ),
+            backgroundColor: AppColors.success,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isCalculatingFee = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error selecting address: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
   Widget _buildPayButton() {
+    if (_isProcessing) {
+      return Container(
+        width: double.infinity,
+        height: 54,
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [AppColors.success, AppColors.success.withOpacity(0.8)],
+          ),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: const Center(
+          child: SizedBox(
+            height: 20,
+            width: 20,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              valueColor: AlwaysStoppedAnimation<Color>(AppColors.white),
+            ),
+          ),
+        ),
+      );
+    }
+
+    // Validate form inputs
+    if (_mpesaPhoneController.text.trim().isEmpty) {
+      return _buildDisabledButton('Enter M-Pesa number');
+    }
+
+    if (_deliveryLatLng == null) {
+      return _buildDisabledButton('Select delivery address');
+    }
+
+    final mpesaPhone = _mpesaPhoneController.text.trim();
+
+    return MpesaPaymentButton(
+      phoneNumber: mpesaPhone,
+      amount: totalAmount,
+      orderReference: 'ORDER-${DateTime.now().millisecondsSinceEpoch}',
+      onSuccess: () async {
+        // Clear cart after successful payment
+        final cartProvider = context.read<CartProvider>();
+        for (final item in widget.selectedItems) {
+          cartProvider.removeItem(item.id);
+        }
+        
+        // Navigate back to home or order history
+        if (mounted) {
+          Navigator.of(context).popUntil((route) => route.isFirst);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Order placed successfully! 🎉'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      },
+      onCancel: () {
+        debugPrint('Payment cancelled by user');
+      },
+    );
+  }
+
+  Widget _buildDisabledButton(String message) {
     return Container(
       width: double.infinity,
       height: 54,
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [AppColors.success, AppColors.success.withOpacity(0.8)],
-        ),
+        color: Colors.grey[300],
         borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.success.withOpacity(0.3),
-            blurRadius: 8,
-            offset: const Offset(0, 4),
-          ),
-        ],
       ),
-      child: ElevatedButton(
-        onPressed: _isProcessing ? null : _payNow,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.transparent,
-          shadowColor: Colors.transparent,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Center(
+        child: Text(
+          message,
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: Colors.grey[600],
+          ),
         ),
-        child: _isProcessing
-            ? const SizedBox(
-                height: 20,
-                width: 20,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  valueColor: AlwaysStoppedAnimation<Color>(AppColors.white),
-                ),
-              )
-            : const Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.check_circle, color: AppColors.white), // UPDATED: Changed icon
-                  SizedBox(width: 8),
-                  Text(
-                    'Complete Order', // UPDATED: Simplified text
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.white,
-                    ),
-                  ),
-                ],
-              ),
       ),
     );
   }
@@ -1198,6 +1336,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               _buildSelectedItemsList(),
               const SizedBox(height: 16),
               _buildDeliverySection(),
+              const SizedBox(height: 16),
+              _buildSpecialInstructionsSection(),
               const SizedBox(height: 16),
               _buildPaymentSection(),
               const SizedBox(height: 24),

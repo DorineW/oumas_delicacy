@@ -4,16 +4,33 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 
+enum FavoriteItemType {
+  menuItem('menu_item'),
+  storeItem('store_item');
+
+  final String value;
+  const FavoriteItemType(this.value);
+
+  static FavoriteItemType fromString(String value) {
+    return FavoriteItemType.values.firstWhere(
+      (type) => type.value == value,
+      orElse: () => FavoriteItemType.menuItem,
+    );
+  }
+}
+
 class Favorite {
   final String id;
   final String userAuthId;
   final String productId;
+  final FavoriteItemType itemType;
   final DateTime createdAt;
 
   Favorite({
     required this.id,
     required this.userAuthId,
     required this.productId,
+    required this.itemType,
     required this.createdAt,
   });
 
@@ -23,6 +40,7 @@ class Favorite {
       id: json['id'] as String,
       userAuthId: json['user_auth_id'] as String,
       productId: json['product_id'] as String,
+      itemType: FavoriteItemType.fromString(json['item_type'] as String? ?? 'menu_item'),
       createdAt: DateTime.parse(json['created_at'] as String),
     );
   }
@@ -33,6 +51,7 @@ class Favorite {
       'id': id,
       'user_auth_id': userAuthId,
       'product_id': productId,
+      'item_type': itemType.value,
       'created_at': createdAt.toIso8601String(),
     };
   }
@@ -130,7 +149,7 @@ class FavoritesProvider with ChangeNotifier {
       // Query with all columns explicitly with timeout
       final response = await supabase
           .from('favorites')
-          .select('id, user_auth_id, product_id, created_at')
+          .select('id, user_auth_id, product_id, item_type, created_at')
           .eq('user_auth_id', userId)
           .order('created_at', ascending: false)
           .timeout(const Duration(seconds: 10));
@@ -199,41 +218,54 @@ class FavoritesProvider with ChangeNotifier {
   }
 
   // Check if a product is favorited
-  bool isFavorite(String userId, String productId) {
-    return _favorites.any((f) => f.productId == productId && f.userAuthId == userId);
+  bool isFavorite(String userId, String productId, {FavoriteItemType type = FavoriteItemType.menuItem}) {
+    return _favorites.any((f) => 
+      f.productId == productId && 
+      f.userAuthId == userId &&
+      f.itemType == type
+    );
   }
 
-  // Get all favorite product IDs for a user
-  Set<String> getFavoriteIds(String userId) {
+  // Get all favorite product IDs for a user (optionally filtered by type)
+  Set<String> getFavoriteIds(String userId, {FavoriteItemType? type}) {
     return _favorites
-        .where((f) => f.userAuthId == userId)
+        .where((f) => 
+          f.userAuthId == userId &&
+          (type == null || f.itemType == type)
+        )
         .map((f) => f.productId)
         .toSet();
   }
 
-  // Get favorites for a specific user
-  List<String> getFavoritesForUser(String userId) {
+  // Get favorites for a specific user (optionally filtered by type)
+  List<String> getFavoritesForUser(String userId, {FavoriteItemType? type}) {
     return _favorites
-        .where((f) => f.userAuthId == userId)
+        .where((f) => 
+          f.userAuthId == userId &&
+          (type == null || f.itemType == type)
+        )
         .map((f) => f.productId)
         .toList();
   }
 
-  // Get count for a specific user
-  int getCountForUser(String userId) {
-    return _favorites.where((f) => f.userAuthId == userId).length;
+  // Get count for a specific user (optionally filtered by type)
+  int getCountForUser(String userId, {FavoriteItemType? type}) {
+    return _favorites.where((f) => 
+      f.userAuthId == userId &&
+      (type == null || f.itemType == type)
+    ).length;
   }
 
   // Toggle favorite status
-  Future<void> toggleFavorite(String userId, String productId) async {
+  Future<void> toggleFavorite(String userId, String productId, {FavoriteItemType type = FavoriteItemType.menuItem}) async {
     try {
-      final isFav = isFavorite(userId, productId);
+      final isFav = isFavorite(userId, productId, type: type);
       
       if (isFav) {
         // Remove from favorites
-        debugPrint('➖ Removing from favorites: $productId');
+        debugPrint('➖ Removing from favorites: $productId (${type.value})');
         final favorite = _favorites.firstWhere(
-          (f) => f.productId == productId && f.userAuthId == userId,
+          (f) => f.productId == productId && f.userAuthId == userId && f.itemType == type,
         );
         
         await Supabase.instance.client
@@ -243,18 +275,19 @@ class FavoritesProvider with ChangeNotifier {
 
         debugPrint('✅ Removed from favorites');
         _favorites.removeWhere(
-          (f) => f.productId == productId && f.userAuthId == userId,
+          (f) => f.productId == productId && f.userAuthId == userId && f.itemType == type,
         );
         
       } else {
         // Add to favorites
-        debugPrint('➕ Adding to favorites: $productId');
+        debugPrint('➕ Adding to favorites: $productId (${type.value})');
         
         final response = await Supabase.instance.client
             .from('favorites')
             .insert({
               'user_auth_id': userId,
               'product_id': productId,
+              'item_type': type.value,
             })
             .select()
             .single();

@@ -4,13 +4,15 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../providers/store_provider.dart';
 import '../providers/cart_provider.dart';
+import '../providers/favorites_provider.dart';
+import '../services/auth_service.dart';
 import '../models/store_item.dart';
 import '../models/cart_item.dart';
 import '../widgets/smart_product_image.dart';
 import '../constants/colors.dart';
 
 class StoreScreen extends StatefulWidget {
-  const StoreScreen({Key? key}) : super(key: key);
+  const StoreScreen({super.key});
 
   @override
   State<StoreScreen> createState() => _StoreScreenState();
@@ -19,12 +21,21 @@ class StoreScreen extends StatefulWidget {
 class _StoreScreenState extends State<StoreScreen> {
   final TextEditingController _searchController = TextEditingController();
   String _selectedCategory = 'All';
+  String? _selectedLocationId;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<StoreProvider>().loadStoreItems();
+      final storeProvider = context.read<StoreProvider>();
+      storeProvider.loadStoreItems();
+      // Auto-select first location if available
+      if (storeProvider.locations.isNotEmpty && _selectedLocationId == null) {
+        setState(() {
+          _selectedLocationId = storeProvider.locations.first.id;
+        });
+        storeProvider.setSelectedLocation(_selectedLocationId);
+      }
     });
   }
 
@@ -39,6 +50,9 @@ class _StoreScreenState extends State<StoreScreen> {
       ),
       body: Column(
         children: [
+          // Location Selector
+          _buildLocationSelector(),
+          
           // Search Bar
           _buildSearchBar(),
           
@@ -57,6 +71,64 @@ class _StoreScreenState extends State<StoreScreen> {
     );
   }
 
+  Widget _buildLocationSelector() {
+    return Consumer<StoreProvider>(
+      builder: (context, storeProvider, child) {
+        if (storeProvider.locations.isEmpty) return const SizedBox.shrink();
+        
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            color: AppColors.primary.withOpacity(0.05),
+            border: Border(
+              bottom: BorderSide(color: Colors.grey[300]!, width: 1),
+            ),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.location_on, color: AppColors.primary, size: 20),
+              const SizedBox(width: 8),
+              const Text(
+                'Shopping at:',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                  color: AppColors.darkText,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: DropdownButtonFormField<String>(
+                  value: _selectedLocationId,
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    border: OutlineInputBorder(),
+                  ),
+                  items: storeProvider.locations.map((location) {
+                    return DropdownMenuItem(
+                      value: location.id,
+                      child: Text(
+                        location.name,
+                        style: const TextStyle(fontSize: 14),
+                      ),
+                    );
+                  }).toList(),
+                  onChanged: (value) {
+                    setState(() {
+                      _selectedLocationId = value;
+                    });
+                    storeProvider.setSelectedLocation(value);
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   Widget _buildSearchBar() {
     return Padding(
       padding: const EdgeInsets.all(16.0),
@@ -66,7 +138,7 @@ class _StoreScreenState extends State<StoreScreen> {
           borderRadius: BorderRadius.circular(12),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.05),
+              color: Colors.black.withOpacity(0.1),
               blurRadius: 8,
               offset: const Offset(0, 2),
             ),
@@ -75,11 +147,11 @@ class _StoreScreenState extends State<StoreScreen> {
         child: TextField(
           controller: _searchController,
           decoration: InputDecoration(
-            hintText: 'Search products...',
-            hintStyle: TextStyle(color: Colors.grey[500]),
-            prefixIcon: Icon(Icons.search, color: Colors.grey[500]),
+            hintText: 'Search products…',
+            hintStyle: TextStyle(color: Colors.grey[400]),
+            prefixIcon: Icon(Icons.search, color: Colors.grey[400]),
             border: InputBorder.none,
-            contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+            contentPadding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
           ),
           onChanged: (value) {
             setState(() {});
@@ -92,20 +164,24 @@ class _StoreScreenState extends State<StoreScreen> {
   Widget _buildCategoryFilter() {
     return Consumer<StoreProvider>(
       builder: (context, storeProvider, child) {
-        final categories = ['All', ...storeProvider.availableItems.map((e) => e.category).toSet()];
+        final categories = ['All', ...storeProvider.availableItems.map((e) => e.category).toSet().toList()]..sort();
         
-        return SizedBox(
+        return Container(
           height: 50,
+          margin: const EdgeInsets.symmetric(vertical: 8),
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 16),
+            physics: const BouncingScrollPhysics(),
             itemCount: categories.length,
             itemBuilder: (context, index) {
               final category = categories[index];
               final isSelected = _selectedCategory == category;
               
               return Padding(
-                padding: const EdgeInsets.only(right: 8),
+                padding: EdgeInsets.only(
+                  right: index == categories.length - 1 ? 0 : 8,
+                ),
                 child: FilterChip(
                   label: Text(category),
                   selected: isSelected,
@@ -118,15 +194,18 @@ class _StoreScreenState extends State<StoreScreen> {
                   selectedColor: AppColors.primary,
                   labelStyle: TextStyle(
                     color: isSelected ? Colors.white : Colors.grey[700],
-                    fontWeight: FontWeight.w500,
+                    fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
                   ),
                   shape: StadiumBorder(
                     side: BorderSide(
                       color: isSelected 
                           ? AppColors.primary 
                           : Colors.grey[300]!,
+                      width: isSelected ? 1.5 : 1,
                     ),
                   ),
+                  elevation: isSelected ? 2 : 0,
+                  pressElevation: 4,
                 ),
               );
             },
@@ -253,7 +332,9 @@ class _StoreScreenState extends State<StoreScreen> {
   }
 
   Widget _buildProductCard(StoreItem item, StoreProvider storeProvider) {
-    final isOutOfStock = (item.currentStock ?? 0) == 0;
+    // Only show as out of stock if item tracks inventory AND stock is 0
+    final isOutOfStock = item.trackInventory && 
+        (item.currentStock == null || item.currentStock == 0);
     
     return GestureDetector(
       onTap: () {
@@ -320,16 +401,29 @@ class _StoreScreenState extends State<StoreScreen> {
                       Text(
                         item.category,
                         style: TextStyle(
-                          fontSize: 12,
+                          fontSize: 11,
                           color: Colors.grey[600],
                         ),
                       ),
-                      const SizedBox(height: 8),
+                      if (item.unitDescription != null && item.unitDescription!.isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          item.unitDescription!,
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: Colors.grey[500],
+                            fontStyle: FontStyle.italic,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                      const SizedBox(height: 6),
                       Text(
-                        'KSh ${item.price.toStringAsFixed(2)}',
+                        'KSh ${item.price.toStringAsFixed(0)}',
                         style: const TextStyle(
                           fontWeight: FontWeight.bold,
-                          fontSize: 16,
+                          fontSize: 12,
                           color: Colors.green,
                         ),
                       ),
@@ -361,10 +455,10 @@ class _StoreScreenState extends State<StoreScreen> {
                 ),
               ),
             
-            // Add to Cart Button
+            // Add to Cart Button - positioned at bottom right of image like menu items
             if (!isOutOfStock)
               Positioned(
-                bottom: 8,
+                top: 100, // Position at bottom of 120px image
                 right: 8,
                 child: Material(
                   color: AppColors.primary,
@@ -521,9 +615,19 @@ class _StoreScreenState extends State<StoreScreen> {
   }
 
   Future<void> _addToCart(StoreItem item, StoreProvider storeProvider) async {
-    final isAvailable = item.available && (item.currentStock ?? 0) > 0;
+    // Items without inventory tracking are always available
+    // Items with tracking need stock > 0
+    final isAvailable = item.available && 
+        (!item.trackInventory || (item.currentStock != null && item.currentStock! > 0));
+    
+    debugPrint('🛒 Add to cart check for ${item.name}:');
+    debugPrint('   available: ${item.available}');
+    debugPrint('   trackInventory: ${item.trackInventory}');
+    debugPrint('   currentStock: ${item.currentStock}');
+    debugPrint('   isAvailable: $isAvailable');
 
     if (!isAvailable) {
+      debugPrint('❌ Item not available, showing error');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Row(
@@ -544,37 +648,52 @@ class _StoreScreenState extends State<StoreScreen> {
       return;
     }
 
-    HapticFeedback.lightImpact();
+    debugPrint('✅ Item is available, proceeding to add to cart');
+    
+    try {
+      HapticFeedback.lightImpact();
+      debugPrint('🔍 Getting CartProvider...');
 
-    final cart = context.read<CartProvider>();
-    cart.addItem(CartItem(
-      id: '${item.name}_${DateTime.now().millisecondsSinceEpoch}',
-      menuItemId: item.productId,
-      mealTitle: item.name,
-      price: item.price.toInt(),
-      quantity: 1,
-      mealImage: item.imageUrl ?? '',
-    ));
-
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            children: [
-              const Icon(Icons.check_circle, color: Colors.white),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text('${item.name} added to cart'),
-              ),
-            ],
-          ),
-          backgroundColor: Colors.green,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          margin: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-          behavior: SnackBarBehavior.floating,
-          duration: const Duration(seconds: 2),
-        ),
+      final cart = context.read<CartProvider>();
+      debugPrint('🔍 CartProvider obtained, creating CartItem...');
+      
+      final cartItem = CartItem(
+        id: '${item.name}_${DateTime.now().millisecondsSinceEpoch}',
+        menuItemId: item.productId,
+        mealTitle: item.name,
+        price: item.price.toInt(),
+        quantity: 1,
+        mealImage: item.imageUrl ?? '',
       );
+      
+      debugPrint('🔍 Adding item to cart: ${cartItem.mealTitle}');
+      cart.addItem(cartItem);
+      debugPrint('✅ Item successfully added to cart!');
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('1 × ${item.name} added to cart'),
+            backgroundColor: AppColors.primary,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            margin: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e, stackTrace) {
+      debugPrint('❌ ERROR adding to cart: $e');
+      debugPrint('Stack trace: $stackTrace');
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error adding ${item.name} to cart'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -620,7 +739,7 @@ class _StoreScreenState extends State<StoreScreen> {
 class ProductDetailSheet extends StatefulWidget {
   final StoreItem item;
 
-  const ProductDetailSheet({Key? key, required this.item}) : super(key: key);
+  const ProductDetailSheet({super.key, required this.item});
 
   @override
   State<ProductDetailSheet> createState() => _ProductDetailSheetState();
@@ -628,11 +747,17 @@ class ProductDetailSheet extends StatefulWidget {
 
 class _ProductDetailSheetState extends State<ProductDetailSheet> {
   int _quantity = 1;
-  bool _isFavorite = false;
 
   @override
   Widget build(BuildContext context) {
-    final isOutOfStock = (widget.item.currentStock ?? 0) == 0;
+    // Only consider out of stock if item tracks inventory AND stock is 0
+    final isOutOfStock = widget.item.trackInventory && 
+        (widget.item.currentStock == null || widget.item.currentStock == 0);
+    
+    final favoritesProvider = context.watch<FavoritesProvider>();
+    final auth = context.watch<AuthService>();
+    final userId = auth.currentUser?.id ?? 'guest';
+    final isFavorite = favoritesProvider.isFavorite(userId, widget.item.id, type: FavoriteItemType.storeItem);
     
     return Container(
       height: MediaQuery.of(context).size.height * 0.85,
@@ -687,14 +812,32 @@ class _ProductDetailSheetState extends State<ProductDetailSheet> {
                           right: 16,
                           child: IconButton(
                             icon: Icon(
-                              _isFavorite ? Icons.favorite : Icons.favorite_border,
-                              color: _isFavorite ? Colors.red : Colors.grey[600],
+                              isFavorite ? Icons.favorite : Icons.favorite_border,
+                              color: isFavorite ? Colors.red : Colors.grey[600],
                               size: 28,
                             ),
-                            onPressed: () {
-                              setState(() {
-                                _isFavorite = !_isFavorite;
-                              });
+                            onPressed: () async {
+                              if (userId != 'guest') {
+                                HapticFeedback.lightImpact();
+                                await favoritesProvider.toggleFavorite(
+                                  userId, 
+                                  widget.item.id, 
+                                  type: FavoriteItemType.storeItem,
+                                );
+                                
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(
+                                        isFavorite 
+                                            ? 'Removed from favorites' 
+                                            : 'Added to favorites',
+                                      ),
+                                      duration: const Duration(seconds: 1),
+                                    ),
+                                  );
+                                }
+                              }
                             },
                           ),
                         ),
@@ -839,20 +982,35 @@ class _ProductDetailSheetState extends State<ProductDetailSheet> {
                   Expanded(
                     child: ElevatedButton(
                       onPressed: () {
-                        // Add to cart logic
+                        // Add to cart
+                        final cart = context.read<CartProvider>();
+                        cart.addItem(CartItem(
+                          id: '${widget.item.name}_${DateTime.now().millisecondsSinceEpoch}',
+                          menuItemId: widget.item.productId,
+                          mealTitle: widget.item.name,
+                          price: widget.item.price.toInt(),
+                          quantity: _quantity,
+                          mealImage: widget.item.imageUrl ?? '',
+                        ));
+                        
                         Navigator.pop(context);
+                        
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
-                            content: Text('Added ${widget.item.name} to cart'),
-                            behavior: SnackBarBehavior.floating,
+                            content: Text('$_quantity × ${widget.item.name} added to cart'),
+                            backgroundColor: AppColors.primary,
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
                             ),
+                            margin: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                            behavior: SnackBarBehavior.floating,
+                            duration: const Duration(seconds: 2),
                           ),
                         );
                       },
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Theme.of(context).primaryColor,
+                        foregroundColor: Colors.white,
                         padding: const EdgeInsets.symmetric(vertical: 16),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
@@ -863,6 +1021,7 @@ class _ProductDetailSheetState extends State<ProductDetailSheet> {
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
+                          color: Colors.white,
                         ),
                       ),
                     ),
@@ -872,18 +1031,19 @@ class _ProductDetailSheetState extends State<ProductDetailSheet> {
                     child: ElevatedButton(
                       onPressed: null,
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.grey[400],
+                        backgroundColor: Colors.grey[300],
+                        disabledBackgroundColor: Colors.grey[300],
                         padding: const EdgeInsets.symmetric(vertical: 16),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
                         ),
                       ),
-                      child: const Text(
+                      child: Text(
                         'Out of Stock',
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
-                          color: Colors.white,
+                          color: Colors.grey[700],
                         ),
                       ),
                     ),

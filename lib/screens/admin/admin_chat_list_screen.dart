@@ -1,4 +1,5 @@
 // lib/screens/admin/admin_chat_list_screen.dart
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../constants/colors.dart';
 import '../customer_chat_screen.dart';
@@ -13,11 +14,27 @@ class AdminChatListScreen extends StatefulWidget {
 
 class _AdminChatListScreenState extends State<AdminChatListScreen> {
   late final Stream<List<Map<String, dynamic>>> _roomsStream;
+  final _refreshController = StreamController<void>.broadcast();
+  int _refreshKey = 0;
 
   @override
   void initState() {
     super.initState();
     _roomsStream = ChatService.instance.streamAdminRooms();
+  }
+
+  @override
+  void dispose() {
+    _refreshController.close();
+    super.dispose();
+  }
+
+  void _forceRefresh() {
+    if (mounted) {
+      setState(() {
+        _refreshKey++;
+      });
+    }
   }
 
   @override
@@ -87,6 +104,7 @@ class _AdminChatListScreenState extends State<AdminChatListScreen> {
         ],
       ),
       body: StreamBuilder<List<Map<String, dynamic>>>(
+        key: ValueKey(_refreshKey),
         stream: _roomsStream,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
@@ -120,13 +138,23 @@ class _AdminChatListScreenState extends State<AdminChatListScreen> {
                   unreadCount: unreadAdmin,
                   lastTime: lastTime,
                   onTap: () async {
-                    try { await ChatService.instance.markRoomRead(roomId); } catch (_) {}
                     if (!mounted) return;
-                    Navigator.of(context).push(
+                    
+                    // Navigate to chat
+                    await Navigator.of(context).push(
                       MaterialPageRoute(
                         builder: (_) => CustomerChatScreen(chatId: roomId),
                       ),
                     );
+                    
+                    // After returning, mark as read and force refresh
+                    if (!mounted) return;
+                    try {
+                      await ChatService.instance.markRoomRead(roomId);
+                      // Small delay to let database update propagate
+                      await Future.delayed(const Duration(milliseconds: 300));
+                      _forceRefresh();
+                    } catch (_) {}
                   },
                 );
               }),
@@ -219,9 +247,16 @@ class _AdminChatListScreenState extends State<AdminChatListScreen> {
     final now = DateTime.now().toUtc().add(const Duration(hours: 3));
     final diff = now.difference(kenyanTime);
     
-    if (diff.inMinutes < 1) return 'now';
-    if (diff.inMinutes < 60) return '${diff.inMinutes}m';
-    if (diff.inHours < 24) return '${diff.inHours}h';
-    return '${diff.inDays}d';
+    // Show actual time for messages less than 5 minutes old (instead of 'now')
+    if (diff.inMinutes < 5) {
+      final hour12 = kenyanTime.hour == 0 ? 12 : (kenyanTime.hour > 12 ? kenyanTime.hour - 12 : kenyanTime.hour);
+      final amPm = kenyanTime.hour >= 12 ? 'PM' : 'AM';
+      return '$hour12:${kenyanTime.minute.toString().padLeft(2, '0')} $amPm';
+    }
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    if (diff.inHours < 24) return '${diff.inHours}h ago';
+    if (diff.inDays == 1) return 'Yesterday';
+    if (diff.inDays < 7) return '${diff.inDays}d ago';
+    return '${kenyanTime.day}/${kenyanTime.month}';
   }
 }

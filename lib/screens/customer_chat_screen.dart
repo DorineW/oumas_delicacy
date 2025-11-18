@@ -33,12 +33,22 @@ class _CustomerChatScreenState extends State<CustomerChatScreen> {
       final roomId = existing ?? await ChatService.instance.getOrCreateCustomerRoom();
       _roomId = roomId;
       _messagesStream = ChatService.instance.streamCustomerRoom(roomId);
+      // Mark as read immediately when opening
       await ChatService.instance.markRoomRead(roomId);
     } catch (e) {
       _initError = e.toString();
     } finally {
       if (mounted) setState(() => _initializing = false);
     }
+  }
+
+  @override
+  void dispose() {
+    // Mark as read when leaving the screen
+    if (_roomId != null) {
+      ChatService.instance.markRoomRead(_roomId!);
+    }
+    super.dispose();
   }
 
   @override
@@ -272,7 +282,6 @@ class _MessageInputState extends State<_MessageInput> {
         rethrow;
       }
       _controller.clear();
-      await ChatService.instance.markRoomRead(roomId);
       // NOTE: Removed problematic optimistic flush - the Supabase stream will
       // automatically update with the real message, preventing duplicates/disappearances
     } catch (_) {

@@ -1,3 +1,6 @@
+// ignore_for_file: unused_import
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -6,10 +9,12 @@ import '../providers/order_provider.dart';
 import '../providers/favorites_provider.dart';
 import '../providers/menu_provider.dart';
 import '../models/order.dart';
+import '../models/receipt.dart';
 import '../services/auth_service.dart';
+import '../services/receipt_service.dart';
 import '../providers/reviews_provider.dart';
 import 'order_history_screen.dart';
-import 'meal_detail_screen.dart';
+import 'home_screen.dart'; // For MealDetailSheet
 import '../utils/responsive_helper.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -40,7 +45,7 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
     final orders = provider.orders;
 
     final int orderCount = orders.length;
-    final int favCount = favoritesProvider.getCountForUser(userId);
+    final int favCount = favoritesProvider.getCountForUser(userId, type: FavoriteItemType.menuItem);
     final int reviewCount = orders.fold<int>(
       0,
       (sum, order) => sum + order.items.where((item) => item.rating != null).length,
@@ -95,9 +100,6 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
                     ),
                     SizedBox(height: isLandscape ? 16 : 24),
 
-                    // Quick Stats Summary
-                    _buildQuickStatsSummary(orderCount, completedOrders, reviewCount),
-
                     // Favorites dropdown section
                     _buildFavoritesSection(userId, favoritesProvider, menuProvider),
 
@@ -116,6 +118,9 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
   // EXTRACTED: Error Banner Widget
   Widget _buildErrorBanner(String error) {
     final isCachedError = error.contains('cached') || error.contains('Limited');
+    // Simplify error message
+    final displayMessage = isCachedError ? 'Limited connectivity' : error;
+    
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.only(bottom: 16),
@@ -137,7 +142,7 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              error,
+              displayMessage,
               style: TextStyle(
                 color: isCachedError ? Colors.orange.shade900 : Colors.red.shade900,
                 fontSize: 12,
@@ -222,6 +227,7 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
                 count: orderCount.toString(),
                 icon: Icons.shopping_bag,
                 color: AppColors.primary,
+                isClickable: true,
                 onTap: () {
                   HapticFeedback.lightImpact();
                   Navigator.push(
@@ -241,6 +247,7 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
                 count: favCount.toString(),
                 icon: Icons.favorite,
                 color: Colors.red,
+                isClickable: true,
                 onTap: () {
                   HapticFeedback.lightImpact();
                   setState(() {
@@ -257,7 +264,8 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
                 count: completedOrders.toString(),
                 icon: Icons.check_circle,
                 color: AppColors.success,
-                onTap: () => HapticFeedback.lightImpact(),
+                isClickable: false,
+                onTap: () {},
                 semanticLabel: '$completedOrders completed orders',
               ),
             ),
@@ -268,7 +276,8 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
                 count: reviewCount.toString(),
                 icon: Icons.star,
                 color: Colors.amber,
-                onTap: () => HapticFeedback.lightImpact(),
+                isClickable: false,
+                onTap: () {},
                 semanticLabel: '$reviewCount reviews submitted',
               ),
             ),
@@ -287,6 +296,7 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
                     count: orderCount.toString(),
                     icon: Icons.shopping_bag,
                     color: AppColors.primary,
+                    isClickable: true,
                     onTap: () {
                       HapticFeedback.lightImpact();
                       Navigator.push(
@@ -306,6 +316,7 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
                     count: favCount.toString(),
                     icon: Icons.favorite,
                     color: Colors.red,
+                    isClickable: true,
                     onTap: () {
                       HapticFeedback.lightImpact();
                       setState(() {
@@ -328,7 +339,8 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
                     count: completedOrders.toString(),
                     icon: Icons.check_circle,
                     color: AppColors.success,
-                    onTap: () => HapticFeedback.lightImpact(),
+                    isClickable: false,
+                    onTap: () {},
                     semanticLabel: '$completedOrders completed orders',
                   ),
                 ),
@@ -339,7 +351,8 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
                     count: reviewCount.toString(),
                     icon: Icons.star,
                     color: Colors.amber,
-                    onTap: () => HapticFeedback.lightImpact(),
+                    isClickable: false,
+                    onTap: () {},
                     semanticLabel: '$reviewCount reviews submitted',
                   ),
                 ),
@@ -352,54 +365,6 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
   }
 
   // ADDED: Quick Stats Summary
-  Widget _buildQuickStatsSummary(int orderCount, int completedOrders, int reviewCount) {
-    if (orderCount == 0 && completedOrders == 0 && reviewCount == 0) {
-      return const SizedBox.shrink();
-    }
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.primary.withOpacity(0.05),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.primary.withOpacity(0.1)),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
-        children: [
-          _buildQuickStatItem('Total Orders', orderCount),
-          _buildQuickStatItem('Completed', completedOrders),
-          _buildQuickStatItem('Rated Items', reviewCount),
-        ],
-      ),
-    );
-  }
-
-  // ADDED: Quick Stat Item
-  Widget _buildQuickStatItem(String label, int value) {
-    return Column(
-      children: [
-        Text(
-          value.toString(),
-          style: const TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-            color: AppColors.primary,
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 12,
-            color: AppColors.darkText.withOpacity(0.6),
-          ),
-        ),
-      ],
-    );
-  }
-
   // Favorites dropdown section
   Widget _buildFavoritesSection(String userId, FavoritesProvider favoritesProvider, MenuProvider menuProvider) {
     return AnimatedCrossFade(
@@ -415,7 +380,7 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
   // EXTRACTED: Favorites Content
   Widget _buildFavoritesContent(String userId, FavoritesProvider favoritesProvider, MenuProvider menuProvider) {
     try {
-      final favoriteIds = favoritesProvider.getFavoritesForUser(userId);
+      final favoriteIds = favoritesProvider.getFavoritesForUser(userId, type: FavoriteItemType.menuItem);
       final favoriteMeals = menuProvider.menuItems.where((meal) => 
         favoriteIds.contains(meal.id) && menuProvider.isItemAvailable(meal.title)
       ).toList();
@@ -506,11 +471,11 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
                 child: InkWell(
                   borderRadius: BorderRadius.circular(8),
                   onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => MealDetailScreen(meal: meal),
-                      ),
+                    showModalBottomSheet(
+                      context: context,
+                      isScrollControlled: true,
+                      backgroundColor: Colors.transparent,
+                      builder: (_) => MealDetailSheet(meal: meal),
                     );
                   },
                   child: Padding(
@@ -581,7 +546,7 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
                                 size: 20,
                               ),
                               onPressed: () {
-                                favoritesProvider.toggleFavorite(userId, meal.id ?? '');
+                                favoritesProvider.toggleFavorite(userId, meal.id ?? '', type: FavoriteItemType.menuItem);
                                 HapticFeedback.lightImpact();
                               },
                               padding: EdgeInsets.zero,
@@ -821,6 +786,7 @@ class _StatCard extends StatelessWidget {
   final String count;
   final IconData icon;
   final Color color;
+  final bool isClickable;
   final VoidCallback onTap;
   final String semanticLabel;
 
@@ -829,6 +795,7 @@ class _StatCard extends StatelessWidget {
     required this.count,
     required this.icon,
     required this.color,
+    required this.isClickable,
     required this.onTap,
     this.semanticLabel = '',
   });
@@ -836,19 +803,23 @@ class _StatCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isFavorites = title == 'Favorites';
+    final isOrders = title == 'Orders';
     
     return Semantics(
       label: semanticLabel.isNotEmpty ? semanticLabel : '$count $title',
-      button: true,
+      button: isClickable,
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: onTap,
+          onTap: isClickable ? onTap : null,
           borderRadius: BorderRadius.circular(14),
           child: Ink(
             decoration: BoxDecoration(
               color: AppColors.white,
               borderRadius: BorderRadius.circular(14),
+              border: isClickable 
+                  ? Border.all(color: color.withOpacity(0.3), width: 1.5)
+                  : null,
               boxShadow: [
                 BoxShadow(
                   color: Colors.black.withOpacity(0.05),
@@ -887,12 +858,12 @@ class _StatCard extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
-                      if (isFavorites) ...[
+                      if (isClickable) ...[
                         const SizedBox(width: 4),
                         Icon(
-                          Icons.visibility,
-                          size: 14,
-                          color: color,
+                          isFavorites ? Icons.expand_more : Icons.arrow_forward_ios,
+                          size: isFavorites ? 16 : 12,
+                          color: color.withOpacity(0.7),
                         ),
                       ],
                     ],
@@ -909,6 +880,17 @@ class _StatCard extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     textAlign: TextAlign.center,
                   ),
+                  if (isClickable) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      isOrders ? 'Tap to view' : 'Tap to toggle',
+                      style: TextStyle(
+                        fontSize: 9,
+                        color: color.withOpacity(0.6),
+                        fontStyle: FontStyle.italic,
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -1115,7 +1097,41 @@ class _RecentOrderCard extends StatelessWidget {
     );
   }
 
-  void _showPaymentReceipt(BuildContext context, Order order) {
+  Future<void> _showPaymentReceipt(BuildContext context, Order order) async {
+    // Show loading dialog
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(
+        child: CircularProgressIndicator(color: AppColors.primary),
+      ),
+    );
+    
+    // Fetch receipt from database
+    final receiptService = ReceiptService();
+    final receipt = await receiptService.getReceiptByOrderId(order.id);
+    
+    // Close loading dialog
+    if (context.mounted) {
+      Navigator.pop(context);
+    }
+    
+    // Show error if receipt not found
+    if (receipt == null) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Receipt not found for this order'),
+            backgroundColor: AppColors.primary,
+          ),
+        );
+      }
+      return;
+    }
+    
+    // Show receipt dialog
+    if (!context.mounted) return;
+    
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -1164,9 +1180,9 @@ class _RecentOrderCard extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: 4),
-                      const Text(
-                        'Ouma\'s Delicacy',
-                        style: TextStyle(
+                      Text(
+                        receipt.businessName,
+                        style: const TextStyle(
                           fontSize: 14,
                           color: AppColors.darkText,
                           fontWeight: FontWeight.w500,
@@ -1176,13 +1192,17 @@ class _RecentOrderCard extends StatelessWidget {
                   ),
                 ),
                 const Divider(height: 32, color: AppColors.success),
-                _buildReceiptRow('Order Number', order.orderNumber),
+                _buildReceiptRow('Receipt Number', receipt.receiptNumber),
                 const SizedBox(height: 12),
-                _buildReceiptRow('Date', '${order.date.day}/${order.date.month}/${order.date.year}'),
+                _buildReceiptRow('Transaction ID', receipt.transactionId),
                 const SizedBox(height: 12),
-                _buildReceiptRow('Time', '${order.date.hour.toString().padLeft(2, '0')}:${order.date.minute.toString().padLeft(2, '0')}'),
+                _buildReceiptRow('Date', '${receipt.issueDate.day}/${receipt.issueDate.month}/${receipt.issueDate.year}'),
                 const SizedBox(height: 12),
-                _buildReceiptRow('Payment Method', 'M-Pesa'),
+                _buildReceiptRow('Time', '${receipt.issueDate.hour.toString().padLeft(2, '0')}:${receipt.issueDate.minute.toString().padLeft(2, '0')}'),
+                const SizedBox(height: 12),
+                _buildReceiptRow('Payment Method', receipt.paymentMethod),
+                const SizedBox(height: 12),
+                _buildReceiptRow('Customer', receipt.customerName),
                 const Divider(height: 32, color: AppColors.success),
                 const Text(
                   'Order Items',
@@ -1193,19 +1213,19 @@ class _RecentOrderCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 8),
-                ...order.items.map((item) => Padding(
+                ...receipt.items.map((item) => Padding(
                   padding: const EdgeInsets.symmetric(vertical: 4),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Expanded(
                         child: Text(
-                          '${item.title} x${item.quantity}',
+                          '${item.itemDescription} x${item.quantity}',
                           style: const TextStyle(fontSize: 13),
                         ),
                       ),
                       Text(
-                        'KSh ${(item.price * item.quantity).toStringAsFixed(2)}',
+                        '${receipt.currency} ${item.totalPrice.toStringAsFixed(2)}',
                         style: const TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w600,
@@ -1214,27 +1234,78 @@ class _RecentOrderCard extends StatelessWidget {
                     ],
                   ),
                 )),
+                
                 const Divider(height: 24, color: AppColors.success),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      'Total Amount',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.darkText,
+                
+                // Pricing Summary
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppColors.cardBackground,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Column(
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text('Subtotal', style: TextStyle(fontSize: 13)),
+                          Text(
+                            '${receipt.currency} ${receipt.subtotal.toStringAsFixed(2)}',
+                            style: const TextStyle(fontSize: 13),
+                          ),
+                        ],
                       ),
-                    ),
-                    Text(
-                      'KSh ${order.totalAmount.toStringAsFixed(2)}',
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.success,
+                      if (receipt.taxAmount > 0) ...[
+                        const SizedBox(height: 8),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text('Tax', style: TextStyle(fontSize: 13)),
+                            Text(
+                              '${receipt.currency} ${receipt.taxAmount.toStringAsFixed(2)}',
+                              style: const TextStyle(fontSize: 13),
+                            ),
+                          ],
+                        ),
+                      ],
+                      if (receipt.discountAmount > 0) ...[
+                        const SizedBox(height: 8),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text('Discount', style: TextStyle(fontSize: 13, color: AppColors.success)),
+                            Text(
+                              '-${receipt.currency} ${receipt.discountAmount.toStringAsFixed(2)}',
+                              style: const TextStyle(fontSize: 13, color: AppColors.success),
+                            ),
+                          ],
+                        ),
+                      ],
+                      const SizedBox(height: 8),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text(
+                            'Total Paid',
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.darkText,
+                            ),
+                          ),
+                          Text(
+                            '${receipt.currency} ${receipt.totalAmount.toStringAsFixed(2)}',
+                            style: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.success,
+                            ),
+                          ),
+                        ],
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
                 const SizedBox(height: 24),
                 Container(
@@ -1657,18 +1728,28 @@ class _RatingDialogState extends State<_RatingDialog> {
           orderProvider.rateOrderItem(widget.order.id, item.id, rating, review);
           
           // Add to reviews provider for meal detail screen
+          // FIXED: Use menuItemId (product_id from menu_items table) instead of order item id
           final userId = auth.currentUser?.id ?? '';
-          final reviewObj = Review(
-            id: UniqueKey().toString(),
-            userAuthId: userId,
-            productId: item.id,
-            rating: rating,
-            body: review.isNotEmpty ? review : null,
-            createdAt: DateTime.now(),
-            userName: auth.currentUser?.name,
-            isAnonymous: _submitAsAnonymous,
-          );
-          reviewsProvider.addReview(reviewObj);
+          final productId = item.menuItemId; // This is the UUID from menu_items table
+          
+          // Only save review if we have a valid product_id
+          if (productId != null && productId.isNotEmpty) {
+            final reviewObj = Review(
+              id: UniqueKey().toString(),
+              userAuthId: userId,
+              productId: productId, // FIXED: Use menuItemId
+              rating: rating,
+              body: review.isNotEmpty ? review : null,
+              createdAt: DateTime.now(),
+              userName: auth.currentUser?.name,
+              isAnonymous: _submitAsAnonymous,
+            );
+            
+            // This will save to database and refresh the reviews list
+            await reviewsProvider.addReview(reviewObj);
+          } else {
+            debugPrint('⚠️ Warning: Cannot save review - item.menuItemId is null for ${item.title}');
+          }
         }
       }
 

@@ -13,6 +13,7 @@ class StoreProvider with ChangeNotifier {
   List<Location> _locations = [];
   bool _isLoading = false;
   String? _error;
+  String? _selectedLocationId;
 
   StoreProvider(this._supabase);
 
@@ -20,40 +21,102 @@ class StoreProvider with ChangeNotifier {
   List<Location> get locations => _locations;
   bool get isLoading => _isLoading;
   String? get error => _error;
+  String? get selectedLocationId => _selectedLocationId;
 
   List<StoreItem> get availableItems => 
-      _storeItems.where((item) => item.available).toList();
+      _storeItems.where((item) => item.available && item.isInStock).toList();
 
   List<StoreItem> get lowStockItems =>
-      _storeItems.where((item) => (item.currentStock ?? 0) <= (item.currentStock ?? 0) * 0.2).toList();
+      _storeItems.where((item) => item.isLowStock).toList();
 
-  Future<void> loadStoreItems() async {
+  List<StoreItem> get outOfStockItems =>
+      _storeItems.where((item) => item.isOutOfStock).toList();
+
+  /// Check if a store item is available by name
+  /// Items are available if: item.available AND (!trackInventory OR currentStock > 0)
+  bool isItemAvailable(String itemName) {
+    final item = _storeItems.where((item) => item.name == itemName).firstOrNull;
+    if (item == null) return false;
+    
+    // Items without inventory tracking are always available if marked available
+    // Items with tracking need stock > 0
+    return item.available && 
+        (!item.trackInventory || (item.currentStock != null && item.currentStock! > 0));
+  }
+
+  /// Set the selected location for filtering store items
+  void setSelectedLocation(String? locationId) {
+    if (_selectedLocationId != locationId) {
+      _selectedLocationId = locationId;
+      loadStoreItems(locationId: locationId);
+    }
+  }
+
+  /// Load store items with current inventory (global, no location filtering)
+  Future<void> loadStoreItems({String? locationId}) async {
     _isLoading = true;
     _error = null;
     notifyListeners();
 
     try {
-      final response = await _supabase
+      debugPrint('Loading StoreItems...');
+      
+      // Query StoreItems and manually join with ProductInventory by product_id
+      final storeItemsResponse = await _supabase
           .from('StoreItems')
-          .select('''
-            *,
-            products:product_id(
-              *,
-              ProductInventory(*, locations(*))
-            )
-          ''')
+          .select('*')
           .order('created_at', ascending: false);
 
-      _storeItems = (response as List)
-          .map((json) => StoreItem.fromJson(json))
-          .toList();
+      debugPrint('StoreItems loaded: ${(storeItemsResponse as List).length} items');
+
+      final inventoryResponse = await _supabase
+          .from('ProductInventory')
+          .select('product_id, quantity, minimum_stock_alert, last_restock_date');
+
+      debugPrint('ProductInventory loaded: ${(inventoryResponse as List).length} records');
+
+      // Create a map of product_id -> inventory data for quick lookup
+      final inventoryMap = <String, Map<String, dynamic>>{};
+      for (final inv in inventoryResponse) {
+        final productId = inv['product_id'] as String;
+        inventoryMap[productId] = inv;
+        debugPrint('📦 Inventory: $productId -> quantity: ${inv['quantity']}');
+      }
+
+      debugPrint('📋 InventoryMap contains ${inventoryMap.length} entries');
+
+      // Parse store items and attach inventory data
+      _storeItems = (storeItemsResponse).map((json) {
+        // Attach inventory data if it exists for this product
+        final productId = json['product_id'] as String?;
+        final itemName = json['name'] as String?;
+        final trackInventory = json['track_inventory'] ?? true;
+        
+        if (productId != null && inventoryMap.containsKey(productId)) {
+          final inventory = inventoryMap[productId]!;
+          json['current_stock'] = inventory['quantity'];
+          json['minimum_stock_alert'] = inventory['minimum_stock_alert'];
+          json['last_restock_date'] = inventory['last_restock_date'];
+          debugPrint('✅ $itemName: Found inventory - quantity: ${inventory['quantity']}, track: $trackInventory');
+        } else {
+          debugPrint('⚠️ $itemName: No inventory record found, track: $trackInventory, productId: $productId');
+        }
+        
+        final item = StoreItem.fromJson(json);
+        debugPrint('🎯 $itemName parsed: currentStock=${item.currentStock}, track=${item.trackInventory}, available=${item.available}');
+        return item;
+      }).toList();
+
+      debugPrint('Parsed ${_storeItems.length} store items successfully');
 
       // Load locations separately
       await _loadLocations();
       
-    } catch (e) {
+      _error = null;
+    } catch (e, stackTrace) {
       _error = 'Failed to load store items: $e';
       debugPrint('Error loading store items: $e');
+      debugPrint('Stack trace: $stackTrace');
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -76,7 +139,7 @@ class StoreProvider with ChangeNotifier {
     }
   }
 
-  Future<void> addStoreItem(StoreItem item, String? locationId, int initialStock) async {
+  Future<void> addStoreItem(StoreItem item) async {
     try {
       // 1. First create the base product
       final productResponse = await _supabase
@@ -105,6 +168,7 @@ class StoreProvider with ChangeNotifier {
         'image_url': item.imageUrl,
         'category': item.category,
         'unit_of_measure': item.unitOfMeasure,
+        'track_inventory': item.trackInventory,
       };
       
       // Only include unit_description if it exists (for backward compatibility)
@@ -116,17 +180,9 @@ class StoreProvider with ChangeNotifier {
           .from('StoreItems')
           .insert(storeItemData);
 
-      // 3. Create initial inventory if location is provided
-      if (locationId != null && initialStock > 0) {
-        await _supabase
-            .from('ProductInventory')
-            .insert({
-              'product_id': productId,
-              'location_id': locationId,
-              'quantity': initialStock,
-              'minimum_stock_alert': 10,
-            });
-      }
+      // Note: Initial inventory is NOT created here.
+      // If item.trackInventory = true, add inventory via Inventory Management screen.
+      // If item.trackInventory = false, no inventory needed at all.
 
       await loadStoreItems(); // Reload the list
     } catch (e) {
@@ -148,6 +204,7 @@ class StoreProvider with ChangeNotifier {
         'image_url': item.imageUrl,
         'category': item.category,
         'unit_of_measure': item.unitOfMeasure,
+        'track_inventory': item.trackInventory,
         'updated_at': DateTime.now().toIso8601String(),
       };
       
@@ -171,6 +228,8 @@ class StoreProvider with ChangeNotifier {
 
   Future<void> updateInventory(String productId, String locationId, int quantity) async {
     try {
+      debugPrint('📦 Updating inventory - Product: $productId, Location: $locationId, Quantity: $quantity');
+      
       // Check if inventory record exists
       final existingInventory = await _supabase
           .from('ProductInventory')
@@ -178,8 +237,11 @@ class StoreProvider with ChangeNotifier {
           .eq('product_id', productId)
           .eq('location_id', locationId);
 
+      debugPrint('📦 Existing inventory records found: ${existingInventory.length}');
+
       if (existingInventory.isEmpty) {
         // Create new inventory record
+        debugPrint('📦 Creating new inventory record');
         await _supabase
             .from('ProductInventory')
             .insert({
@@ -191,6 +253,7 @@ class StoreProvider with ChangeNotifier {
             });
       } else {
         // Update existing inventory record
+        debugPrint('📦 Updating existing inventory record');
         await _supabase
             .from('ProductInventory')
             .update({
@@ -201,10 +264,12 @@ class StoreProvider with ChangeNotifier {
             .eq('location_id', locationId);
       }
 
+      debugPrint('📦 Inventory update successful, reloading store items...');
       await loadStoreItems(); // Reload to reflect changes
+      debugPrint('📦 Store items reloaded');
     } catch (e) {
       _error = 'Failed to update inventory: $e';
-      debugPrint('Error updating inventory: $e');
+      debugPrint('❌ Error updating inventory: $e');
       rethrow;
     }
   }

@@ -18,7 +18,6 @@ import '../../providers/cart_provider.dart'; // ADDED
 import 'manage_orders_screen.dart';
 import 'manage_users_screen.dart';
 import 'reports_screen.dart';
-import 'inventory_screen.dart';
 import 'admin_menu_management_screen.dart';
 import 'admin_chat_list_screen.dart';
 import 'admin_store_management_screen.dart';
@@ -1177,8 +1176,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                     _supportChatsDrawerItem(context),
                     _drawerItem(Icons.bar_chart, 'Reports',
                         () => _openDrawerTo(context, const ReportsScreen())),
-                    _drawerItem(Icons.inventory, 'Inventory',
-                        () => _openDrawerTo(context, const InventoryScreen())),
+                    // Removed InventoryScreen drawer item
                     const Divider(),
                     _drawerItem(Icons.help, 'Help & Support', () {}),
                     _drawerItem(Icons.info, 'About', () {}),

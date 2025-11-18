@@ -113,6 +113,9 @@ class OrderProvider extends ChangeNotifier {
         'tax': order.tax,
         'total': order.totalAmount,
         'delivery_address': order.deliveryAddress,
+        'delivery_address_id': order.deliveryAddressId, // FK to UserAddresses
+        'delivery_lat': order.deliveryLat, // For rider navigation
+        'delivery_lon': order.deliveryLon, // For rider navigation
         'delivery_phone': order.deliveryPhone,
         'placed_at': order.date.toIso8601String(),
       }).select('id').single().timeout(const Duration(seconds: 20));
@@ -149,6 +152,9 @@ class OrderProvider extends ChangeNotifier {
         status: order.status,
         deliveryType: order.deliveryType,
         deliveryAddress: order.deliveryAddress,
+        deliveryAddressId: order.deliveryAddressId,
+        deliveryLat: order.deliveryLat,
+        deliveryLon: order.deliveryLon,
       );
 
       // Add to local list
@@ -580,7 +586,7 @@ class OrderProvider extends ChangeNotifier {
       final orderId = 'ORD-${DateTime.now().millisecondsSinceEpoch}';
       
       // Insert into Supabase orders table (without customer_name - it's fetched from users table)
-      await Supabase.instance.client.from('orders').insert({
+      final orderResponse = await Supabase.instance.client.from('orders').insert({
         'id': orderId,
         'user_auth_id': customerId, // CHANGED: use user_auth_id (FK to public.users.auth_id)
         'total_amount': totalAmount,
@@ -589,7 +595,19 @@ class OrderProvider extends ChangeNotifier {
         'delivery_address': deliveryAddress,
         'special_instructions': specialInstructions,
         'created_at': DateTime.now().toIso8601String(),
-      });
+      }).select().single();
+
+      // Send order receipt email
+      try {
+        await Supabase.instance.client.functions.invoke(
+          'send-order-receipt',
+          body: {'orderId': orderResponse['id']},
+        );
+        debugPrint('✅ Order receipt email sent for $orderId');
+      } catch (emailError) {
+        debugPrint('⚠️ Failed to send receipt email: $emailError');
+        // Don't fail the order if email fails
+      }
 
       // ...existing order items insertion...
       

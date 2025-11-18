@@ -14,6 +14,7 @@ import '../providers/cart_provider.dart'; // ADDED
 import '../services/auth_service.dart';
 import '../services/chat_service.dart';
 import '../screens/customer_chat_screen.dart';
+import '../screens/customer_address_management_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -215,6 +216,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             title: "Order History",
                             onTap: () {
                               Navigator.pushNamed(context, '/order-history');
+                            },
+                          ),
+                          // My Addresses
+                          _ProfileOption(
+                            icon: Icons.location_on,
+                            title: "My Addresses",
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => const CustomerAddressManagementScreen(),
+                                ),
+                              );
                             },
                           ),
                           // Notifications

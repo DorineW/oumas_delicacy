@@ -216,7 +216,7 @@ class _MealDetailScreenState extends State<MealDetailScreen> {
 
     // FIXED: Use MenuItem id (productId) not title
     final productId = widget.meal.id ?? '';
-    final isFavorite = favoritesProvider.isFavorite(userId, productId);
+    final isFavorite = favoritesProvider.isFavorite(userId, productId, type: FavoriteItemType.menuItem);
     final reviews = reviewsProvider.getReviewsForProduct(productId);
 
     return Scaffold(
@@ -270,7 +270,7 @@ class _MealDetailScreenState extends State<MealDetailScreen> {
                   color: isFavorite ? Colors.red : Colors.white,
                 ),
                 onPressed: () {
-                  favoritesProvider.toggleFavorite(userId, productId); // UPDATED: Use productId
+                  favoritesProvider.toggleFavorite(userId, productId, type: FavoriteItemType.menuItem); // UPDATED: Use productId
                   HapticFeedback.lightImpact();
                   
                   ScaffoldMessenger.of(context).showSnackBar(

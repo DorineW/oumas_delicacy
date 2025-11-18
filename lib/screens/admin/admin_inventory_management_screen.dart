@@ -3,9 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../constants/colors.dart';
 import '../../providers/inventory_provider.dart';
-import '../../providers/location_management_provider.dart';
+import '../../providers/store_provider.dart';
 import '../../models/product_inventory.dart';
-import '../../models/location.dart' as loc;
 import '../../providers/menu_provider.dart';
 import '../../models/menu_item.dart';
 
@@ -17,7 +16,6 @@ class AdminInventoryManagementScreen extends StatefulWidget {
 }
 
 class _AdminInventoryManagementScreenState extends State<AdminInventoryManagementScreen> {
-  String? _selectedLocationId;
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
   bool _showLowStockOnly = false;
@@ -25,7 +23,10 @@ class _AdminInventoryManagementScreenState extends State<AdminInventoryManagemen
   @override
   void initState() {
     super.initState();
-    _loadData();
+    // Load data after the frame is built to avoid setState during build
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadData();
+    });
   }
 
   @override
@@ -35,22 +36,12 @@ class _AdminInventoryManagementScreenState extends State<AdminInventoryManagemen
   }
 
   Future<void> _loadData() async {
-    final locationProvider = context.read<LocationManagementProvider>();
-    await locationProvider.loadLocations();
-
-    if (locationProvider.locations.isNotEmpty && _selectedLocationId == null) {
-      setState(() {
-        _selectedLocationId = locationProvider.locations.first.id;
-      });
-      _loadInventory();
-    }
+    await _loadInventory();
   }
 
   Future<void> _loadInventory() async {
-    if (_selectedLocationId == null) return;
-    
     final inventoryProvider = context.read<InventoryProvider>();
-    await inventoryProvider.loadInventoryForLocation(_selectedLocationId!);
+    await inventoryProvider.loadInventory();
     await inventoryProvider.loadLowStockAlerts();
   }
 
@@ -60,8 +51,14 @@ class _AdminInventoryManagementScreenState extends State<AdminInventoryManagemen
     // Filter by search query
     if (_searchQuery.isNotEmpty) {
       filtered = filtered.where((item) {
-        // You'll need to join with products to get names
-        return true; // Placeholder
+        final productName = item.productName?.toLowerCase() ?? '';
+        final locationName = item.locationName?.toLowerCase() ?? '';
+        final productId = item.productId.toLowerCase();
+        final query = _searchQuery.toLowerCase();
+        
+        return productName.contains(query) || 
+               locationName.contains(query) || 
+               productId.contains(query);
       }).toList();
     }
 
@@ -75,7 +72,6 @@ class _AdminInventoryManagementScreenState extends State<AdminInventoryManagemen
 
   @override
   Widget build(BuildContext context) {
-    final locationProvider = context.watch<LocationManagementProvider>();
     final inventoryProvider = context.watch<InventoryProvider>();
 
     return Scaffold(
@@ -97,20 +93,17 @@ class _AdminInventoryManagementScreenState extends State<AdminInventoryManagemen
           ),
         ],
       ),
-      body: locationProvider.locations.isEmpty
-          ? _buildEmptyState()
-          : Column(
-              children: [
-                _buildLocationSelector(locationProvider.locations),
-                _buildSearchBar(),
-                _buildStatsHeader(inventoryProvider),
-                Expanded(
-                  child: inventoryProvider.isLoading
-                      ? const Center(child: CircularProgressIndicator())
-                      : _buildInventoryList(inventoryProvider),
-                ),
-              ],
-            ),
+      body: Column(
+        children: [
+          _buildStatsHeader(inventoryProvider),
+          _buildSearchAndFilters(),
+          Expanded(
+            child: inventoryProvider.isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : _buildInventoryList(inventoryProvider),
+          ),
+        ],
+      ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _showAddInventoryDialog(context),
         backgroundColor: AppColors.accent,
@@ -120,104 +113,7 @@ class _AdminInventoryManagementScreenState extends State<AdminInventoryManagemen
     );
   }
 
-  Widget _buildEmptyState() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.store, size: 64, color: Colors.grey[400]),
-          const SizedBox(height: 16),
-          Text(
-            'No locations found',
-            style: TextStyle(fontSize: 18, color: Colors.grey[600]),
-          ),
-          const SizedBox(height: 8),
-          const Text('Add a location first to manage inventory'),
-          const SizedBox(height: 24),
-          ElevatedButton.icon(
-            onPressed: () => Navigator.pop(context),
-            icon: const Icon(Icons.arrow_back),
-            label: const Text('Go Back'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.primary,
-              foregroundColor: Colors.white,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildLocationSelector(List<loc.Location> locations) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 4,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Select Location',
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: AppColors.darkText,
-            ),
-          ),
-          const SizedBox(height: 8),
-          DropdownButtonFormField<String>(
-            value: _selectedLocationId,
-            decoration: InputDecoration(
-              prefixIcon: const Icon(Icons.location_on, color: AppColors.primary),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            ),
-            items: locations.map((location) {
-              return DropdownMenuItem(
-                value: location.id,
-                child: Row(
-                  children: [
-                    Text(location.name),
-                    const SizedBox(width: 8),
-                    if (!location.isActive)
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: Colors.grey[300],
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: const Text(
-                          'Inactive',
-                          style: TextStyle(fontSize: 10),
-                        ),
-                      ),
-                  ],
-                ),
-              );
-            }).toList(),
-            onChanged: (value) {
-              setState(() {
-                _selectedLocationId = value;
-              });
-              _loadInventory();
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSearchBar() {
+  Widget _buildSearchAndFilters() {
     return Container(
       padding: const EdgeInsets.all(16),
       color: Colors.white,
@@ -270,9 +166,7 @@ class _AdminInventoryManagementScreenState extends State<AdminInventoryManagemen
   }
 
   Widget _buildStatsHeader(InventoryProvider provider) {
-    if (_selectedLocationId == null) return const SizedBox.shrink();
-
-    final stats = provider.getLocationStats(_selectedLocationId!);
+    final stats = provider.getStats();
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -409,28 +303,20 @@ class _AdminInventoryManagementScreenState extends State<AdminInventoryManagemen
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Product ID: ${item.productId.substring(0, 8)}...',
+                          item.productName ?? 'Unknown Product',
                           style: const TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
-                        if (item.locationName != null) ...[
-                          const SizedBox(height: 4),
-                          Row(
-                            children: [
-                              const Icon(Icons.location_on, size: 14, color: Colors.grey),
-                              const SizedBox(width: 4),
-                              Text(
-                                item.locationName!,
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.grey,
-                                ),
-                              ),
-                            ],
+                        const SizedBox(height: 4),
+                        Text(
+                          'ID: ${item.productId.substring(0, 8)}...',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey,
                           ),
-                        ],
+                        ),
                       ],
                     ),
                   ),
@@ -610,7 +496,6 @@ class _AdminInventoryManagementScreenState extends State<AdminInventoryManagemen
                 final provider = context.read<InventoryProvider>();
                 final success = await provider.restock(
                   item.productId,
-                  item.locationId,
                   qty,
                 );
 
@@ -700,23 +585,23 @@ class _AdminInventoryManagementScreenState extends State<AdminInventoryManagemen
                 Navigator.pop(context);
 
                 if (!mounted) return;
-                final provider = context.read<InventoryProvider>();
-                final updatedItem = item.copyWith(
+                final inventoryProvider = context.read<InventoryProvider>();
+                final storeProvider = context.read<StoreProvider>();
+                
+                await inventoryProvider.updateInventoryItem(
+                  inventoryId: item.id,
                   quantity: qty,
                   minimumStockAlert: minAlert,
                 );
-                
-                final success = await provider.upsertInventory(updatedItem);
+
+                // Reload store items to reflect updated stock
+                await storeProvider.loadStoreItems();
 
                 if (mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        success
-                            ? 'Inventory updated successfully'
-                            : 'Failed to update inventory',
-                      ),
-                      backgroundColor: success ? AppColors.success : Colors.red,
+                    const SnackBar(
+                      content: Text('Inventory updated successfully'),
+                      backgroundColor: AppColors.success,
                     ),
                   );
                 }
@@ -736,12 +621,9 @@ class _AdminInventoryManagementScreenState extends State<AdminInventoryManagemen
   Future<void> _showAddInventoryDialog(BuildContext context) async {
     final menuProvider = Provider.of<MenuProvider>(context, listen: false);
     final inventoryProvider = context.read<InventoryProvider>();
-    final locationId = _selectedLocationId;
-    if (locationId == null) return;
 
-    // Get productIds already in inventory for this location
+    // Get productIds already in inventory
     final existingProductIds = inventoryProvider.inventory
-        .where((inv) => inv.locationId == locationId)
         .map((inv) => inv.productId)
         .toSet();
 
@@ -836,25 +718,18 @@ class _AdminInventoryManagementScreenState extends State<AdminInventoryManagemen
                 Navigator.pop(context);
 
                 final provider = context.read<InventoryProvider>();
-                final newInventory = ProductInventory(
-                  id: '',
+                
+                await provider.addInventoryItem(
                   productId: selectedMenuItem!.productId!,
-                  locationId: locationId,
-                  quantity: qty,
+                  initialQuantity: qty,
                   minimumStockAlert: minAlert,
-                  lastRestockDate: DateTime.now(),
-                  createdAt: DateTime.now(),
-                  updatedAt: DateTime.now(),
-                  locationName: null,
                 );
-                final success = await provider.upsertInventory(newInventory);
+                
                 if (mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        success ? 'Product added to inventory' : 'Failed to add product',
-                      ),
-                      backgroundColor: success ? AppColors.success : Colors.red,
+                    const SnackBar(
+                      content: Text('Product added to inventory'),
+                      backgroundColor: AppColors.success,
                     ),
                   );
                 }
@@ -944,7 +819,7 @@ class _AdminInventoryManagementScreenState extends State<AdminInventoryManagemen
                       ),
                       title: Text(alert.productName),
                       subtitle: Text(
-                        '${alert.locationName}\n'
+                        '${alert.category ?? 'Store Item'}\n'
                         'Stock: ${alert.quantity} / Min: ${alert.minimumStockAlert}',
                       ),
                       isThreeLine: true,
@@ -955,13 +830,11 @@ class _AdminInventoryManagementScreenState extends State<AdminInventoryManagemen
                           _showRestockDialog(context, ProductInventory(
                             id: alert.id,
                             productId: alert.productId,
-                            locationId: alert.locationId,
                             quantity: alert.quantity,
                             minimumStockAlert: alert.minimumStockAlert,
                             lastRestockDate: alert.lastRestockDate,
                             createdAt: alert.updatedAt,
                             updatedAt: alert.updatedAt,
-                            locationName: alert.locationName,
                           ));
                         },
                       ),

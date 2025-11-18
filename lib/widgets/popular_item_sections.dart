@@ -4,7 +4,7 @@ import '../constants/colors.dart';
 import '../models/menu_item.dart'; // Assume this exists
 import '../models/cart_item.dart';
 import '../providers/cart_provider.dart';
-import '../screens/meal_detail_screen.dart'; // Assume this exists
+import '../screens/home_screen.dart'; // For MealDetailSheet
 
 // NOTE: Since we cannot modify the model files, we define a simple wrapper model
 // to hold the combined popular data.
@@ -170,9 +170,11 @@ class _PopularItemCard extends StatelessWidget {
     return GestureDetector(
       onTap: () {
         if (item.menuItem != null) {
-           Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => MealDetailScreen(meal: item.menuItem!)),
+          showModalBottomSheet(
+            context: context,
+            isScrollControlled: true,
+            backgroundColor: Colors.transparent,
+            builder: (_) => MealDetailSheet(meal: item.menuItem!),
           );
         }
       },
