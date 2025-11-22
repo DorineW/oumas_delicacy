@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../constants/colors.dart';
 import '../services/auth_service.dart';
 import '../providers/address_provider.dart';
+import '../widgets/terms_conditions_dialog.dart';
 import 'home_screen.dart';
 import 'location.dart';
 
@@ -28,6 +29,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   bool _isLoading = false;
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
+  bool _acceptedTerms = false;
 
   @override
   void dispose() {
@@ -41,6 +43,27 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   Future<void> _register() async {
     if (!_formKey.currentState!.validate()) return;
+
+    if (!_acceptedTerms) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Row(
+            children: [
+              Icon(Icons.info, color: Colors.white),
+              SizedBox(width: 12),
+              Expanded(
+                child: Text('Please accept the Terms & Conditions to continue'),
+              ),
+            ],
+          ),
+          backgroundColor: Colors.orange,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          margin: const EdgeInsets.all(16),
+        ),
+      );
+      return;
+    }
 
     setState(() => _isLoading = true);
 
@@ -480,6 +503,70 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     },
                   ),
                   const SizedBox(height: 24),
+
+                  // Terms & Conditions acceptance
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: AppColors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: _acceptedTerms 
+                            ? AppColors.success.withOpacity(0.3) 
+                            : AppColors.lightGray.withOpacity(0.3),
+                      ),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Checkbox(
+                          value: _acceptedTerms,
+                          onChanged: (value) {
+                            setState(() {
+                              _acceptedTerms = value ?? false;
+                            });
+                          },
+                          activeColor: AppColors.primary,
+                        ),
+                        Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.only(top: 12, left: 4),
+                            child: Wrap(
+                              children: [
+                                Text(
+                                  'I agree to the ',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: AppColors.darkText.withOpacity(0.8),
+                                  ),
+                                ),
+                                GestureDetector(
+                                  onTap: () => TermsConditionsDialog.show(context),
+                                  child: const Text(
+                                    'Terms & Conditions',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      color: AppColors.primary,
+                                      fontWeight: FontWeight.bold,
+                                      decoration: TextDecoration.underline,
+                                    ),
+                                  ),
+                                ),
+                                Text(
+                                  ' and confirm I am 18 years or older.',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: AppColors.darkText.withOpacity(0.8),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
 
                   // Register button
                   SizedBox(

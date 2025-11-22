@@ -13,6 +13,7 @@ import '../utils/phone_utils.dart';
 import '../providers/address_provider.dart';
 import '../models/user_address.dart';
 import 'customer_address_management_screen.dart';
+import '../widgets/terms_conditions_dialog.dart';
 
 class EditProfileScreen extends StatefulWidget {
   const EditProfileScreen({super.key});
@@ -161,23 +162,44 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     try {
       final auth = Provider.of<AuthService>(context, listen: false);
       final userId = auth.currentUser?.id;
-      
       if (userId == null) throw Exception('Not logged in');
+
+      // Upload profile image to Supabase Storage if present
+      String? profileImageUrl;
+      if (_profileImageFile != null) {
+        final fileBytes = await _profileImageFile!.readAsBytes();
+        final fileName = 'user_${userId}_${DateTime.now().millisecondsSinceEpoch}.jpg';
+        final uploadedPath = await Supabase.instance.client.storage
+            .from('profile_images')
+            .uploadBinary(fileName, fileBytes);
+        if (uploadedPath.isNotEmpty) {
+          profileImageUrl = Supabase.instance.client.storage
+              .from('profile_images')
+              .getPublicUrl(fileName);
+        } else {
+          debugPrint('❌ Error uploading profile image');
+        }
+      }
 
       // Update in Supabase
       final normalizedPhone = PhoneUtils.normalizeKenyan(_phoneCont.text);
-
       debugPrint('💾 Saving profile to Supabase...');
       debugPrint('   Name: ${_nameController.text.trim()}');
       debugPrint('   Phone: $normalizedPhone');
+      debugPrint('   Image URL: $profileImageUrl');
+
+      final updateData = {
+        'name': _nameController.text.trim(),
+        'phone': normalizedPhone,
+        'updated_at': DateTime.now().toIso8601String(),
+      };
+      if (profileImageUrl != null) {
+        updateData['profile_image_url'] = profileImageUrl;
+      }
 
       await Supabase.instance.client
           .from('users')
-          .update({
-            'name': _nameController.text.trim(),
-            'phone': normalizedPhone,
-            'updated_at': DateTime.now().toIso8601String(),
-          })
+          .update(updateData)
           .eq('auth_id', userId);
 
       debugPrint('✅ Profile saved to Supabase successfully');
@@ -188,15 +210,13 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       await prefs.setString('email', _emailCont.text.trim());
       await prefs.setString('phone', normalizedPhone);
       await prefs.setBool('notifications', _notificationsEnabled);
-      
       // Save payment method
       if (_paymentMethod != null) {
         await prefs.setString('paymentMethod', jsonEncode(_paymentMethod!));
       } else {
         await prefs.remove('paymentMethod');
       }
-      
-      // Save profile image path
+      // Save profile image path locally for offline
       if (_profileImageFile != null) {
         await prefs.setString('profileImagePath', _profileImageFile!.path);
       } else {
@@ -205,18 +225,15 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
       // Force refresh from DB
       await Future.delayed(const Duration(milliseconds: 300));
-      await auth.refreshProfile(); // FIXED: Use public method to refresh current user
-      
+      await auth.refreshProfile();
       if (!mounted) return;
-
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Profile updated successfully'),
           backgroundColor: AppColors.success,
         ),
       );
-
-      Navigator.pop(context); // go back to profile screen
+      Navigator.pop(context);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -315,7 +332,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       child: Scaffold(
         backgroundColor: AppColors.background,
         appBar: AppBar(
-          title: const Text('Edit Profile'),
+          title: const Text('Account'),
           backgroundColor: AppColors.primary,
           elevation: 4,
           iconTheme: const IconThemeData(color: AppColors.white),
@@ -460,6 +477,36 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                       onChanged: (v) => setState(() => _notificationsEnabled = v),
                       activeColor: AppColors.primary,
                     ),
+                  ),
+                ),
+                SizedBox(height: isLandscape ? 16 : 20),
+
+                // NEW: Terms & Conditions link
+                Container(
+                  decoration: BoxDecoration(
+                    color: AppColors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.05),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: ListTile(
+                    leading: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: AppColors.primary.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(Icons.description, color: AppColors.primary, size: 20),
+                    ),
+                    title: const Text('Terms & Conditions', style: TextStyle(fontWeight: FontWeight.w600)),
+                    subtitle: Text('View our terms of service', style: TextStyle(fontSize: 12, color: AppColors.darkText.withOpacity(0.6))),
+                    trailing: const Icon(Icons.chevron_right, color: AppColors.primary),
+                    onTap: () => TermsConditionsDialog.show(context),
                   ),
                 ),
                 SizedBox(height: isLandscape ? 16 : 20),

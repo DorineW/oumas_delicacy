@@ -2,6 +2,7 @@
 //the order model representing customer orders
 
 enum OrderStatus {
+  pending_payment, // Awaiting payment confirmation
   confirmed,    // Payment confirmed, order ready for preparation
   preparing,    // Kitchen is preparing 
   outForDelivery, // Assigned to rider, on the way
@@ -16,19 +17,23 @@ enum DeliveryType {
 
 class OrderItem {
   final String id; // Order item ID
-  final String? menuItemId; // UUID from menu_items table (optional for backward compatibility)
+  final String? menuItemId; // UUID from menu_items table
+  final String? storeItemId; // UUID from StoreItems.id
   final String title;
   final int quantity;
   final int price;
+  final String itemType; // 'Food' or 'Store'
   final int? rating;
   final String? review;
 
   OrderItem({
     required this.id,
     this.menuItemId,
+    this.storeItemId,
     required this.title,
     required this.quantity,
     required this.price,
+    required this.itemType,
     this.rating,
     this.review,
   });
@@ -37,21 +42,25 @@ class OrderItem {
 
   Map<String, dynamic> toJson() => {
     'id': id,
-    'product_id': menuItemId, // Match DB column name
-    'name': title, // Match DB column name
+    'product_id': itemType == 'Food' ? menuItemId : null,
+    'store_item_id': itemType == 'Store Item' ? storeItemId : null,
+    'name': title,
     'quantity': quantity,
-    'unit_price': price, // Match DB column name
-    'total_price': totalPrice, // Match DB column name
+    'unit_price': price,
+    'total_price': totalPrice,
+    'item_type': itemType,
     'rating': rating,
     'review': review,
   };
 
   factory OrderItem.fromJson(Map<String, dynamic> json) => OrderItem(
     id: json['id'],
-    menuItemId: json['product_id'], // Match DB column name
-    title: json['name'] ?? json['title'], // Support both for backward compatibility
+    menuItemId: json['item_type'] == 'Food' ? json['product_id'] : null,
+    storeItemId: json['item_type'] == 'Store Item' ? json['store_item_id'] : null,
+    title: json['name'] ?? json['title'],
     quantity: json['quantity'],
-    price: (json['unit_price'] ?? json['price']) as int, // Support both
+    price: (json['unit_price'] ?? json['price']) as int,
+    itemType: json['item_type'] ?? 'Food',
     rating: json['rating'],
     review: json['review'],
   );

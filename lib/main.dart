@@ -35,6 +35,7 @@ import 'providers/connectivity_provider.dart'; // ADDED: Import ConnectivityProv
 import 'providers/store_provider.dart'; // ADDED: Import StoreProvider
 import 'providers/inventory_provider.dart'; // ADDED: Import InventoryProvider
 import 'providers/mpesa_provider.dart'; // ADDED: Import MpesaProvider
+import 'providers/receipt_provider.dart'; // ADDED: Import ReceiptProvider
 import 'models/notification_model.dart';
 import 'models/cart_item.dart'; // ADDED
 import 'models/order.dart'; // ADDED for DeliveryType
@@ -158,6 +159,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         ChangeNotifierProvider(create: (_) => LocationManagementProvider()), // ADDED: Location management provider
         ChangeNotifierProvider(create: (_) => InventoryProvider(Supabase.instance.client)), // ADDED: Inventory provider for admin inventory management
         ChangeNotifierProvider(create: (_) => MpesaProvider()), // ADDED: M-Pesa payment provider
+        ChangeNotifierProvider(create: (_) => ReceiptProvider()), // ADDED: Receipt provider for realtime receipt updates
         ChangeNotifierProxyProvider<NotificationProvider, OrderProvider>(
           create: (context) => OrderProvider(),
           update: (context, notifProvider, orderProvider) {

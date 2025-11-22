@@ -221,8 +221,8 @@ class _AuthWrapperState extends State<AuthWrapper> {
               // Enhanced UI sizes from previous step
               const Image(
                 image: AssetImage('assets/images/splash_logo.png'),
-                width: 250,
-                height: 250,
+                width: 360,
+                height: 360,
               ),
               const SizedBox(height: 50),
               

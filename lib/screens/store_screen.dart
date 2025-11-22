@@ -1,15 +1,33 @@
-// lib/screens/customer/store_screen.dart
-import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:provider/provider.dart';
-import '../providers/store_provider.dart';
-import '../providers/cart_provider.dart';
-import '../providers/favorites_provider.dart';
-import '../services/auth_service.dart';
-import '../models/store_item.dart';
-import '../models/cart_item.dart';
-import '../widgets/smart_product_image.dart';
-import '../constants/colors.dart';
+
+  import 'package:flutter/material.dart';
+  import 'dart:async';
+  import 'dart:math';
+  import 'package:flutter/services.dart';
+  import 'package:provider/provider.dart';
+  import '../providers/store_provider.dart';
+  import '../providers/cart_provider.dart';
+  import '../providers/favorites_provider.dart';
+  import '../services/auth_service.dart';
+  import '../models/store_item.dart';
+  import '../models/cart_item.dart';
+  import '../widgets/smart_product_image.dart';
+  import '../widgets/carousel.dart';
+  import '../constants/colors.dart';
+
+  // Helper to get the most accessible product (lowest price, highest stock, or most favorites)
+  StoreItem? _getMostAccessibleItem(List<StoreItem> items) {
+    if (items.isEmpty) return null;
+    // Prioritize: available, lowest price, highest stock
+    final availableItems = items.where((item) => item.available).toList();
+    if (availableItems.isEmpty) return items.reduce((a, b) => a.price < b.price ? a : b);
+    // If stock info is available, pick highest stock
+    final withStock = availableItems.where((item) => item.trackInventory && item.currentStock != null).toList();
+    if (withStock.isNotEmpty) {
+      return withStock.reduce((a, b) => (a.currentStock ?? 0) > (b.currentStock ?? 0) ? a : b);
+    }
+    // Otherwise, pick lowest price
+    return availableItems.reduce((a, b) => a.price < b.price ? a : b);
+  }
 
 class StoreScreen extends StatefulWidget {
   const StoreScreen({super.key});
@@ -22,6 +40,8 @@ class _StoreScreenState extends State<StoreScreen> {
   final TextEditingController _searchController = TextEditingController();
   String _selectedCategory = 'All';
   String? _selectedLocationId;
+  final PageController _pageController = PageController(viewportFraction: 0.9);
+  Timer? _bannerTimer;
 
   @override
   void initState() {
@@ -37,6 +57,14 @@ class _StoreScreenState extends State<StoreScreen> {
         storeProvider.setSelectedLocation(_selectedLocationId);
       }
     });
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    _pageController.dispose();
+    _bannerTimer?.cancel();
+    super.dispose();
   }
 
   @override
@@ -216,84 +244,191 @@ class _StoreScreenState extends State<StoreScreen> {
   }
 
   Widget _buildFeaturedBanner() {
-    return Container(
-      height: 120,
-      margin: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.centerLeft,
-          end: Alignment.centerRight,
-          colors: [
-            AppColors.primary,
-            AppColors.primary.withOpacity(0.8),
-          ],
-        ),
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.primary.withOpacity(0.3),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Stack(
-        children: [
-          Positioned(
-            right: -20,
-            top: -20,
-            child: Container(
-              width: 120,
-              height: 120,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: Colors.white.withOpacity(0.1),
+    final storeProvider = Provider.of<StoreProvider>(context, listen: false);
+    final random = Random(DateTime.now().millisecondsSinceEpoch);
+    final allItems = List<StoreItem>.from(storeProvider.availableItems);
+    allItems.shuffle(random);
+    final featuredItems = allItems.take(3).toList();
+    final bannerColors = [
+      AppColors.primary,
+      const Color(0xFF43A047),
+      const Color(0xFFFB8C00),
+    ];
+    // Pair each infoTextGenerator with a matching icon
+    final List<Map<String, dynamic>> iconMessagePairs = [
+      { 'icon': Icons.local_offer, 'generator': (StoreItem item) => item.price < 500 ? '🔥 Great deal for budget shoppers!' : '💰 Save your money, shop smart!' },
+      { 'icon': Icons.star, 'generator': (StoreItem item) => item.price > 1000 ? '💎 Premium pick for you!' : '⭐ Popular choice this week!' },
+      { 'icon': Icons.shopping_basket, 'generator': (StoreItem item) => item.trackInventory && (item.currentStock ?? 0) < 5 ? '⏳ Only a few left!' : '🛒 Add to your cart now!' },
+      { 'icon': Icons.trending_up, 'generator': (StoreItem item) => '🎉 Special offer just for you!' },
+      { 'icon': Icons.emoji_events, 'generator': (StoreItem item) => '🌟 Trending now in store!' },
+      { 'icon': Icons.emoji_events, 'generator': (StoreItem item) => '🥇 Top rated by customers!' },
+      { 'icon': Icons.trending_up, 'generator': (StoreItem item) => '🚀 Fast moving item!' },
+      { 'icon': Icons.local_offer, 'generator': (StoreItem item) => '🍀 Lucky find!' },
+      { 'icon': Icons.local_offer, 'generator': (StoreItem item) => '🤑 Unbeatable price!' },
+      { 'icon': Icons.lightbulb, 'generator': (StoreItem item) => '💡 Smart buy!' },
+      { 'icon': Icons.check_circle, 'generator': (StoreItem item) {
+        final storeProvider = Provider.of<StoreProvider>(context, listen: false);
+        final accessible = _getMostAccessibleItem(storeProvider.availableItems);
+        if (accessible != null && accessible.id == item.id) {
+          return '✅ Most accessible: easy to buy!';
+        }
+        return '👍 Easy to get!';
+      }},
+    ];
+    if (featuredItems.isEmpty) return const SizedBox.shrink();
+
+    // Shuffle the pairs and assign one per featured item
+    final shuffledPairs = List<Map<String, dynamic>>.from(iconMessagePairs)..shuffle(random);
+
+    return Carousel(
+      height: 165,
+      interval: const Duration(seconds: 4),
+      viewport: 0.9,
+      children: List.generate(featuredItems.length, (index) {
+        final item = featuredItems[index];
+        final color = bannerColors[index % bannerColors.length];
+        final pair = shuffledPairs[index % shuffledPairs.length];
+        final icon = pair['icon'] as IconData;
+        final infoText = (pair['generator'] as String Function(StoreItem))(item);
+        return Container(
+          margin: const EdgeInsets.symmetric(horizontal: 8),
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.2),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
               ),
-            ),
+            ],
           ),
-          Positioned(
-            left: 20,
-            top: 20,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Special Offer!',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Get 20% off on your\nfirst order',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.white.withOpacity(0.9),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          child: Stack(
+            children: [
+              Positioned(
+                right: -20,
+                bottom: -20,
+                child: Container(
+                  width: 140,
+                  height: 140,
                   decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(20),
+                    shape: BoxShape.circle,
+                    color: Colors.white.withOpacity(0.1),
                   ),
-                  child: Text(
-                    'Shop Now',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.primary,
+                ),
+              ),
+              Positioned(
+                right: 20,
+                top: 20,
+                child: Icon(
+                  icon,
+                  size: 80,
+                  color: Colors.white.withOpacity(0.18),
+                ),
+              ),
+              Positioned(
+                left: -10,
+                bottom: -10,
+                child: Container(
+                  width: 110,
+                  height: 110,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.white,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.2),
+                        blurRadius: 14,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                    border: Border.all(
+                      color: Colors.white.withOpacity(0.8),
+                      width: 3,
+                    ),
+                  ),
+                  child: ClipOval(
+                    child: SmartProductImage(
+                      imageUrl: item.imageUrl ?? '',
+                      height: 110,
+                      width: 110,
+                      removeBackground: false,
                     ),
                   ),
                 ),
-              ],
-            ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(110, 20, 20, 20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        item.name,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    const SizedBox(height: 7),
+                    Text(
+                      'KSh ${item.price.toStringAsFixed(0)}',
+                      style: const TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.yellow,
+                      ),
+                    ),
+                    const SizedBox(height: 7),
+                    Text(
+                      infoText,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 10),
+                    Material(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(20),
+                      elevation: 2,
+                      child: InkWell(
+                        onTap: () => _showProductDetails(context, item),
+                        borderRadius: BorderRadius.circular(20),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          child: Text(
+                            'View Details',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                              color: color,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
+        );
+      }),
     );
   }
 
@@ -727,12 +862,6 @@ class _StoreScreenState extends State<StoreScreen> {
       },
     );
   }
-
-  @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
-  }
 }
 
 // Product Detail Bottom Sheet
@@ -890,7 +1019,7 @@ class _ProductDetailSheetState extends State<ProductDetailSheet> {
                                 color: Colors.green,
                               ),
                             ),
-                            if (!isOutOfStock)
+                            if (!isOutOfStock && widget.item.currentStock != null)
                               Text(
                                 '${widget.item.currentStock} in stock',
                                 style: TextStyle(

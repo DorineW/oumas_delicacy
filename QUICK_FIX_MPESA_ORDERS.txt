@@ -1,0 +1,74 @@
+╔═══════════════════════════════════════════════════════════════╗
+║         🔧 M-PESA ORDER CREATION FIX - QUICK START           ║
+╚═══════════════════════════════════════════════════════════════╝
+
+📋 PROBLEM:
+   M-Pesa payments complete ✅ but no orders appear ❌
+
+🎯 ROOT CAUSE:
+   Trigger not properly updating order status after payment
+
+⚡ QUICK FIX (2 minutes):
+   
+   1️⃣ Run PowerShell Script:
+      PS> .\fix_mpesa_order_issue.ps1
+   
+   2️⃣ Choose option 3 (Both diagnostics and fix)
+   
+   3️⃣ Test payment flow in app
+
+📝 WHAT IT FIXES:
+   ✅ Updates trigger to handle 'pending_payment' status
+   ✅ Adds better logging and error handling
+   ✅ Backfills missing order_id links
+   ✅ Verifies all completed payments have orders
+
+🔍 VERIFY IT WORKED:
+
+   Run in Supabase SQL Editor:
+   
+   SELECT 
+     mt.transaction_id,
+     mt.status as payment_status,
+     o.short_id,
+     o.status as order_status
+   FROM mpesa_transactions mt
+   JOIN orders o ON o.id = mt.order_id
+   WHERE mt.status = 'completed'
+   ORDER BY mt.created_at DESC;
+   
+   ✅ All completed payments should have orders with status='confirmed'
+
+📱 TEST IN APP:
+   1. Add items to cart
+   2. Checkout with M-Pesa
+   3. Complete payment
+   4. Check "My Orders" → should see new order
+
+🐛 IF STILL NOT WORKING:
+
+   Check these 3 things:
+   
+   1. RLS Policies (Supabase Dashboard → Database → Policies)
+      • Make sure users can SELECT their own orders
+   
+   2. App Query Filter (lib/providers/order_provider.dart)
+      • Include 'confirmed' in status filter
+   
+   3. Order ID Passed (lib/screens/checkout_screen.dart)
+      • Verify orderId is not null when calling initiatePayment()
+
+📚 DETAILED GUIDE:
+   See: MPESA_ORDER_FIX_GUIDE.md
+
+🆘 SUPPORT FILES:
+   • diagnose_mpesa_order_issue.sql   → Check what's wrong
+   • fix_mpesa_order_trigger.sql      → Apply the fix
+   • fix_mpesa_order_issue.ps1        → Run both automatically
+
+═══════════════════════════════════════════════════════════════
+
+💡 TIP: After applying the fix, check Supabase Database Logs
+   for NOTICE messages like "M-Pesa payment completed for order..."
+   
+═══════════════════════════════════════════════════════════════

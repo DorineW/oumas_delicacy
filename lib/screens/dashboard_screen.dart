@@ -6,12 +6,13 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../constants/colors.dart';
 import '../providers/order_provider.dart';
-import '../providers/favorites_provider.dart';
+import '../providers/favorites_provider.dart' as favorites;
 import '../providers/menu_provider.dart';
 import '../models/order.dart';
 import '../models/receipt.dart';
 import '../services/auth_service.dart';
 import '../services/receipt_service.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../providers/reviews_provider.dart';
 import 'order_history_screen.dart';
 import 'home_screen.dart'; // For MealDetailSheet
@@ -34,7 +35,7 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
   Widget build(BuildContext context) {
     super.build(context);
     final provider = context.watch<OrderProvider>();
-    final favoritesProvider = context.watch<FavoritesProvider>();
+    final favoritesProvider = context.watch<favorites.FavoritesProvider>();
     final menuProvider = context.watch<MenuProvider>();
     final auth = context.watch<AuthService>();
     final userId = auth.currentUser?.id ?? 'guest';
@@ -45,7 +46,7 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
     final orders = provider.orders;
 
     final int orderCount = orders.length;
-    final int favCount = favoritesProvider.getCountForUser(userId, type: FavoriteItemType.menuItem);
+    final int favCount = favoritesProvider.getCountForUser(userId, type: favorites.FavoriteItemType.menuItem);
     final int reviewCount = orders.fold<int>(
       0,
       (sum, order) => sum + order.items.where((item) => item.rating != null).length,
@@ -364,9 +365,8 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
     }
   }
 
-  // ADDED: Quick Stats Summary
   // Favorites dropdown section
-  Widget _buildFavoritesSection(String userId, FavoritesProvider favoritesProvider, MenuProvider menuProvider) {
+  Widget _buildFavoritesSection(String userId, favorites.FavoritesProvider favoritesProvider, MenuProvider menuProvider) {
     return AnimatedCrossFade(
       duration: const Duration(milliseconds: 300),
       crossFadeState: _showFavoritesSection 
@@ -378,9 +378,9 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
   }
 
   // EXTRACTED: Favorites Content
-  Widget _buildFavoritesContent(String userId, FavoritesProvider favoritesProvider, MenuProvider menuProvider) {
+  Widget _buildFavoritesContent(String userId, favorites.FavoritesProvider favoritesProvider, MenuProvider menuProvider) {
     try {
-      final favoriteIds = favoritesProvider.getFavoritesForUser(userId, type: FavoriteItemType.menuItem);
+      final favoriteIds = favoritesProvider.getFavoritesForUser(userId, type: favorites.FavoriteItemType.menuItem);
       final favoriteMeals = menuProvider.menuItems.where((meal) => 
         favoriteIds.contains(meal.id) && menuProvider.isItemAvailable(meal.title)
       ).toList();
@@ -471,6 +471,7 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
                 child: InkWell(
                   borderRadius: BorderRadius.circular(8),
                   onTap: () {
+                    // Refer to home_screen's MealDetailSheet only
                     showModalBottomSheet(
                       context: context,
                       isScrollControlled: true,
@@ -546,7 +547,7 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
                                 size: 20,
                               ),
                               onPressed: () {
-                                favoritesProvider.toggleFavorite(userId, meal.id ?? '', type: FavoriteItemType.menuItem);
+                                favoritesProvider.toggleFavorite(userId, meal.id ?? '', type: favorites.FavoriteItemType.menuItem);
                                 HapticFeedback.lightImpact();
                               },
                               padding: EdgeInsets.zero,
@@ -919,6 +920,8 @@ class _RecentOrderCard extends StatelessWidget {
         return AppColors.success;
       case OrderStatus.cancelled:
         return Colors.red;
+      case OrderStatus.pending_payment:
+        return Colors.orange;
     }
   }
 
@@ -934,13 +937,251 @@ class _RecentOrderCard extends StatelessWidget {
         return 'DELIVERED';
       case OrderStatus.cancelled:
         return 'CANCELLED';
+      case OrderStatus.pending_payment:
+        return 'PENDING PAYMENT';
     }
+  }
+
+  IconData _getStatusIcon(OrderStatus status) {
+    switch (status) {
+      case OrderStatus.confirmed:
+        return Icons.check_circle;
+      case OrderStatus.preparing:
+        return Icons.restaurant;
+      case OrderStatus.outForDelivery:
+        return Icons.delivery_dining;
+      case OrderStatus.delivered:
+        return Icons.verified;
+      case OrderStatus.cancelled:
+        return Icons.cancel;
+      case OrderStatus.pending_payment:
+        return Icons.payment;
+    }
+  }
+
+  // Format time
+  String _formatTime(DateTime date) {
+    final hour = date.hour.toString().padLeft(2, '0');
+    final minute = date.minute.toString().padLeft(2, '0');
+    return '$hour:$minute';
+  }
+
+  // FIXED: Receipt row builder method
+  Widget _buildReceiptRow(String label, String value) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 13,
+            color: Colors.grey,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        const SizedBox(width: 16),
+        Expanded(
+          child: Text(
+            value,
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.bold,
+              color: AppColors.darkText,
+            ),
+            textAlign: TextAlign.right,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _showPaymentReceipt(BuildContext context, Order order) async {
+    // Show loading dialog
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(
+        child: CircularProgressIndicator(color: AppColors.primary),
+      ),
+    );
+    
+    // Fetch receipt from database, auto-create if missing
+    final receiptService = ReceiptService();
+    Receipt? receipt = await receiptService.getReceiptByOrderId(order.id);
+    
+    // Close loading dialog
+    if (context.mounted) {
+      Navigator.pop(context);
+    }
+    
+    if (receipt == null) {
+      // Show error if no receipt found
+      if (context.mounted) {
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Receipt Not Available'),
+            content: const Text('Payment receipt is not available for this order yet.'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        );
+      }
+      return;
+    }
+
+    // Show receipt dialog
+    if (context.mounted) {
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Row(
+            children: [
+              const Icon(Icons.receipt_long, color: AppColors.primary),
+              const SizedBox(width: 8),
+              const Text('Payment Receipt'),
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildReceiptRow('Business', receipt.businessName),
+                _buildReceiptRow('Receipt Number', receipt.receiptNumber),
+                _buildReceiptRow('Transaction ID', receipt.transactionId),
+                _buildReceiptRow('Date', '${receipt.issueDate.day}/${receipt.issueDate.month}/${receipt.issueDate.year}'),
+                _buildReceiptRow('Time', '${receipt.issueDate.hour.toString().padLeft(2, '0')}:${receipt.issueDate.minute.toString().padLeft(2, '0')}'),
+                _buildReceiptRow('Payment Method', receipt.paymentMethod),
+                _buildReceiptRow('Customer', receipt.customerName),
+                const SizedBox(height: 12),
+                ...receipt.items.map((item) => Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 2.0),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(item.itemDescription),
+                      Text('${receipt.currency} ${item.totalPrice.toStringAsFixed(2)}'),
+                    ],
+                  ),
+                )),
+                const Divider(),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Subtotal'),
+                    Text('${receipt.currency} ${receipt.subtotal.toStringAsFixed(2)}'),
+                  ],
+                ),
+                if (receipt.taxAmount > 0)
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Tax'),
+                      Text('${receipt.currency} ${receipt.taxAmount.toStringAsFixed(2)}'),
+                    ],
+                  ),
+                if (receipt.discountAmount > 0)
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Discount'),
+                      Text('-${receipt.currency} ${receipt.discountAmount.toStringAsFixed(2)}'),
+                    ],
+                  ),
+                const SizedBox(height: 8),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'Total Paid',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.darkText,
+                      ),
+                    ),
+                    Text(
+                      '${receipt.currency} ${receipt.totalAmount.toStringAsFixed(2)}',
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.success,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 24),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: _getStatusColor(order.status),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Column(
+                    children: [
+                      Icon(_getStatusIcon(order.status), color: Colors.white, size: 28),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Status: ${_getStatusText(order.status)}',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Close'),
+            ),
+          ],
+        ),
+      );
+    }
+  }
+
+  void _showRatingDialog(BuildContext context, Order order) {
+    showDialog(
+      context: context,
+      builder: (context) => _RatingDialog(order: order),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    // Check if all items have been rated
-    final allItemsRated = order.items.every((item) => item.rating != null && item.rating! > 0);
+    // Check review status using ReviewsProvider and current user
+    final reviewsProvider = Provider.of<ReviewsProvider>(context);
+    final auth = Provider.of<AuthService>(context, listen: false);
+    final userId = auth.currentUser?.id ?? '';
+    final menuProvider = Provider.of<MenuProvider>(context, listen: false);
+    bool hasUnratedItem = false;
+    List<String> missingReviewTitles = [];
+    for (final item in order.items) {
+      // Only check for reviews if item is a valid menu item and available
+      final isValidMenuItem = item.menuItemId != null && menuProvider.menuItems.any((meal) => meal.id == item.menuItemId && menuProvider.isItemAvailable(meal.title));
+      if (!isValidMenuItem) continue;
+      final reviews = reviewsProvider.getReviewsForProduct(item.menuItemId ?? '');
+      final userHasReview = reviews.any((r) => r.userAuthId == userId);
+      if (!userHasReview) {
+        hasUnratedItem = true;
+        missingReviewTitles.add(item.title);
+      }
+    }
+    if (missingReviewTitles.isNotEmpty) {
+      debugPrint('Order ${order.id} missing reviews for: ${missingReviewTitles.join(", ")}');
+    }
     
     return Semantics(
       label: 'Order from ${_formatTime(order.date)}',
@@ -1039,8 +1280,8 @@ class _RecentOrderCard extends StatelessWidget {
                     ),
                   ],
                 ),
-                // Hide rate button if already rated
-                if (order.status == OrderStatus.delivered && !allItemsRated)
+                // Show rate button only if there is at least one unrated item (based on reviews)
+                if (order.status == OrderStatus.delivered && hasUnratedItem)
                   TextButton.icon(
                     onPressed: () => _showRatingDialog(context, order),
                     icon: const Icon(Icons.star, size: 16),
@@ -1050,7 +1291,7 @@ class _RecentOrderCard extends StatelessWidget {
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     ),
                   )
-                else if (allItemsRated)
+                else if (!hasUnratedItem)
                   // Show rated indicator
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -1082,314 +1323,9 @@ class _RecentOrderCard extends StatelessWidget {
       ),
     );
   }
-
-  // Format time
-  String _formatTime(DateTime date) {
-    final hour = date.hour.toString().padLeft(2, '0');
-    final minute = date.minute.toString().padLeft(2, '0');
-    return '$hour:$minute';
-  }
-
-  void _showRatingDialog(BuildContext context, Order order) {
-    showDialog(
-      context: context,
-      builder: (context) => _RatingDialog(order: order),
-    );
-  }
-
-  Future<void> _showPaymentReceipt(BuildContext context, Order order) async {
-    // Show loading dialog
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => const Center(
-        child: CircularProgressIndicator(color: AppColors.primary),
-      ),
-    );
-    
-    // Fetch receipt from database
-    final receiptService = ReceiptService();
-    final receipt = await receiptService.getReceiptByOrderId(order.id);
-    
-    // Close loading dialog
-    if (context.mounted) {
-      Navigator.pop(context);
-    }
-    
-    // Show error if receipt not found
-    if (receipt == null) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Receipt not found for this order'),
-            backgroundColor: AppColors.primary,
-          ),
-        );
-      }
-      return;
-    }
-    
-    // Show receipt dialog
-    if (!context.mounted) return;
-    
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Row(
-          children: [
-            const Icon(Icons.receipt_long, color: AppColors.primary),
-            const SizedBox(width: 8),
-            const Text('Payment Receipt'),
-          ],
-        ),
-        content: SingleChildScrollView(
-          child: Container(
-            width: double.maxFinite,
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: AppColors.success.withOpacity(0.05),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: AppColors.success.withOpacity(0.3), width: 2),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Center(
-                  child: Column(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: const BoxDecoration(
-                          color: AppColors.success,
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(
-                          Icons.check_circle,
-                          color: Colors.white,
-                          size: 32,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      const Text(
-                        'Payment Successful',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.success,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        receipt.businessName,
-                        style: const TextStyle(
-                          fontSize: 14,
-                          color: AppColors.darkText,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const Divider(height: 32, color: AppColors.success),
-                _buildReceiptRow('Receipt Number', receipt.receiptNumber),
-                const SizedBox(height: 12),
-                _buildReceiptRow('Transaction ID', receipt.transactionId),
-                const SizedBox(height: 12),
-                _buildReceiptRow('Date', '${receipt.issueDate.day}/${receipt.issueDate.month}/${receipt.issueDate.year}'),
-                const SizedBox(height: 12),
-                _buildReceiptRow('Time', '${receipt.issueDate.hour.toString().padLeft(2, '0')}:${receipt.issueDate.minute.toString().padLeft(2, '0')}'),
-                const SizedBox(height: 12),
-                _buildReceiptRow('Payment Method', receipt.paymentMethod),
-                const SizedBox(height: 12),
-                _buildReceiptRow('Customer', receipt.customerName),
-                const Divider(height: 32, color: AppColors.success),
-                const Text(
-                  'Order Items',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 14,
-                    color: AppColors.darkText,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                ...receipt.items.map((item) => Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 4),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Expanded(
-                        child: Text(
-                          '${item.itemDescription} x${item.quantity}',
-                          style: const TextStyle(fontSize: 13),
-                        ),
-                      ),
-                      Text(
-                        '${receipt.currency} ${item.totalPrice.toStringAsFixed(2)}',
-                        style: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                )),
-                
-                const Divider(height: 24, color: AppColors.success),
-                
-                // Pricing Summary
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: AppColors.cardBackground,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Column(
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text('Subtotal', style: TextStyle(fontSize: 13)),
-                          Text(
-                            '${receipt.currency} ${receipt.subtotal.toStringAsFixed(2)}',
-                            style: const TextStyle(fontSize: 13),
-                          ),
-                        ],
-                      ),
-                      if (receipt.taxAmount > 0) ...[
-                        const SizedBox(height: 8),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            const Text('Tax', style: TextStyle(fontSize: 13)),
-                            Text(
-                              '${receipt.currency} ${receipt.taxAmount.toStringAsFixed(2)}',
-                              style: const TextStyle(fontSize: 13),
-                            ),
-                          ],
-                        ),
-                      ],
-                      if (receipt.discountAmount > 0) ...[
-                        const SizedBox(height: 8),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            const Text('Discount', style: TextStyle(fontSize: 13, color: AppColors.success)),
-                            Text(
-                              '-${receipt.currency} ${receipt.discountAmount.toStringAsFixed(2)}',
-                              style: const TextStyle(fontSize: 13, color: AppColors.success),
-                            ),
-                          ],
-                        ),
-                      ],
-                      const SizedBox(height: 8),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text(
-                            'Total Paid',
-                            style: TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.bold,
-                              color: AppColors.darkText,
-                            ),
-                          ),
-                          Text(
-                            '${receipt.currency} ${receipt.totalAmount.toStringAsFixed(2)}',
-                            style: const TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.bold,
-                              color: AppColors.success,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 24),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: _getStatusColor(order.status),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Column(
-                    children: [
-                      Icon(_getStatusIcon(order.status), color: Colors.white, size: 28),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Status: ${_getStatusText(order.status)}',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 14,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Close'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  IconData _getStatusIcon(OrderStatus status) {
-    switch (status) {
-      case OrderStatus.confirmed:
-        return Icons.check_circle;
-      case OrderStatus.preparing:
-        return Icons.restaurant;
-      case OrderStatus.outForDelivery:
-        return Icons.delivery_dining;
-      case OrderStatus.delivered:
-        return Icons.done_all;
-      case OrderStatus.cancelled:
-        return Icons.cancel;
-    }
-  }
-
-  Widget _buildReceiptRow(String label, String value) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: const TextStyle(
-            fontSize: 13,
-            color: Colors.grey,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-        const SizedBox(width: 16),
-        Expanded(
-          child: Text(
-            value,
-            style: const TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.bold,
-              color: AppColors.darkText,
-            ),
-            textAlign: TextAlign.right,
-          ),
-        ),
-      ],
-    );
-  }
 }
 
-// UPDATED: Rating Dialog Widget with anonymous option
+// Rating Dialog
 class _RatingDialog extends StatefulWidget {
   final Order order;
 
@@ -1407,7 +1343,7 @@ class _RatingDialogState extends State<_RatingDialog> {
   @override
   void initState() {
     super.initState();
-    // Initialize ratings and controllers for each item
+    // Initialize ratings and comment controllers for each item
     for (var item in widget.order.items) {
       _ratings[item.id] = item.rating ?? 0;
       _commentControllers[item.id] = TextEditingController(text: item.review ?? '');
@@ -1416,6 +1352,7 @@ class _RatingDialogState extends State<_RatingDialog> {
 
   @override
   void dispose() {
+    // Dispose all controllers
     for (var controller in _commentControllers.values) {
       controller.dispose();
     }
@@ -1424,178 +1361,187 @@ class _RatingDialogState extends State<_RatingDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
+    return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      title: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [AppColors.primary, AppColors.primary.withOpacity(0.8)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Row(
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Header
             Container(
-              padding: const EdgeInsets.all(8),
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.2),
-                shape: BoxShape.circle,
+                gradient: LinearGradient(
+                  colors: [AppColors.primary, AppColors.primary.withOpacity(0.8)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(12),
               ),
-              child: const Icon(Icons.star, color: Colors.white, size: 20),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.2),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.star, color: Colors.white, size: 20),
+                  ),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Text(
+                      'Rate Your Order',
+                      style: TextStyle(fontSize: 16, color: Colors.white, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ],
+              ),
             ),
-            const SizedBox(width: 12),
-            const Expanded(
-              child: Text(
-                'Rate Your Order',
-                style: TextStyle(fontSize: 16, color: Colors.white, fontWeight: FontWeight.bold),
+            const SizedBox(height: 16),
+
+            // Order info
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: AppColors.primary.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: AppColors.primary.withOpacity(0.3)),
               ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.receipt, size: 14, color: AppColors.primary),
+                  const SizedBox(width: 6),
+                  Text(
+                    'Your Order',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.primary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // Rate each item separately
+            ...widget.order.items.map((item) => _buildItemRating(item)),
+            
+            // Anonymous submission option
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.grey.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.grey.withOpacity(0.3)),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    _submitAsAnonymous ? Icons.visibility_off : Icons.visibility,
+                    size: 18,
+                    color: AppColors.primary,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Submit Anonymously',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                          ),
+                        ),
+                        Text(
+                          _submitAsAnonymous 
+                              ? 'Your name will be hidden'
+                              : 'Your name will be visible',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: AppColors.darkText.withOpacity(0.6),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Switch(
+                    value: _submitAsAnonymous,
+                    onChanged: (value) {
+                      setState(() {
+                        _submitAsAnonymous = value;
+                      });
+                    },
+                    activeColor: AppColors.primary,
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 20),
+            // Buttons
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: Text(
+                    'Cancel',
+                    style: TextStyle(color: AppColors.darkText.withOpacity(0.6)),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [AppColors.primary, AppColors.primary.withOpacity(0.8)],
+                    ),
+                    borderRadius: BorderRadius.circular(8),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppColors.primary.withOpacity(0.3),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: ElevatedButton(
+                    onPressed: () => _submitRatings(context),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.transparent,
+                      shadowColor: Colors.transparent,
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          _submitAsAnonymous ? Icons.visibility_off : Icons.check_circle,
+                          color: Colors.white,
+                          size: 18,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          _submitAsAnonymous ? 'Submit Anonymously' : 'Submit Ratings',
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
             ),
           ],
         ),
       ),
-      titlePadding: EdgeInsets.zero,
-      contentPadding: const EdgeInsets.all(20),
-      content: SizedBox(
-        width: double.maxFinite,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: AppColors.primary.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: AppColors.primary.withOpacity(0.3)),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.receipt, size: 14, color: AppColors.primary),
-                    const SizedBox(width: 6),
-                    Text(
-                      'Your Order',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.primary,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-              // Rate each item separately
-              ...widget.order.items.map((item) => _buildItemRating(item)),
-              
-              // Anonymous submission option
-              const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.grey.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.grey.withOpacity(0.3)),
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      _submitAsAnonymous ? Icons.visibility_off : Icons.visibility,
-                      size: 18,
-                      color: AppColors.primary,
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Submit Anonymously',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w600,
-                              fontSize: 13,
-                            ),
-                          ),
-                          Text(
-                            _submitAsAnonymous 
-                                ? 'Your name will be hidden'
-                                : 'Your name will be visible',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: AppColors.darkText.withOpacity(0.6),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Switch(
-                      value: _submitAsAnonymous,
-                      onChanged: (value) {
-                        setState(() {
-                          _submitAsAnonymous = value;
-                        });
-                      },
-                      activeColor: AppColors.primary,
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: Text(
-            'Cancel',
-            style: TextStyle(color: AppColors.darkText.withOpacity(0.6)),
-          ),
-        ),
-        Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [AppColors.primary, AppColors.primary.withOpacity(0.8)],
-            ),
-            borderRadius: BorderRadius.circular(8),
-            boxShadow: [
-              BoxShadow(
-                color: AppColors.primary.withOpacity(0.3),
-                blurRadius: 8,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
-          child: ElevatedButton(
-            onPressed: () => _submitRatings(context),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.transparent,
-              shadowColor: Colors.transparent,
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  _submitAsAnonymous ? Icons.visibility_off : Icons.check_circle,
-                  color: Colors.white,
-                  size: 18,
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  _submitAsAnonymous ? 'Submit Anonymously' : 'Submit Ratings',
-                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ],
     );
   }
 

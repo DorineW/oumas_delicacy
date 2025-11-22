@@ -26,6 +26,7 @@ import 'admin_inventory_management_screen.dart';
 import '../../providers/menu_provider.dart';
 import '../../providers/store_provider.dart';
 import '../../services/chat_service.dart';
+import 'mpesa_management_screen.dart';
 
 /// Models
 class ChartPoint {
@@ -862,6 +863,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
   Color _getActivityColor(OrderStatus status) {
     switch (status) {
+      case OrderStatus.pending_payment:
+        return Colors.orange;
       case OrderStatus.confirmed:
         return Colors.blue;
       case OrderStatus.preparing:
@@ -877,6 +880,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
   IconData _getActivityIcon(OrderStatus status) {
     switch (status) {
+      case OrderStatus.pending_payment:
+        return Icons.payment;
       case OrderStatus.confirmed:
         return Icons.check_circle;
       case OrderStatus.preparing:
@@ -892,6 +897,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
   String _getActivityTitle(Order order) {
     switch (order.status) {
+      case OrderStatus.pending_payment:
+        return 'Payment pending';
       case OrderStatus.confirmed:
         return 'Order confirmed';
       case OrderStatus.preparing:
@@ -1336,6 +1343,8 @@ class _NotificationOrderCard extends StatelessWidget {
 
   Color _getStatusColor(OrderStatus status) {
     switch (status) {
+      case OrderStatus.pending_payment:
+        return Colors.orange;
       case OrderStatus.confirmed:
         return Colors.blue;
       case OrderStatus.preparing:
@@ -1351,6 +1360,8 @@ class _NotificationOrderCard extends StatelessWidget {
 
   String _getStatusText(OrderStatus status) {
     switch (status) {
+      case OrderStatus.pending_payment:
+        return 'Pending Payment';
       case OrderStatus.confirmed:
         return 'Confirmed';
       case OrderStatus.preparing:

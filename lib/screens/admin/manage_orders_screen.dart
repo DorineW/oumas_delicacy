@@ -419,6 +419,8 @@ class _ManageOrdersScreenState extends State<ManageOrdersScreen>
 
   String _getStatusText(OrderStatus status) {
     switch (status) {
+      case OrderStatus.pending_payment:
+        return 'Pending Payment';
       case OrderStatus.confirmed:
         return 'Confirmed';
       case OrderStatus.preparing:
@@ -434,6 +436,8 @@ class _ManageOrdersScreenState extends State<ManageOrdersScreen>
 
   Color _getStatusColor(OrderStatus status) {
     switch (status) {
+      case OrderStatus.pending_payment:
+        return Colors.orange;
       case OrderStatus.confirmed:
         return Colors.blue;
       case OrderStatus.preparing:
@@ -1510,6 +1514,8 @@ class _AdminOrderCardState extends State<AdminOrderCard>
   // ADDED: Missing helper methods
   Color _getStatusColor(OrderStatus status) {
     switch (status) {
+      case OrderStatus.pending_payment:
+        return Colors.orange;
       case OrderStatus.confirmed:
         return Colors.blue;
       case OrderStatus.preparing:
@@ -1525,6 +1531,8 @@ class _AdminOrderCardState extends State<AdminOrderCard>
 
   String _getStatusText(OrderStatus status) {
     switch (status) {
+      case OrderStatus.pending_payment:
+        return 'Pending Payment';
       case OrderStatus.confirmed:
         return 'Confirmed';
       case OrderStatus.preparing:

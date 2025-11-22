@@ -4,11 +4,36 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/receipt.dart';
 
 class ReceiptService {
+    /// Create a receipt only if one does not already exist for the transaction
+    Future<bool> createReceiptIfNotExists(Map<String, dynamic> receiptData) async {
+      final transactionId = receiptData['transaction_id'];
+      // Check if a receipt already exists for this transaction
+      final existing = await _supabase
+          .from('receipts')
+          .select('id')
+          .eq('transaction_id', transactionId)
+          .maybeSingle();
+
+      if (existing != null) {
+        // Receipt already exists, do not insert again
+        print('Receipt already exists for transaction: $transactionId');
+        return false;
+      }
+
+      // Insert new receipt
+      await _supabase
+          .from('receipts')
+          .insert(receiptData);
+      print('Receipt created for transaction: $transactionId');
+      return true;
+    }
   final SupabaseClient _supabase = Supabase.instance.client;
 
   /// Fetch receipt by order ID
   Future<Receipt?> getReceiptByOrderId(String orderId) async {
     try {
+      print('🔍 [ReceiptService] Fetching receipt for order: $orderId');
+      
       // First get the transaction for this order
       final transactionResponse = await _supabase
           .from('mpesa_transactions')
@@ -18,10 +43,12 @@ class ReceiptService {
           .maybeSingle();
 
       if (transactionResponse == null) {
+        print('❌ [ReceiptService] No completed transaction found for order: $orderId');
         return null;
       }
 
       final transactionId = transactionResponse['transaction_id'] as String;
+      print('✅ [ReceiptService] Found transaction: $transactionId');
       
       // Fetch receipt with items
       final response = await _supabase
@@ -34,12 +61,15 @@ class ReceiptService {
           .maybeSingle();
 
       if (response == null) {
+        print('❌ [ReceiptService] No receipt found for transaction: $transactionId');
         return null;
       }
 
+      print('✅ [ReceiptService] Receipt found! Number: ${response['receipt_number']}');
       return Receipt.fromJson(response);
     } catch (e) {
-      print('Error fetching receipt by order ID: $e');
+      print('💥 [ReceiptService] Error fetching receipt by order ID: $e');
+      print('💥 [ReceiptService] Stack trace: ${StackTrace.current}');
       return null;
     }
   }

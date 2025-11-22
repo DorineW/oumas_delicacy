@@ -29,7 +29,7 @@ serve(async (req) => {
       .from('orders')
       .select(`
         *,
-        users!inner(email, full_name, phone),
+        users!inner(email, name, phone),
         order_items(
           quantity,
           unit_price,
@@ -162,7 +162,7 @@ function generateReceiptHTML(order: any): string {
       <!-- Customer Info -->
       <div style="background: #f9fafb; padding: 16px; border-radius: 8px; margin-top: 20px;">
         <h3 style="margin: 0 0 12px 0; font-size: 16px; color: #374151;">Customer Information</h3>
-        <p style="margin: 0 0 6px 0;"><strong>Name:</strong> ${order.users.full_name}</p>
+        <p style="margin: 0 0 6px 0;"><strong>Name:</strong> ${order.users.name}</p>
         <p style="margin: 0 0 6px 0;"><strong>Phone:</strong> ${order.users.phone}</p>
         <p style="margin: 0;"><strong>Email:</strong> ${order.users.email}</p>
         ${order.delivery_address ? `<p style="margin: 6px 0 0 0;"><strong>Delivery Address:</strong> ${order.delivery_address}</p>` : ''}

@@ -1,4 +1,6 @@
 // lib/screens/order_history_screen.dart
+// ignore_for_file: unused_import
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../constants/colors.dart';
@@ -8,6 +10,7 @@ import '../models/receipt.dart';
 import '../providers/order_provider.dart';
 import '../providers/cart_provider.dart';
 import '../services/receipt_service.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class OrderHistoryScreen extends StatefulWidget {
   // optional: pass the current customerId to show only their orders
@@ -121,7 +124,6 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> with SingleTick
 
   // SIMPLIFIED: Order card with only essential information
   Widget _buildOrderCard(Order order) {
-    final deliveryFee = order.deliveryType == DeliveryType.delivery ? 100 : 0;
     
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
@@ -209,29 +211,6 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> with SingleTick
             
             const Divider(height: 24),
             
-            // Delivery fee (if applicable)
-            if (order.deliveryType == DeliveryType.delivery) ...[
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'Delivery Fee',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: AppColors.darkText.withOpacity(0.7),
-                    ),
-                  ),
-                  Text(
-                    'KES $deliveryFee',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: AppColors.darkText.withOpacity(0.7),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-            ],
             
             // Grand total
             Row(
@@ -355,9 +334,30 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> with SingleTick
       ),
     );
 
-    // Fetch receipt from database
+    // Fetch receipt from database, auto-create if missing
     final receiptService = ReceiptService();
-    final receipt = await receiptService.getReceiptByOrderId(order.id);
+    Receipt? receipt = await receiptService.getReceiptByOrderId(order.id);
+    if (receipt == null) {
+      // Try to create receipt if not exists
+      final transactionResponse = await Supabase.instance.client
+          .from('mpesa_transactions')
+          .select('transaction_id')
+          .eq('order_id', order.id)
+          .eq('status', 'completed')
+          .maybeSingle();
+      if (transactionResponse != null) {
+        final transactionId = transactionResponse['transaction_id'] as String;
+        final receiptData = {
+          'transaction_id': transactionId,
+          'issue_date': DateTime.now().toIso8601String(),
+          'user_auth_id': Supabase.instance.client.auth.currentUser?.id,
+          // Add other required fields here
+        };
+        await receiptService.createReceiptIfNotExists(receiptData);
+        // Try fetching again
+        receipt = await receiptService.getReceiptByOrderId(order.id);
+      }
+    }
 
     if (!mounted) return;
 
@@ -365,15 +365,30 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> with SingleTick
     Navigator.of(context).pop();
 
     if (receipt == null) {
-      // Show error if no receipt found
+      // Show error with better message based on order status
+      final String errorMessage = order.status == OrderStatus.confirmed || 
+                                   order.status == OrderStatus.preparing ||
+                                   order.status == OrderStatus.outForDelivery ||
+                                   order.status == OrderStatus.delivered
+          ? 'Receipt is being generated. Please try again in a moment.'
+          : 'Receipt not available. Payment may still be processing.';
+      
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Receipt not found. Payment may still be processing.'),
+        SnackBar(
+          content: Text(errorMessage),
           backgroundColor: Colors.orange,
+          action: SnackBarAction(
+            label: 'RETRY',
+            textColor: Colors.white,
+            onPressed: () => _showPaymentReceipt(order),
+          ),
         ),
       );
       return;
     }
+    
+    // At this point receipt is guaranteed non-null
+    final Receipt validReceipt = receipt;
 
     // Show receipt dialog
     showDialog(
@@ -440,21 +455,21 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> with SingleTick
                 const Divider(height: 32, color: AppColors.success),
                 
                 // Receipt Details
-                _buildReceiptRow('Receipt Number', receipt.receiptNumber),
+                _buildReceiptRow('Receipt Number', validReceipt.receiptNumber),
                 const SizedBox(height: 12),
                 _buildReceiptRow('Order Number', order.orderNumber),
                 const SizedBox(height: 12),
-                _buildReceiptRow('Transaction ID', receipt.transactionId),
+                _buildReceiptRow('Transaction ID', validReceipt.transactionId),
                 const SizedBox(height: 12),
-                _buildReceiptRow('Date', '${receipt.issueDate.day}/${receipt.issueDate.month}/${receipt.issueDate.year}'),
+                _buildReceiptRow('Date', '${validReceipt.issueDate.day}/${validReceipt.issueDate.month}/${validReceipt.issueDate.year}'),
                 const SizedBox(height: 12),
-                _buildReceiptRow('Time', '${receipt.issueDate.hour.toString().padLeft(2, '0')}:${receipt.issueDate.minute.toString().padLeft(2, '0')}'),
+                _buildReceiptRow('Time', '${validReceipt.issueDate.hour.toString().padLeft(2, '0')}:${validReceipt.issueDate.minute.toString().padLeft(2, '0')}'),
                 const SizedBox(height: 12),
-                _buildReceiptRow('Payment Method', receipt.paymentMethod),
+                _buildReceiptRow('Payment Method', validReceipt.paymentMethod),
                 const SizedBox(height: 12),
-                _buildReceiptRow('Customer', receipt.customerName),
+                _buildReceiptRow('Customer', validReceipt.customerName),
                 const SizedBox(height: 12),
-                _buildReceiptRow('Phone', receipt.customerPhone),
+                _buildReceiptRow('Phone', validReceipt.customerPhone),
                 
                 const Divider(height: 32, color: AppColors.success),
                 
@@ -468,7 +483,7 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> with SingleTick
                   ),
                 ),
                 const SizedBox(height: 8),
-                ...receipt.items.map((item) => Padding(
+                ...validReceipt.items.map((item) => Padding(
                   padding: const EdgeInsets.symmetric(vertical: 4),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -506,32 +521,32 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> with SingleTick
                         children: [
                           const Text('Subtotal', style: TextStyle(fontSize: 13)),
                           Text(
-                            '${receipt.currency} ${receipt.subtotal.toStringAsFixed(2)}',
+                            '${validReceipt.currency} ${validReceipt.subtotal.toStringAsFixed(2)}',
                             style: const TextStyle(fontSize: 13),
                           ),
                         ],
                       ),
-                      if (receipt.taxAmount > 0) ...[
+                      if (validReceipt.taxAmount > 0) ...[
                         const SizedBox(height: 8),
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             const Text('Tax', style: TextStyle(fontSize: 13)),
                             Text(
-                              '${receipt.currency} ${receipt.taxAmount.toStringAsFixed(2)}',
+                              '${validReceipt.currency} ${validReceipt.taxAmount.toStringAsFixed(2)}',
                               style: const TextStyle(fontSize: 13),
                             ),
                           ],
                         ),
                       ],
-                      if (receipt.discountAmount > 0) ...[
+                      if (validReceipt.discountAmount > 0) ...[
                         const SizedBox(height: 8),
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             const Text('Discount', style: TextStyle(fontSize: 13, color: AppColors.success)),
                             Text(
-                              '-${receipt.currency} ${receipt.discountAmount.toStringAsFixed(2)}',
+                              '-${validReceipt.currency} ${validReceipt.discountAmount.toStringAsFixed(2)}',
                               style: const TextStyle(fontSize: 13, color: AppColors.success),
                             ),
                           ],
@@ -550,7 +565,7 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> with SingleTick
                             ),
                           ),
                           Text(
-                            '${receipt.currency} ${receipt.totalAmount.toStringAsFixed(2)}',
+                            '${validReceipt.currency} ${validReceipt.totalAmount.toStringAsFixed(2)}',
                             style: const TextStyle(
                               fontSize: 15,
                               fontWeight: FontWeight.bold,
@@ -657,6 +672,8 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> with SingleTick
 
   IconData _getStatusIcon(OrderStatus status) {
     switch (status) {
+      case OrderStatus.pending_payment:
+        return Icons.payment;
       case OrderStatus.confirmed:
         return Icons.check_circle;
       case OrderStatus.preparing:
@@ -672,6 +689,8 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> with SingleTick
 
   Color _getStatusColor(OrderStatus status) {
     switch (status) {
+      case OrderStatus.pending_payment:
+        return Colors.orange;
       case OrderStatus.confirmed:
         return Colors.blue;
       case OrderStatus.preparing: // UPDATED
@@ -687,6 +706,8 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> with SingleTick
 
   String _getStatusText(OrderStatus status) {
     switch (status) {
+      case OrderStatus.pending_payment:
+        return 'Pending Payment';
       case OrderStatus.confirmed:
         return 'Confirmed';
       case OrderStatus.preparing: // UPDATED

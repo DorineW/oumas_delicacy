@@ -23,9 +23,7 @@ import '../models/user_address.dart';
 import '../constants/colors.dart';
 import 'location.dart'; // UPDATED: Use existing LocationScreen
 import '../providers/location_provider.dart'; // ADDED: Import LocationProvider (Removed duplicate import)
-import 'mpesa_payment_confirmation_screen.dart'; // ADDED: M-Pesa confirmation screen
 import 'customer_address_management_screen.dart'; // ADDED: Address management screen
-import '../widgets/mpesa_payment_button.dart';
 import '../utils/error_snackbar.dart';
 import '../utils/phone_utils.dart';
 
@@ -1264,32 +1262,396 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       return _buildDisabledButton('Select delivery address');
     }
 
-    final mpesaPhone = _mpesaPhoneController.text.trim();
+    return SizedBox(
+      width: double.infinity,
+      child: ElevatedButton.icon(
+        onPressed: _processOrderAndPayment,
+        icon: const Icon(Icons.phone_android, size: 24),
+        label: const Text(
+          'Pay with M-Pesa',
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.green,
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          elevation: 2,
+        ),
+      ),
+    );
+  }
 
-    return MpesaPaymentButton(
-      phoneNumber: mpesaPhone,
-      amount: totalAmount,
-      orderReference: 'ORDER-${DateTime.now().millisecondsSinceEpoch}',
-      onSuccess: () async {
-        // Clear cart after successful payment
-        final cartProvider = context.read<CartProvider>();
-        for (final item in widget.selectedItems) {
-          cartProvider.removeItem(item.id);
+  Future<void> _processOrderAndPayment() async {
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
+
+    if (_deliveryLatLng == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please select a delivery location'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    setState(() => _isProcessing = true);
+
+    try {
+      final auth = Provider.of<AuthService>(context, listen: false);
+      final orderProvider = Provider.of<OrderProvider>(context, listen: false);
+      final mpesaProvider = Provider.of<MpesaProvider>(context, listen: false);
+      
+      final currentUser = auth.currentUser;
+      if (currentUser == null) {
+        throw Exception('User not logged in');
+      }
+
+      final mpesaPhone = PhoneUtils.normalizeKenyan(_mpesaPhoneController.text.trim());
+      
+      debugPrint('📦 Creating order...');
+      
+      // Convert CartItems to OrderItems
+      final orderItems = widget.selectedItems.map((cartItem) => OrderItem(
+        id: cartItem.id,
+        menuItemId: cartItem.menuItemId,
+        title: cartItem.mealTitle,
+        quantity: cartItem.quantity,
+        price: cartItem.price,
+        itemType: 'Food',
+      )).toList();
+      
+      // Create order in database with 'pending_payment' status
+      final orderId = await orderProvider.createOrder(
+        customerId: currentUser.id,
+        customerName: currentUser.name ?? currentUser.email,
+        items: orderItems,
+        deliveryAddress: _deliveryAddressController.text.trim(),
+        specialInstructions: _specialInstructionsController.text.trim(),
+        deliveryType: DeliveryType.delivery,
+        subtotal: subtotalAmount,
+        deliveryFee: _deliveryFee,
+        tax: tax,
+        totalAmount: totalAmount,
+        deliveryLat: _deliveryLatLng?.latitude,
+        deliveryLon: _deliveryLatLng?.longitude,
+      );
+
+      debugPrint('✅ Order created: $orderId');
+      debugPrint('💳 Initiating M-Pesa payment...');
+
+      // Initiate M-Pesa payment with order ID
+      final paymentSuccess = await mpesaProvider.initiatePayment(
+        phoneNumber: mpesaPhone,
+        amount: totalAmount,
+        orderId: orderId,
+        accountReference: 'ORDER-${orderId.substring(0, 8)}',
+        transactionDesc: 'Payment for order',
+      );
+
+      if (!paymentSuccess) {
+        throw Exception(mpesaProvider.errorMessage ?? 'Payment initiation failed');
+      }
+
+      if (!mounted) return;
+
+      // Show payment dialog
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => _buildPaymentDialog(
+          mpesaProvider: mpesaProvider,
+          orderId: orderId,
+          phoneNumber: mpesaPhone,
+        ),
+      );
+
+    } catch (e) {
+      debugPrint('❌ Error: $e');
+      if (mounted) {
+        setState(() => _isProcessing = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Widget _buildPaymentDialog({
+    required MpesaProvider mpesaProvider,
+    required String orderId,
+    required String phoneNumber,
+  }) {
+    return Consumer<MpesaProvider>(
+      builder: (context, provider, child) {
+        final status = provider.paymentStatus;
+
+        // Handle payment completion
+        if (status == 'completed') {
+          WidgetsBinding.instance.addPostFrameCallback((_) async {
+            if (mounted) {
+              // Get provider references BEFORE any navigation
+              final auth = Provider.of<AuthService>(context, listen: false);
+              final orderProvider = Provider.of<OrderProvider>(context, listen: false);
+              final cartProvider = Provider.of<CartProvider>(context, listen: false);
+              final currentUser = auth.currentUser;
+              
+              // Close dialog first (fast)
+              Navigator.of(context).pop();
+              
+              // Clear cart (fast)
+              for (final item in widget.selectedItems) {
+                cartProvider.removeItem(item.id);
+              }
+              
+              setState(() => _isProcessing = false);
+              
+              // Navigate to order history or home (fast)
+              Navigator.of(context).popUntil((route) => route.isFirst);
+              
+              // Show success message (fast)
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Row(
+                    children: [
+                      Icon(Icons.check_circle, color: Colors.white),
+                      SizedBox(width: 8),
+                      Expanded(child: Text('✅ Payment successful! Order confirmed.')),
+                    ],
+                  ),
+                  backgroundColor: Colors.green,
+                  duration: Duration(seconds: 4),
+                ),
+              );
+              
+              // Reload orders in background (doesn't block UI)
+              if (currentUser != null) {
+                orderProvider.loadOrders(currentUser.id).then((_) {
+                  debugPrint('✅ Orders refreshed: ${orderProvider.orders.length} orders');
+                });
+              }
+            }
+          });
         }
-        
-        // Navigate back to home or order history
-        if (mounted) {
-          Navigator.of(context).popUntil((route) => route.isFirst);
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Order placed successfully! 🎉'),
-              backgroundColor: Colors.green,
+
+        // Handle payment failure or timeout
+        if (status == 'failed' || status == 'cancelled' || status == 'timeout') {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              Navigator.of(context).pop();
+              setState(() => _isProcessing = false);
+              
+              final isTimeout = status == 'timeout';
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Row(
+                    children: [
+                      Icon(
+                        isTimeout ? Icons.access_time : Icons.error,
+                        color: Colors.white,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          provider.errorMessage ?? 
+                          (isTimeout 
+                            ? '⏱️ Payment verification timed out. Check \"My Orders\" or M-Pesa message.'
+                            : '❌ Payment $status. Please try again.'),
+                        ),
+                      ),
+                    ],
+                  ),
+                  backgroundColor: isTimeout ? Colors.orange : Colors.red,
+                  duration: Duration(seconds: isTimeout ? 6 : 4),
+                  action: isTimeout
+                      ? SnackBarAction(
+                          label: 'Check Orders',
+                          textColor: Colors.white,
+                          onPressed: () {
+                            Navigator.of(context).pushNamed('/orders');
+                          },
+                        )
+                      : null,
+                ),
+              );
+              provider.reset();
+            }
+          });
+        }
+
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.green.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(
+                  Icons.phone_android,
+                  color: Colors.green,
+                  size: 28,
+                ),
+              ),
+              const SizedBox(width: 12),
+              const Text(
+                'M-Pesa Payment',
+                style: TextStyle(fontSize: 20),
+              ),
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (status == 'pending') ...[
+                  const SizedBox(
+                    width: 60,
+                    height: 60,
+                    child: CircularProgressIndicator(
+                      color: Colors.green,
+                      strokeWidth: 6,
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  const Text(
+                    'Processing Payment...',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    phoneNumber,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 16,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.green.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Column(
+                      children: [
+                        Text(
+                          'Amount to pay',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'KSh ${totalAmount.toStringAsFixed(0)}',
+                          style: const TextStyle(
+                            fontSize: 32,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.green,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.blue.withOpacity(0.3)),
+                    ),
+                    child: Column(
+                      children: [
+                        const Row(
+                          children: [
+                            Icon(Icons.info_outline, color: Colors.blue, size: 20),
+                            SizedBox(width: 8),
+                            Text(
+                              'Steps to complete payment:',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: Colors.blue,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          '1. Enter your M-Pesa PIN when prompted\n'
+                          '2. Confirm the payment\n'
+                          '3. Confirm the payment',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: Colors.grey[700],
+                            height: 1.5,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ] else ...[
+                  // Fallback view for non-pending statuses
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 12.0),
+                    child: Column(
+                      children: [
+                        Text(
+                          provider.errorMessage ?? 'Payment status: $status',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 16,
+                            color: status == 'completed' ? Colors.green : Colors.orange,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          'If payment was completed, check your Orders section or wait for confirmation message.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(fontSize: 13, color: Colors.grey[700]),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ],
             ),
-          );
-        }
-      },
-      onCancel: () {
-        debugPrint('Payment cancelled by user');
+          ),
+          actions: [
+            TextButton.icon(
+              onPressed: () {
+                provider.reset();
+                Navigator.of(context).pop();
+                setState(() => _isProcessing = false);
+              },
+              icon: const Icon(Icons.close),
+              label: const Text('Cancel'),
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.grey[600],
+              ),
+            ),
+          ],
+        );
       },
     );
   }
@@ -1324,7 +1686,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         backgroundColor: AppColors.primary,
         iconTheme: const IconThemeData(color: AppColors.white),
         titleTextStyle: const TextStyle(color: AppColors.white, fontSize: 18, fontWeight: FontWeight.bold),
-      ), // FIXED: Removed the misplaced closing brace '}' here
+      ),
       body: Form(
         key: _formKey,
         child: SingleChildScrollView(
@@ -1332,7 +1694,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           padding: const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
+            children: <Widget>[
               _buildSelectedItemsList(),
               const SizedBox(height: 16),
               _buildDeliverySection(),

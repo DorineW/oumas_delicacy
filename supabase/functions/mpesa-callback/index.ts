@@ -3,7 +3,7 @@
 // Webhook URL: https://[your-project].supabase.co/functions/v1/mpesa-callback
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { createClient } from 'jsr:@supabase/supabase-js@2'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -201,7 +201,7 @@ async function generateReceipt(
       .from('orders')
       .select(`
         *,
-        users!inner(email, full_name, phone),
+        users!inner(email, name, phone),
         order_items(
           quantity,
           unit_price,
@@ -239,17 +239,17 @@ async function generateReceipt(
         transaction_id: transactionId,
         receipt_type: 'payment',
         issue_date: new Date().toISOString(),
-        customer_name: order.users.full_name,
+        customer_name: order.users.name,
         customer_phone: order.users.phone,
         customer_email: order.users.email,
         subtotal: Math.round(order.subtotal),
         tax_amount: Math.round(order.tax || 0),
         discount_amount: 0,
         total_amount: Math.round(order.total),
-        business_name: location?.business_name || "Ouma's Delicacy",
+        business_name: location?.name || "Ouma's Delicacy",
         business_address: location?.address || '',
         business_phone: location?.phone || '',
-        business_email: location?.email || '',
+        business_email: 'receipts@oumasdelicacy.com',
         payment_method: 'M-Pesa',
         currency: 'KES',
       })

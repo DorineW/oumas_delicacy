@@ -135,6 +135,7 @@ class RiderProvider with ChangeNotifier {
                 title: itemJson['name'],
                 quantity: itemJson['quantity'],
                 price: (itemJson['unit_price'] as num).toInt(),
+                itemType: itemJson['item_type'] ?? 'Food',
               );
               items.add(item);
               debugPrint('  ✅ Item: ${item.title} x${item.quantity}');

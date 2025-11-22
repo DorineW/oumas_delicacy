@@ -246,12 +246,12 @@ class _LoginScreenState extends State<LoginScreen> {
                   // Logo at the top
                   Image.asset(
                     'assets/images/splash_logo.png',
-                    width: 120,
-                    height: 120,
+                    width: 240,
+                    height: 240,
                     errorBuilder: (context, error, stackTrace) {
                       return const Icon(
                         Icons.restaurant,
-                        size: 120,
+                        size: 240,
                         color: AppColors.primary,
                       );
                     },

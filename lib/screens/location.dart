@@ -384,6 +384,7 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
   Future<void> _searchAddress(String query, {bool immediate = false}) async {
     if (!mounted) return;
     
+    // Cancel any existing timer
     if (_debounceTimer?.isActive ?? false) {
       _debounceTimer?.cancel();
     }
@@ -402,25 +403,33 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
     }
     
     // Otherwise, debounce for typing
-    _debounceTimer = Timer(const Duration(milliseconds: 300), () async {
+    _debounceTimer = Timer(const Duration(milliseconds: 500), () async {
       await _performSearch(query);
     });
   }
 
-  // ADDED: Extracted search logic
+  // FIXED: Extracted search logic with proper Completer management
   Future<void> _performSearch(String query) async {
     if (!mounted || query.isEmpty) return;
     
+    // Cancel previous operation if still pending
+    if (_currentOperation != null && !_currentOperation!.isCompleted) {
+      _currentOperation!.completeError('Cancelled');
+    }
+    
     setState(() => _isSearching = true);
     
-    _currentOperation?.completeError('Cancelled');
+    // Create new completer for this search
     _currentOperation = Completer<void>();
     
     try {
       final locationProvider = context.read<LocationProvider>();
       final results = await locationProvider.searchAddress(query);
       
-      if (!mounted || _currentOperation!.isCompleted) return;
+      // Check if this operation was cancelled
+      if (!mounted || (_currentOperation?.isCompleted ?? true)) {
+        return;
+      }
       
       setState(() {
         _searchResults = results;
@@ -446,7 +455,10 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
         );
       }
       
-      _currentOperation!.complete();
+      // Complete this operation
+      if (!_currentOperation!.isCompleted) {
+        _currentOperation!.complete();
+      }
     } catch (e) {
       debugPrint('❌ Search error: $e');
       
@@ -470,7 +482,8 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
         );
       }
       
-      if (!(_currentOperation?.isCompleted ?? true)) {
+      // Complete with error if not already completed
+      if (_currentOperation != null && !_currentOperation!.isCompleted) {
         _currentOperation!.completeError(e);
       }
     }
@@ -484,6 +497,9 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
     
     final lat = result['lat'] as double;
     final lon = result['lon'] as double;
+    final name = result['name'] as String; // Use cleaned name, not full display_name
+
+    debugPrint('✅ User selected: $name at ($lat, $lon)');
 
     setState(() {
       _searchResults = [];
@@ -492,10 +508,32 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
     });
     
     final selectedPoint = LatLng(lat, lon);
-    _animatedMapMove(selectedPoint, 16.0);
+    _animatedMapMove(selectedPoint, 17.0); // Zoom in closer
     
-    // Set location in provider - it will update deliveryAddress
-    await locationProvider.setLocation(lat, lon);
+    // Use the cleaned name from search results
+    locationProvider.setLocationWithAddress(lat, lon, name);
+    
+    // Show confirmation
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.check_circle, color: Colors.white, size: 20),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text('Location set: $name'),
+              ),
+            ],
+          ),
+          backgroundColor: Colors.green,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          margin: const EdgeInsets.all(16),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
   }
 
   Widget _buildAddressCard(LocationProvider provider) {
@@ -687,7 +725,7 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
                 builder: (context) => AlertDialog(
                   title: const Text('Delivery Area'),
                   content: const Text(
-                    'We deliver within 5km radius from Madaraka, Nairobi. '
+                    'We deliver within our service area from Madaraka, Nairobi. '
                     'Tap on the map to select your exact delivery location or search for an address.',
                   ),
                   actions: [
@@ -774,33 +812,95 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
                         margin: const EdgeInsets.only(top: 8),
                         decoration: BoxDecoration(
                           color: Colors.white,
-                          borderRadius: BorderRadius.circular(8),
+                          borderRadius: BorderRadius.circular(12),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withOpacity(0.1),
-                              blurRadius: 8,
-                              offset: const Offset(0, 2),
+                              color: Colors.black.withOpacity(0.15),
+                              blurRadius: 12,
+                              offset: const Offset(0, 4),
                             ),
                           ],
                         ),
-                        constraints: const BoxConstraints(maxHeight: 200),
-                        child: ListView.separated(
-                          shrinkWrap: true,
-                          itemCount: _searchResults.length,
-                          separatorBuilder: (_, __) => const Divider(height: 1),
-                          itemBuilder: (context, index) {
-                            final result = _searchResults[index];
-                            return ListTile(
-                              leading: const Icon(Icons.location_on, color: AppColors.primary, size: 20),
-                              title: Text(
-                                result['name'],
-                                style: const TextStyle(fontSize: 13),
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
+                        constraints: const BoxConstraints(maxHeight: 300),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            // Results header
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                              decoration: BoxDecoration(
+                                color: AppColors.primary.withOpacity(0.05),
+                                borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
                               ),
-                              onTap: () => _selectSearchResult(result),
-                            );
-                          },
+                              child: Row(
+                                children: [
+                                  const Icon(Icons.search, size: 16, color: AppColors.primary),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    '${_searchResults.length} location${_searchResults.length > 1 ? 's' : ''} found',
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                      color: AppColors.primary,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            // Results list
+                            Flexible(
+                              child: ListView.separated(
+                                shrinkWrap: true,
+                                padding: const EdgeInsets.symmetric(vertical: 4),
+                                itemCount: _searchResults.length,
+                                separatorBuilder: (_, __) => Divider(
+                                  height: 1,
+                                  indent: 52,
+                                  color: Colors.grey.shade200,
+                                ),
+                                itemBuilder: (context, index) {
+                                  final result = _searchResults[index];
+                                  final distanceKm = result['distance_from_nairobi'] as double?;
+                                  final type = result['type'] as String? ?? 'place';
+                                  
+                                  return ListTile(
+                                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                                    leading: Container(
+                                      padding: const EdgeInsets.all(8),
+                                      decoration: BoxDecoration(
+                                        color: AppColors.primary.withOpacity(0.1),
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: const Icon(
+                                        Icons.location_on,
+                                        color: AppColors.primary,
+                                        size: 20,
+                                      ),
+                                    ),
+                                    title: Text(
+                                      result['name'],
+                                      style: const TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    subtitle: distanceKm != null
+                                        ? Text(
+                                            '${distanceKm.toStringAsFixed(1)}km from city center • $type',
+                                            style: TextStyle(
+                                              fontSize: 11,
+                                              color: Colors.grey.shade600,
+                                            ),
+                                          )
+                                        : null,
+                                    onTap: () => _selectSearchResult(result),
+                                  );
+                                },
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                   ],
@@ -947,7 +1047,7 @@ class _LocationScreenState extends State<LocationScreen> with TickerProviderStat
                               SizedBox(width: 8),
                               Expanded(
                                 child: Text(
-                                  'You are outside our delivery area (5km radius)',
+                                  'You are outside our delivery zone',
                                   style: TextStyle(
                                     color: Colors.white,
                                     fontWeight: FontWeight.w600,

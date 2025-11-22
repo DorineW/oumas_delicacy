@@ -40,21 +40,32 @@ class MpesaService {
       final formattedPhone = formatPhoneNumber(phoneNumber);
       
       debugPrint('🔄 Initiating M-Pesa payment...');
-      debugPrint('Phone: $phoneNumber → $formattedPhone, Amount: $amount');
+      debugPrint('   Raw Phone: $phoneNumber');
+      debugPrint('   Formatted Phone: $formattedPhone');
+      debugPrint('   Amount: $amount');
+      debugPrint('   Account Ref: $accountReference');
+      debugPrint('   Order ID: $orderId');
+
+      final body = {
+        'phoneNumber': formattedPhone,
+        'amount': amount,
+        'orderId': orderId,
+        'accountReference': accountReference,
+        'transactionDesc': transactionDesc ?? 'Payment for order $accountReference',
+      };
+      
+      debugPrint('   Request body: $body');
 
       final response = await _supabase.functions.invoke(
         'mpesa-stk-push',
-        body: {
-          'phoneNumber': formattedPhone,
-          'amount': amount,
-          'orderId': orderId,
-          'accountReference': accountReference,
-          'transactionDesc': transactionDesc ?? 'Payment for order $accountReference',
-        },
+        body: body,
       );
 
+      debugPrint('   Response status: ${response.status}');
+      debugPrint('   Response data: ${response.data}');
+
       if (response.status != 200) {
-        debugPrint('❌ STK Push failed: ${response.data}');
+        debugPrint('❌ STK Push failed with status ${response.status}: ${response.data}');
         throw Exception('Failed to initiate payment: ${response.data}');
       }
 
@@ -62,6 +73,8 @@ class MpesaService {
       
       if (data['success'] == true) {
         debugPrint('✅ STK Push sent successfully');
+        debugPrint('   Checkout Request ID: ${data['checkoutRequestId']}');
+        debugPrint('   Transaction ID: ${data['transactionId']}');
         return {
           'success': true,
           'message': data['message'],
@@ -70,6 +83,7 @@ class MpesaService {
           'transactionId': data['transactionId'],
         };
       } else {
+        debugPrint('❌ STK Push unsuccessful: ${data['error']}');
         throw Exception(data['error'] ?? 'Payment initiation failed');
       }
     } catch (e) {
@@ -81,20 +95,58 @@ class MpesaService {
     }
   }
 
-  /// Check payment status by polling the database
+  /// Check payment status by querying M-Pesa API directly
+  /// This works in sandbox and updates the database with real M-Pesa status
   Future<String?> checkPaymentStatus(String checkoutRequestId) async {
     try {
-      final response = await _supabase
-          .from('mpesa_transactions')
-          .select('status, result_desc')
-          .eq('checkout_request_id', checkoutRequestId)
-          .maybeSingle();
+      debugPrint('🔍 Querying M-Pesa for transaction status...');
+      
+      // Call the query status Edge Function
+      final response = await _supabase.functions.invoke(
+        'mpesa-query-status',
+        body: {
+          'checkoutRequestId': checkoutRequestId,
+        },
+      );
 
-      if (response == null) return null;
-      return response['status'] as String?;
+      if (response.status != 200) {
+        debugPrint('⚠️ Query failed, checking database...');
+        // Fallback to database check
+        final dbResponse = await _supabase
+            .from('mpesa_transactions')
+            .select('status, result_desc')
+            .eq('checkout_request_id', checkoutRequestId)
+            .maybeSingle();
+
+        if (dbResponse == null) return null;
+        return dbResponse['status'] as String?;
+      }
+
+      final data = response.data as Map<String, dynamic>;
+      
+      if (data['success'] == true) {
+        final status = data['status'] as String;
+        debugPrint('✅ Transaction status: $status');
+        return status;
+      }
+      
+      return null;
     } catch (e) {
       debugPrint('Error checking payment status: $e');
-      return null;
+      // Fallback to database check
+      try {
+        final response = await _supabase
+            .from('mpesa_transactions')
+            .select('status, result_desc')
+            .eq('checkout_request_id', checkoutRequestId)
+            .maybeSingle();
+
+        if (response == null) return null;
+        return response['status'] as String?;
+      } catch (e2) {
+        debugPrint('Error in fallback check: $e2');
+        return null;
+      }
     }
   }
 

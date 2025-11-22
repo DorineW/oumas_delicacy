@@ -3,7 +3,7 @@
 // Call from Flutter app to initiate M-Pesa payment
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { createClient } from 'jsr:@supabase/supabase-js@2'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -126,9 +126,13 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
 
+    // Generate unique transaction ID (will be updated with M-Pesa receipt number on callback)
+    const transactionId = `TXN-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`
+
     const { data: transaction, error: dbError } = await supabaseClient
       .from('mpesa_transactions')
       .insert({
+        transaction_id: transactionId,
         merchant_request_id: mpesaData.MerchantRequestID,
         checkout_request_id: mpesaData.CheckoutRequestID,
         transaction_type: 'payment',
